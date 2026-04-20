@@ -1,6 +1,8 @@
 import { useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { trpc } from "@/lib/trpc";
+import { IS_NATIVE } from "@/lib/platform";
+import { AUTH_CALLBACK_URL } from "@/lib/deepLink";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -38,10 +40,15 @@ export default function SignIn() {
     if (!email) return;
     setLoading(true);
     try {
+      // Native: deep-link back into the app via lyricpro:// scheme.
+      // Web: redirect to the SPA /auth/callback route as before.
+      const emailRedirectTo = IS_NATIVE
+        ? AUTH_CALLBACK_URL
+        : `${window.location.origin}/auth/callback`;
       const { error } = await supabase.auth.signInWithOtp({
         email,
         options: {
-          emailRedirectTo: `${window.location.origin}/auth/callback`,
+          emailRedirectTo,
           shouldCreateUser: false, // bootstrap-only accounts for now
         },
       });
@@ -59,11 +66,12 @@ export default function SignIn() {
   const signInWith = async (provider: "google" | "apple") => {
     setLoading(true);
     try {
+      const redirectTo = IS_NATIVE
+        ? AUTH_CALLBACK_URL
+        : `${window.location.origin}/auth/callback`;
       const { error } = await supabase.auth.signInWithOAuth({
         provider,
-        options: {
-          redirectTo: `${window.location.origin}/auth/callback`,
-        },
+        options: { redirectTo },
       });
       if (error) throw error;
       // signInWithOAuth redirects the browser — no further code runs here.

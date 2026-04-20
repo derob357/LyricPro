@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { StripeCheckoutButton } from "./StripeCheckoutButton";
 import { Loader2 } from "lucide-react";
+import { CAN_PURCHASE } from "@/lib/platform";
 
 const ENTRY_FEES = [2.5, 5, 10, 25, 50, 100, 250, 500, 1000];
 const TEAM_SIZES = [
@@ -27,6 +28,8 @@ export function EntryFeeModal({
   onEntryFeeSelected,
   isCreating = false,
 }: EntryFeeModalProps) {
+  // Mobile: entry-fee modal never opens. See EntryFeeSelector for rationale.
+  if (!CAN_PURCHASE) return null;
   const [selectedFee, setSelectedFee] = useState<number | null>(null);
   const [showCheckout, setShowCheckout] = useState(false);
 

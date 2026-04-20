@@ -1,6 +1,7 @@
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Trophy } from "lucide-react";
+import { CAN_PURCHASE } from "@/lib/platform";
 
 interface EntryFeeOption {
   amount: number;
@@ -61,6 +62,10 @@ export function EntryFeeSelector({
   loading = false,
   maxEntryFee = 1000,
 }: EntryFeeSelectorProps) {
+  // Mobile: entry-fee games fall under App Store §5.3 (gambling / real-
+  // money contests) with per-jurisdiction licensing requirements. Hide
+  // the selector on native — these stay web-only.
+  if (!CAN_PURCHASE) return null;
   const isSolo = gameType === "solo";
   const teamSize = isSolo ? 1 : parseInt(gameType.replace("team", ""));
   const fees = isSolo ? SOLO_ENTRY_FEES : TEAM_ENTRY_FEES[teamSize] || [];

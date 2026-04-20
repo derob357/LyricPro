@@ -1,6 +1,7 @@
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Check } from "lucide-react";
+import { CAN_PURCHASE } from "@/lib/platform";
 
 interface TierOption {
   tier: "free" | "player" | "pro" | "elite";
@@ -89,6 +90,9 @@ export function SubscriptionTierSelector({
   onSelectTier,
   loading = false,
 }: SubscriptionTierSelectorProps) {
+  // Mobile: hide subscription picker. Subscriptions stay web-only per
+  // App Store / Play policy.
+  if (!CAN_PURCHASE) return null;
   return (
     <div className="w-full max-w-6xl mx-auto px-4 py-8">
       <div className="text-center mb-12">

@@ -5,7 +5,8 @@ import { useAuth } from "@/_core/hooks/useAuth";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
-import { Sparkles, Music, Gift, History, Check } from "lucide-react";
+import { Sparkles, Music, Gift, History, Check, Globe } from "lucide-react";
+import { CAN_PURCHASE } from "@/lib/platform";
 
 // The Shop page lets web users buy Golden Notes packs via Stripe Checkout.
 // Mobile (Capacitor) builds will render a slimmed "view balance only"
@@ -120,7 +121,32 @@ export default function Shop() {
           </div>
         </div>
 
-        {/* Packs */}
+        {/* Native (iOS/Android): no purchase UI per App Store / Play policy.
+            Instead, a clear notice directing users to the web to top up.
+            App Store §3.1.3(a) says we can't *link* from the app to the
+            web purchase page, but we can inform the user it exists. */}
+        {!CAN_PURCHASE && (
+          <div className="glass rounded-2xl p-5 border border-border/50 mb-12">
+            <div className="flex items-start gap-3">
+              <Globe className="w-5 h-5 text-accent mt-0.5 shrink-0" />
+              <div>
+                <h2 className="font-display font-bold text-lg text-foreground mb-1">
+                  Top up on the web
+                </h2>
+                <p className="text-sm text-muted-foreground">
+                  Golden Notes are purchased on <strong>LyricPro Ai</strong>'s
+                  website. Once added there, your balance syncs automatically
+                  here and you can spend them on extra games, tournaments,
+                  and advanced modes.
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Packs — web only */}
+        {CAN_PURCHASE && (
+        <>
         <h2 className="font-display font-bold text-lg text-foreground mb-4 flex items-center gap-2">
           <Music className="w-4 h-4 text-primary" />
           Buy a pack
@@ -165,6 +191,8 @@ export default function Shop() {
             </div>
           ))}
         </div>
+        </>
+        )}
 
         {/* What you can do with them */}
         <div className="glass rounded-2xl p-5 border border-border/50 mb-12">

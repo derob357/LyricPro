@@ -1,5 +1,8 @@
 import { trpc } from "@/lib/trpc";
+import { API_TRPC_URL } from "@/lib/apiBase";
 import { getCurrentAccessToken } from "@/lib/supabase";
+import { registerDeepLinkHandlers } from "@/lib/deepLink";
+import { configureStatusBar } from "@/lib/nativeHooks";
 import { UNAUTHED_ERR_MSG } from '@shared/const';
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { httpBatchLink, TRPCClientError } from "@trpc/client";
@@ -41,7 +44,7 @@ queryClient.getMutationCache().subscribe(event => {
 const trpcClient = trpc.createClient({
   links: [
     httpBatchLink({
-      url: "/api/trpc",
+      url: API_TRPC_URL || "/api/trpc",
       transformer: superjson,
       async headers() {
         // Attach the current Supabase access token on every tRPC request.
@@ -70,6 +73,12 @@ if (umamiEndpoint && umamiWebsiteId) {
   s.setAttribute("data-website-id", umamiWebsiteId);
   document.body.appendChild(s);
 }
+
+// Capacitor URL-open listener for magic-link / OAuth callbacks that
+// deep-link back into the native app. No-op on web.
+registerDeepLinkHandlers();
+// Configure the native status bar to match our dark purple theme.
+configureStatusBar();
 
 createRoot(document.getElementById("root")!).render(
   <trpc.Provider client={trpcClient} queryClient={queryClient}>

@@ -2,6 +2,7 @@ import { Button } from "@/components/ui/button";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
 import { Loader2 } from "lucide-react";
+import { CAN_PURCHASE } from "@/lib/platform";
 
 interface StripeCheckoutButtonProps {
   type: "subscription" | "entry_fee" | "add_on";
@@ -83,6 +84,11 @@ export function StripeCheckoutButton({
     subscriptionCheckout.isPending ||
     entryFeeCheckout.isPending ||
     addOnCheckout.isPending;
+
+  // Mobile: hide purchase buttons entirely. Apple §3.1.1 and Google Play
+  // §3.2 require IAP for digital goods; we bypass both by selling only
+  // on the web. The rest of the app still sees the balance + spend paths.
+  if (!CAN_PURCHASE) return null;
 
   return (
     <Button
