@@ -48,6 +48,12 @@ const USERS = [
     firstName: "Deric",
     lastName: "Robinson",
   },
+  {
+    email: "jim@conciergecareerservices.com",
+    role: "user",
+    firstName: "Jim",
+    lastName: "",
+  },
 ];
 
 async function findAuthUserByEmail(email) {
