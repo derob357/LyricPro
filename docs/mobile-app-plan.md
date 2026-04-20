@@ -1,5 +1,7 @@
 # Mobile App Plan — iOS + Android via Capacitor
 
+**Status (2026-04-20):** Phases **1–8 complete** and shipped in **v0.4.0** (git tag `v0.4.0`, commit `01102c9`). Phases 9–12 are yours — they require your Mac, your Apple Developer account, and your Google Play Console.
+
 **Goal:** Ship LyricPro Ai as a native iOS and Android app, openable in Xcode and Android Studio, submittable to the App Store and Google Play.
 
 **Approach:** Wrap the existing React + Vite web app in a **Capacitor** native shell. 95% of the existing code reuses as-is. Alternative (React Native rewrite) would take weeks; Capacitor takes days.
@@ -10,24 +12,26 @@
 
 ## Scope summary
 
-| Phase | What | Owner | Time |
-|-------|------|-------|------|
-| 1 | Install & configure Capacitor | Claude | 30 min |
-| 2 | Feature-gate paid flows off on mobile | Claude | 45 min |
-| 3 | API + CORS: point mobile at Vercel prod | Claude | 20 min |
-| 4 | Deep-link auth callback (magic-link back into app) | Claude | 1 hour |
-| 5 | Native plugins (haptics, splash, status bar, keyboard, speech) | Claude | 45 min |
-| 6 | Generate ios/ and android/ projects | Claude | 15 min |
-| 7 | App icons + splash screens | Claude (given 1024×1024 master) | 15 min |
-| 8 | Bundle ID, Info.plist, AndroidManifest | Claude | 20 min |
-| 9 | **Apple Developer + Play Console setup** | **You** | 1–2 hours |
-| 10 | First Xcode build + TestFlight upload | You (on your Mac) | 1–2 hours |
-| 11 | First Android Studio build + Internal Testing upload | You | 1 hour |
-| 12 | App Store + Play review + revisions | Both | 1–7 days (Apple review queue) |
+| Phase | What | Owner | Status |
+|-------|------|-------|--------|
+| 1 | Install & configure Capacitor | Claude | ✅ Done — `capacitor.config.ts`, bundle `ai.intentionai.lyricpro` |
+| 2 | Feature-gate paid flows off on mobile | Claude | ✅ Done — StripeCheckoutButton, SubscriptionTierSelector, EntryFeeSelector/Modal, Shop pack grid return null on native |
+| 3 | API + CORS: point mobile at Vercel prod | Claude | ✅ Done — `client/src/lib/apiBase.ts` + Vercel `ALLOWED_ORIGINS` updated |
+| 4 | Deep-link auth callback (magic-link back into app) | Claude | ✅ Done — `lyricpro://auth/callback` scheme + `client/src/lib/deepLink.ts` listener |
+| 5 | Native plugins (haptics, splash, status bar, keyboard) | Claude | ✅ Done — `client/src/lib/nativeHooks.ts` wrappers, no-op on web |
+| 6 | Generate ios/ and android/ projects | Claude | ✅ Done — `ios/` + `android/` committed, openable |
+| 7 | App icons + splash screens | Claude (given 1024×1024 master) | ⚠️ Partial — masters in `resources/` from the golden-note SVG; capacitor-assets generator blocked by Node 25 + sharp binary mismatch. **Run on Node 18–22:** see [mobile-app-icons.md](mobile-app-icons.md). Native builds currently carry Capacitor's placeholder icon. |
+| 8 | Bundle ID, Info.plist, AndroidManifest | Claude | ✅ Done — iOS `NSMicrophoneUsageDescription` + `CFBundleURLTypes`, Android `RECORD_AUDIO` + intent-filter for `lyricpro://` |
+| **9** | **Apple Developer + Play Console setup** | **You** | ⬜ Pending — Apple $99/yr, Play $25 one-time |
+| 10 | First Xcode build + TestFlight upload | You (on your Mac) | ⬜ Pending |
+| 11 | First Android Studio build + Internal Testing upload | You | ⬜ Pending |
+| 12 | App Store + Play review + revisions | Both | ⬜ Pending (1–7 days Apple review) |
 
-**Total Claude time to "openable in Xcode / Android Studio":** ~4 hours of focused work — phases 1–8.
+**What's buildable now:** `npx cap open ios` (launches Xcode) and `npx cap open android` (launches Android Studio) both work. The app compiles, starts, loads the bundled web UI, and talks to `lyricpro-ai.vercel.app` over HTTPS. Magic-link auth rebounds into the app via the custom URL scheme. Golden Notes balance displays + spends.
 
-**Total wall-clock to "live in App Store + Play Store":** 1–2 weeks including Apple's review queue.
+**Not buildable to ship yet:** real app icons (placeholder today), signed for distribution (needs your Apple / Play accounts), submitted to stores.
+
+**Remaining wall-clock estimate:** 1–2 hours on your Mac to handle Apple / Play signing + upload, then 1–7 days waiting on Apple review.
 
 ---
 

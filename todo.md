@@ -240,5 +240,78 @@
 
 ## New Session (Apr 18 2026) - Fresh Copy
 This is an independent copy of the LyricPro AI project. All features from Batch 17 are included in the codebase.
-<!-- Add new items here as user requests changes, features, or improvements -->
+
+---
+
+## Release-based tracking (from Apr 20 2026 onwards)
+
+Everything above this line is the legacy Manus-era batch log — kept for
+history. From v0.2.0 onwards changes are tracked by semantic version in
+[CHANGELOG.md](CHANGELOG.md) and by git tags (`v0.1.0`, `v0.2.0`, …).
+This file now only lists **open** work.
+
+## Shipped so far
+
+- **v0.1.0** — baseline trivia game on MySQL + Manus platform (initial commit).
+- **v0.2.0** — Supabase + Vercel migration. Postgres schema, 834 songs seeded, serverless functions live at lyricpro-ai.vercel.app, Supabase Auth (magic link + Google/Apple scaffolding), Manus OAuth retired, dev-bypass gate for local iteration.
+- **v0.3.0** — Golden Notes virtual currency (schema, server, Shop UI, Stripe webhook wired); Reggae genre added; Hip Hop 30+/decade hit for 1980s-2020s; privacy policy + terms of service drafts; brand logo SVG. Security pass: TOCTOU fix on spend, Stripe redirect allowlist.
+- **v0.4.0** — Mobile app scaffolding via Capacitor. `ios/` + `android/` projects committed and buildable. Paid features gated off on native. Deep-link auth callback via `lyricpro://` scheme. CORS updated for Capacitor origins.
+
+## Open — user-facing actions
+
+These need your hands / accounts to proceed. I can't do them from here.
+
+- [ ] **Stripe test-mode key** — drop `STRIPE_SECRET_KEY=sk_test_...` and `STRIPE_WEBHOOK_SECRET=whsec_...` into `.env` (local) or Vercel env (prod). Once in, I verify the Golden Notes purchase → webhook → balance-credit round-trip.
+- [ ] **Apple Developer membership** ($99/yr) — required before first iOS submission. ~24h for activation.
+- [ ] **Play Console** ($25 one-time) — required for Android submission.
+- [ ] **Final bundle ID** — currently `ai.intentionai.lyricpro` as placeholder. Confirm or change before first App Store Connect entry.
+- [ ] **Apple Sign In external config** — runbook at [docs/oauth-setup-apple.md](docs/oauth-setup-apple.md). Required by Apple §4.8 if Google sign-in is offered on iOS.
+- [ ] **Google OAuth external config** — runbook at [docs/oauth-setup-google.md](docs/oauth-setup-google.md). Optional but recommended.
+- [ ] **Custom SMTP for auth emails** — Supabase default is `noreply@mail.app.supabase.io`. Swap to `deric@intentionai.ai` (or similar) via Supabase Dashboard → Authentication → SMTP Settings.
+- [ ] **Privacy policy + Terms of Service legal review** — templates in [docs/legal/](docs/legal/). Attorney review required before public launch.
+- [ ] **Regenerate app icons** on Node 18–22 — current native builds use Capacitor's placeholder icon. Follow [docs/mobile-app-icons.md](docs/mobile-app-icons.md).
+- [ ] **Xcode archive → TestFlight** — run `npx cap open ios` on your Mac, Archive, distribute via TestFlight.
+- [ ] **Android Studio signed bundle → Play Internal Testing** — run `npx cap open android`, generate signed `.aab`, upload to Play Console.
+
+## Open — engineering backlog (I can do these)
+
+### Priority 1: security hardening
+- [ ] **RLS policies** for every user-owned table (`users`, `game_rooms`, `subscriptions`, `golden_note_balances`, `golden_note_transactions`, etc.). Read/write scoped to `auth.uid()`.
+- [ ] **Drizzle transaction wrapper** that sets `role authenticated` + JWT claims per query, so every tRPC DB call is RLS-enforced at the database level. (Option B from the earlier auth discussion.)
+- [ ] Refactor existing tRPC procedures to use the RLS-enforced wrapper.
+
+### Priority 2: mobile polish
+- [ ] **Universal Links / App Links** so `https://lyricpro-ai.vercel.app/auth/callback` opens the app directly (no custom scheme needed). Requires `apple-app-site-association` + `assetlinks.json` on the Vercel domain.
+- [ ] **Native speech-recognition plugin** (`@capacitor-community/speech-recognition`) for more reliable voice-answer input on native.
+- [ ] **Haptics wired into Gameplay** — `haptic.success()` on correct answer, `.warning()` on near-miss, `.error()` on timer expiry.
+
+### Priority 3: content
+- [ ] Fill every genre/decade cell to ≥20 songs. Current thinnest: Pop 70s (6), Country 70s (8), Gospel 70s (9), Pop 90s (9), R&B 80s (9), Soul 10s (9), Jazz 90s (1 — needs most attention).
+
+### Priority 4: Golden Notes completeness
+- [ ] **Gifting UI** — schema already exists (`golden_note_gifts` table). Sender form + recipient accept/decline + notification + 7-day expiry cron.
+- [ ] **Daily-limit modal** — when a user is out of free games, show a modal with "Spend 1 Golden Note to keep playing" + "Visit the shop" (web) buttons. Wire `goldenNotes.spend({ kind: "spend_extra_game" })` on click.
+- [ ] **Tournament + advanced-mode integration** — actually invoke `goldenNotes.spend` when entering a paid tournament or unlocking advanced mode.
+- [ ] **18-month expiry cron** — nightly job that expires unused Golden Notes 30 days after notifying the user.
+
+### Priority 5: Stripe gap closure
+- [ ] **Stripe Connect payouts** — when a prize-pool game completes, call `createPayout` to send winnings to the user's connected Stripe account. Plumbing exists, not invoked.
+- [ ] **Entry-fee selector wired into GameSetup** — the component exists but isn't rendered on the setup screen yet.
+- [ ] **Payout request UI** — users request a cashout of their wallet balance.
+
+### Priority 6: content management
+- [ ] **Admin page to add songs** — currently song seeding is a Node script; a web admin UI would let you add songs without a code change + deploy.
+- [ ] **Preview / approval workflow** — `approvalStatus` field already exists on `songs` but no UI.
+
+### Priority 7: UX polish
+- [ ] **Daily streak visualization** on profile.
+- [ ] **Favorite genre / strongest decade** auto-detection from play history.
+- [ ] **Social share for individual scores** — already exists on homepage; not yet on round results.
+- [ ] **Countdown ticking sound** already added; verify works on native webview.
+
+### Priority 8: ops
+- [ ] **Custom domain** (e.g. `lyricpro.intentionai.ai` or client's preferred name) → CNAME to Vercel + update Supabase redirect allowlist + update mobile `apiBase.ts`.
+- [ ] **GitHub Releases** tied to each git tag with release notes drawn from CHANGELOG.
+- [ ] **CI / pre-commit** — `pnpm check && pnpm test` on every push, optional but worth it before team grows.
+- [ ] **Monitoring / error tracking** — Vercel logs are fine for MVP; Sentry or similar when traffic grows.
 
