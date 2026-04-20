@@ -7,8 +7,18 @@ import postgres from "postgres";
 import dotenv from "dotenv";
 dotenv.config();
 
-const DB_URL = process.env.DATABASE_URL;
-if (!DB_URL) { console.error("DATABASE_URL not set"); process.exit(1); }
+// Seeds need a DDL-capable long-lived connection. Prefer Session pooler
+// (IPv4-friendly), fall back to Direct (IPv6-only), then legacy DATABASE_URL.
+const DB_URL =
+  process.env.SUPABASE_SESSION_POOLER_STRING ??
+  process.env.SUPABASE_DIRECT_CONNECTION_STRING ??
+  process.env.DATABASE_URL;
+if (!DB_URL) {
+  console.error(
+    "Set SUPABASE_SESSION_POOLER_STRING (or SUPABASE_DIRECT_CONNECTION_STRING) in .env"
+  );
+  process.exit(1);
+}
 
 // Compact schema: t title, a artist, p prompt, c completion, y year, g genre,
 // d difficulty (low|medium|high), s section (chorus|hook|verse|bridge), x explicit.

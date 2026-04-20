@@ -8,13 +8,17 @@ type DrizzleDb = ReturnType<typeof drizzle>;
 let _db: DrizzleDb | null = null;
 let _client: ReturnType<typeof postgres> | null = null;
 
-// Supabase recommends the pooled URL (port 6543) for serverless; we'll accept
-// any DATABASE_URL and let the caller pick. Connection is lazily created.
+// App runtime uses the pooled URL (port 6543, pgBouncer transaction mode) —
+// required for serverless. Migrations use the direct URL instead.
+// Connection is lazily created on first call.
 export async function getDb(): Promise<DrizzleDb | null> {
   if (_db) return _db;
-  if (!process.env.DATABASE_URL) return null;
+  const url =
+    process.env.SUPABASE_TRANSACTION_POOLER_STRING ??
+    process.env.DATABASE_URL;
+  if (!url) return null;
   try {
-    _client = postgres(process.env.DATABASE_URL, {
+    _client = postgres(url, {
       // Reasonable defaults for Vercel serverless + Supabase pooler. Short
       // idle timeout so idle connections are returned to the pool; the pool
       // handles re-opening on next use.
