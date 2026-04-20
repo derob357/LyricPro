@@ -8,6 +8,7 @@ import { monetizationRouter } from "./routers/monetization";
 import { monetizationIntegrationRouter } from "./routers/monetization-integration";
 import { referralRouter } from "./routers/referral";
 import { notificationRouter } from "./routers/notifications";
+import { goldenNotesRouter } from "./routers/goldenNotes";
 import { getDb } from "./db";
 import { z } from "zod";
 import { eq } from "drizzle-orm";
@@ -111,6 +112,7 @@ export const appRouter = router({
   monetizationIntegration: monetizationIntegrationRouter,
   referral: referralRouter,
   notifications: notificationRouter,
+  goldenNotes: goldenNotesRouter,
 });
 
 export type AppRouter = typeof appRouter;

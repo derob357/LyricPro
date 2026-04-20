@@ -20,7 +20,99 @@ on release.
   from the auth discussion — DB-level second wall under the existing
   tRPC IDOR checks).
 - Custom SMTP from `deric@intentionai.ai` for auth emails.
-- Real Stripe test-mode key end-to-end verification.
+- Real Stripe test-mode key end-to-end verification of Golden Notes
+  purchase → webhook → balance credit.
+- Golden Notes **gifting** UI + accept/decline flow (schema already
+  in place; deferred from 0.3.0 to a follow-up).
+- Content expansion: every genre/decade cell to ≥20 songs. Current
+  thinnest cells: Pop 70s (6), Country 70s (8), Gospel 70s (9), Pop
+  90s (9), R&B 80s (9), Soul 10s (9), Jazz 90s (1 — needs work).
+
+---
+
+## [0.3.0] — 2026-04-20
+
+User-facing content + monetization feature. Golden Notes virtual
+currency live end-to-end (schema, server, Shop UI, Stripe-wired pending
+real keys). Legal templates drafted. Major content additions.
+
+### Added
+- **Golden Notes virtual currency.** In-account, non-redeemable,
+  non-cash currency. Buy on web (Stripe Checkout), spend on web or
+  mobile. Three tables: `golden_note_balances`, `golden_note_transactions`,
+  `golden_note_gifts` (gifting UI deferred).
+  - 5 packs: Starter (10 GN, $1.99), Regular (50 GN, $7.99), Pro (150
+    GN, $19.99), Mega (500 GN, $49.99), Ultra (1200 GN, $99.99).
+  - Spend paths: extra game (1 GN), advanced mode session (5 GN),
+    advanced mode day pass (20 GN), tournament entries (5/25/100 GN).
+  - Shop page at [/shop](/shop) with pack grid, balance header,
+    recent activity feed.
+  - Golden-note balance + Sparkles icon in top nav (desktop) for
+    authenticated users; clicking goes to `/shop`.
+  - Stripe webhook branch for `checkout.session.completed` with
+    `metadata.type === "golden_notes"` — atomically upserts the balance
+    and writes a transaction log row.
+  - Design doc: [docs/golden-notes-design.md](docs/golden-notes-design.md).
+- **Content:**
+  - **Reggae** genre (120 songs, dancehall-heavy per user preference).
+    Ska / rocksteady → roots reggae → dancehall (Shabba, Beenie,
+    Chaka Demus & Pliers, Buju Banton) → modern (Vybz Kartel, Popcaan,
+    Koffee, Chronixx, Protoje, Skillibeng).
+  - **Hip Hop** hit 30+/decade target for 1980s (31), 1990s (32),
+    2000s (32), 2010s (33), 2020s (31). +40 songs across deeper 80s
+    cuts (Eric B. & Rakim, Beastie Boys, NWA), 90s classics (Tha
+    Crossroads, Jump Around, Scenario), 2000s (Big Pimpin', P.I.M.P.,
+    Missy Elliott, Dre/Snoop), and 2020s (Dior, Whats Poppin, Munch,
+    Princess Diana).
+  - **Jazz 2020s** 0 → 15 (Laufey, Samara Joy, Kamasi Washington).
+  - **Rock 2020s** 3 → 17 (Taylor Swift folklore/evermore era, Glass
+    Animals, Wet Leg, Olivia Rodrigo rock cuts).
+  - **Soul 2020s** 2 → 11 (Giveon, Ari Lennox, Brent Faiyaz).
+  - Total: **1,038 songs across 9 genres**.
+- **Brand:** `client/public/brand/golden-note.svg` — 1024×1024 glowing
+  golden eighth-note logo matching app theme, ready for App Store.
+- **Legal:** draft Privacy Policy and Terms of Service in `docs/legal/`
+  reflecting actual data handling and Golden Notes product rules.
+  Both marked DRAFT / TEMPLATE pending attorney review.
+- **Versioning discipline:** bumped `package.json` to 0.3.0, tagging
+  `v0.3.0` on release commit. CHANGELOG entry with every new feature.
+
+### Security
+- **TOCTOU fix on Golden Notes spend.** Rewrote `goldenNotes.spend` to
+  use a conditional SQL `UPDATE ... WHERE balance >= cost` with
+  `.returning()` so concurrent spends cannot both succeed past
+  insufficient-funds. Closes a race where two tRPC calls firing at the
+  same instant could each read balance=10, spend 5, and both UPDATE to
+  5 — losing one debit.
+- **Stripe redirect origin allowlist.** `createPurchaseCheckout`
+  previously used the client-controllable `ctx.req.headers.origin`
+  verbatim as the success_url base. Fixed: request Origin is honored
+  only if it appears in `ALLOWED_ORIGINS`; falls back to the canonical
+  `https://lyricpro-ai.vercel.app`. Prevents a spoofed-Origin attack
+  that could redirect paying users to an attacker's phishing page.
+- **No client-callable balance credit.** Purchases only credit the
+  balance via the Stripe webhook after signature verification + the
+  existing idempotency table dedupes replays. Matches the discipline
+  from the earlier Stripe hardening pass.
+- **Server-owned pricing.** Pack prices (USD cents) and spend costs
+  (GN amounts) are defined on the server in `GN_PACKS` / `GN_SPEND_COSTS`.
+  Client input is a packId / spend kind; client never provides the
+  numeric cost.
+- **Rate limits.** 10 checkout creates / 10 min / user; 60 spends /
+  min / user. Rate limits only enforce in `NODE_ENV === "production"`.
+- **Zod validation** on every new tRPC input (packId enum, spend kind
+  enum, reason ≤256 chars, limit 1–100).
+- **IDOR check** — every balance + transaction read uses `ctx.user.id`
+  server-side; no user-supplied userId accepted.
+- **CVE audit:** still 0 critical, 0 high. 8 moderate remain in deep
+  transitive markdown / map dependencies (unchanged from 0.2.0).
+
+### Changed
+- `PersistentHeader` now renders the signed-in user's Golden Notes
+  balance + links to `/shop`.
+- `server/app-router.ts` adds `goldenNotes` router.
+- `server/stripe-integration.ts` `handleCheckoutSessionCompleted` now
+  returns a `golden_notes` result type when metadata matches.
 
 ---
 

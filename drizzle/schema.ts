@@ -503,3 +503,88 @@ export const processedWebhookEvents = pgTable("processed_webhook_events", {
 export type ProcessedWebhookEvent = typeof processedWebhookEvents.$inferSelect;
 export type InsertProcessedWebhookEvent =
   typeof processedWebhookEvents.$inferInsert;
+
+// ─── Golden Notes — in-account virtual currency ──────────────────────────────
+// See docs/golden-notes-design.md for the full spec. Summary:
+//   - Users buy GN packs on the web (Stripe Checkout). Webhook mints notes.
+//   - Users spend GN on extra games, tournaments, advanced modes.
+//   - Users can gift GN to friends (web only; deferred for later session).
+//   - Mobile reads + spends; purchases stay web-only per App Store policy.
+
+export const goldenNoteTransactionKindEnum = pgEnum(
+  "golden_note_transaction_kind",
+  [
+    "purchase",
+    "spend_extra_game",
+    "spend_tournament",
+    "spend_advanced_mode",
+    "gift_sent",
+    "gift_received",
+    "refund",
+    "expiry",
+    "admin_adjustment",
+  ]
+);
+
+export const goldenNoteGiftStatusEnum = pgEnum("golden_note_gift_status", [
+  "pending",
+  "accepted",
+  "declined",
+  "expired",
+]);
+
+// One row per user. Current balance + lifetime counters for analytics.
+export const goldenNoteBalances = pgTable("golden_note_balances", {
+  userId: integer("userId").primaryKey(),
+  balance: integer("balance").default(0).notNull(),
+  lifetimePurchased: integer("lifetimePurchased").default(0).notNull(),
+  lifetimeSpent: integer("lifetimeSpent").default(0).notNull(),
+  lifetimeGiftedSent: integer("lifetimeGiftedSent").default(0).notNull(),
+  lifetimeGiftedReceived: integer("lifetimeGiftedReceived")
+    .default(0)
+    .notNull(),
+  lastPurchaseAt: timestamp("lastPurchaseAt", { withTimezone: true }),
+  createdAt: createdAtColumn(),
+  updatedAt: updatedAtColumn(),
+});
+
+export type GoldenNoteBalance = typeof goldenNoteBalances.$inferSelect;
+export type InsertGoldenNoteBalance = typeof goldenNoteBalances.$inferInsert;
+
+// Insert-only audit log. One row per credit / debit. Balance snapshot per row
+// so reconstruction works without joining a separate table.
+export const goldenNoteTransactions = pgTable("golden_note_transactions", {
+  id: serial("id").primaryKey(),
+  userId: integer("userId").notNull(),
+  amount: integer("amount").notNull(), // signed: positive credit, negative debit
+  kind: goldenNoteTransactionKindEnum("kind").notNull(),
+  reason: varchar("reason", { length: 256 }),
+  relatedUserId: integer("relatedUserId"), // gift counterparty
+  stripePaymentIntentId: varchar("stripePaymentIntentId", { length: 256 }),
+  balanceAfter: integer("balanceAfter").notNull(),
+  createdAt: createdAtColumn(),
+});
+
+export type GoldenNoteTransaction =
+  typeof goldenNoteTransactions.$inferSelect;
+export type InsertGoldenNoteTransaction =
+  typeof goldenNoteTransactions.$inferInsert;
+
+// Pending gifts. When created, sender balance is debited and this row is
+// inserted atomically. On accept, recipient balance is credited and this row
+// deleted. Gifting UI ships in a later session — table exists now to avoid
+// a second migration.
+export const goldenNoteGifts = pgTable("golden_note_gifts", {
+  id: serial("id").primaryKey(),
+  senderUserId: integer("senderUserId").notNull(),
+  recipientUserId: integer("recipientUserId").notNull(),
+  amount: integer("amount").notNull(),
+  message: text("message"),
+  status: goldenNoteGiftStatusEnum("status").default("pending").notNull(),
+  expiresAt: timestamp("expiresAt", { withTimezone: true }).notNull(),
+  createdAt: createdAtColumn(),
+  resolvedAt: timestamp("resolvedAt", { withTimezone: true }),
+});
+
+export type GoldenNoteGift = typeof goldenNoteGifts.$inferSelect;
+export type InsertGoldenNoteGift = typeof goldenNoteGifts.$inferInsert;

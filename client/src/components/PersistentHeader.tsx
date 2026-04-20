@@ -1,5 +1,5 @@
 import { Link } from "wouter";
-import { Music } from "lucide-react";
+import { Music, Sparkles } from "lucide-react";
 import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
 import { getLoginUrl } from "@/const";
@@ -8,6 +8,10 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 export function PersistentHeader() {
   const { data: user } = trpc.auth.me.useQuery();
   const logoutMutation = trpc.auth.logout.useMutation();
+  const { data: balance } = trpc.goldenNotes.getMyBalance.useQuery(undefined, {
+    enabled: !!user,
+    refetchOnWindowFocus: false,
+  });
 
   const handleLogout = async () => {
     await logoutMutation.mutateAsync();
@@ -29,6 +33,17 @@ export function PersistentHeader() {
         <div className="flex items-center gap-4">
           {user ? (
             <>
+              {/* Golden Notes balance → links to /shop */}
+              <Link
+                href="/shop"
+                className="hidden sm:flex items-center gap-1.5 px-2 py-1 rounded-md hover:bg-primary/10 transition"
+                title="Golden Notes · Shop"
+              >
+                <Sparkles className="w-4 h-4 text-yellow-400 neon-gold-sm" />
+                <span className="font-display font-bold text-yellow-400 neon-gold-sm text-sm">
+                  {balance?.balance?.toLocaleString() ?? 0}
+                </span>
+              </Link>
               {/* User Menu */}
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
@@ -45,6 +60,9 @@ export function PersistentHeader() {
                   </DropdownMenuItem>
                   <DropdownMenuItem asChild>
                     <Link href="/leaderboards">Leaderboards</Link>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem asChild>
+                    <Link href="/shop">Shop (Golden Notes)</Link>
                   </DropdownMenuItem>
                   <DropdownMenuItem asChild>
                     <button

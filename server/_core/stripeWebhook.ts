@@ -11,8 +11,10 @@ import {
   subscriptions,
   entryFeeParticipants,
   processedWebhookEvents,
+  goldenNoteBalances,
+  goldenNoteTransactions,
 } from "../../drizzle/schema";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 
 // Redact Stripe identifiers and emails so webhook logs never leak sensitive
 // values. Keeps the first 4 + last 4 characters of long IDs so operators can
@@ -112,6 +114,53 @@ export async function handleStripeWebhook(req: Request, res: Response) {
             `[Webhook] Add-on games purchased user=${result.userId} qty=${result.quantity}`
           );
           // Credits tracked by daily_game_tracking / subscriptions elsewhere.
+        }
+
+        if (result.type === "golden_notes") {
+          const gnUserId = result.userId;
+          const gnNotes = result.notes ?? 0;
+          const gnPackId = result.packId;
+          const gnPaymentIntent = result.paymentIntentId ?? null;
+          console.log(
+            `[Webhook] Golden Notes purchased user=${gnUserId} pack=${gnPackId} notes=${gnNotes}`
+          );
+          if (gnUserId && gnNotes > 0) {
+            await db.transaction(async (tx) => {
+              // Upsert the balance row: add to balance and lifetime counters
+              // in one atomic statement, insert with defaults if missing.
+              await tx
+                .insert(goldenNoteBalances)
+                .values({
+                  userId: gnUserId,
+                  balance: gnNotes,
+                  lifetimePurchased: gnNotes,
+                  lastPurchaseAt: new Date(),
+                })
+                .onConflictDoUpdate({
+                  target: goldenNoteBalances.userId,
+                  set: {
+                    balance: sql`${goldenNoteBalances.balance} + ${gnNotes}`,
+                    lifetimePurchased: sql`${goldenNoteBalances.lifetimePurchased} + ${gnNotes}`,
+                    lastPurchaseAt: new Date(),
+                    updatedAt: new Date(),
+                  },
+                });
+
+              const [after] = await tx
+                .select({ balance: goldenNoteBalances.balance })
+                .from(goldenNoteBalances)
+                .where(eq(goldenNoteBalances.userId, gnUserId));
+
+              await tx.insert(goldenNoteTransactions).values({
+                userId: gnUserId,
+                amount: gnNotes,
+                kind: "purchase",
+                reason: gnPackId ? `pack:${gnPackId}` : null,
+                stripePaymentIntentId: gnPaymentIntent,
+                balanceAfter: after?.balance ?? gnNotes,
+              });
+            });
+          }
         }
         break;
       }

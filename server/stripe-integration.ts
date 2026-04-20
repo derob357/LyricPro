@@ -158,6 +158,19 @@ export async function handleCheckoutSessionCompleted(
     };
   }
 
+  if (metadata.type === "golden_notes") {
+    return {
+      type: "golden_notes" as const,
+      userId,
+      packId: metadata.packId,
+      notes: parseInt(metadata.notes || "0"),
+      paymentIntentId:
+        typeof session.payment_intent === "string"
+          ? session.payment_intent
+          : session.payment_intent?.id ?? null,
+    };
+  }
+
   return null;
 }
 
