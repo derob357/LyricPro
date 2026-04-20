@@ -49,13 +49,7 @@ export default function SignIn() {
         email,
         options: {
           emailRedirectTo,
-          // Allow new users to create an account via magic link. If we
-          // ever want to lock to invited accounts only, toggle the
-          // "Allow new users" setting in Supabase Dashboard →
-          // Authentication → Providers → Email instead of hard-coding
-          // false here — the dashboard is the appropriate place for
-          // that kind of access control.
-          shouldCreateUser: true,
+          shouldCreateUser: false, // bootstrap-only accounts for now
         },
       });
       if (error) throw error;
@@ -190,9 +184,7 @@ export default function SignIn() {
             </div>
 
             <p className="text-xs text-muted-foreground text-center mt-6">
-              By continuing you agree to our{" "}
-              <a href="/terms" className="underline">Terms</a> and{" "}
-              <a href="/privacy" className="underline">Privacy Policy</a>.
+              Only invited accounts can sign in during this preview.
             </p>
 
             {/* DEV-ONLY: bypass the email round-trip and generate the magic
