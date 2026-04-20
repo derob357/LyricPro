@@ -1,80 +1,75 @@
-import { getLoginUrl } from "@/const";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { supabase } from "@/lib/supabase";
 import { trpc } from "@/lib/trpc";
-import { TRPCClientError } from "@trpc/client";
-import { useCallback, useEffect, useMemo } from "react";
+import type { Session } from "@supabase/supabase-js";
+
+// useAuth is the single point of truth for client-side auth state.
+//   - Subscribes to Supabase's onAuthStateChange for the JWT/session.
+//   - Fetches the matching public.users row (app-level user with role,
+//     stats, etc.) from tRPC's auth.me — but only after a session exists,
+//     so we don't hammer the API as an anonymous visitor.
+//   - Exposes `logout()` that clears both Supabase session and cached
+//     React Query data.
 
 type UseAuthOptions = {
   redirectOnUnauthenticated?: boolean;
-  redirectPath?: string;
 };
 
 export function useAuth(options?: UseAuthOptions) {
-  const { redirectOnUnauthenticated = false, redirectPath = getLoginUrl() } =
-    options ?? {};
+  const { redirectOnUnauthenticated = false } = options ?? {};
   const utils = trpc.useUtils();
 
+  const [session, setSession] = useState<Session | null>(null);
+  const [sessionReady, setSessionReady] = useState(false);
+
+  // Bootstrap the session on mount + subscribe to changes.
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data }) => {
+      setSession(data.session);
+      setSessionReady(true);
+    });
+    const { data: sub } = supabase.auth.onAuthStateChange((_event, s) => {
+      setSession(s);
+      // Invalidate cached auth.me so it refetches with the new JWT (or
+      // clears to null on sign-out).
+      utils.auth.me.invalidate();
+    });
+    return () => sub.subscription.unsubscribe();
+  }, [utils]);
+
+  // Fetch the app-level user row. Only enabled when we have a session —
+  // avoids a 401 round-trip for anonymous visitors.
   const meQuery = trpc.auth.me.useQuery(undefined, {
     retry: false,
     refetchOnWindowFocus: false,
-  });
-
-  const logoutMutation = trpc.auth.logout.useMutation({
-    onSuccess: () => {
-      utils.auth.me.setData(undefined, null);
-    },
+    enabled: sessionReady && !!session,
   });
 
   const logout = useCallback(async () => {
-    try {
-      await logoutMutation.mutateAsync();
-    } catch (error: unknown) {
-      if (
-        error instanceof TRPCClientError &&
-        error.data?.code === "UNAUTHORIZED"
-      ) {
-        return;
-      }
-      throw error;
-    } finally {
-      utils.auth.me.setData(undefined, null);
-      await utils.auth.me.invalidate();
-    }
-  }, [logoutMutation, utils]);
-
-  const state = useMemo(() => {
-    localStorage.setItem(
-      "manus-runtime-user-info",
-      JSON.stringify(meQuery.data)
-    );
-    return {
-      user: meQuery.data ?? null,
-      loading: meQuery.isLoading || logoutMutation.isPending,
-      error: meQuery.error ?? logoutMutation.error ?? null,
-      isAuthenticated: Boolean(meQuery.data),
-    };
-  }, [
-    meQuery.data,
-    meQuery.error,
-    meQuery.isLoading,
-    logoutMutation.error,
-    logoutMutation.isPending,
-  ]);
+    await supabase.auth.signOut();
+    utils.auth.me.setData(undefined, null);
+    await utils.auth.me.invalidate();
+  }, [utils]);
 
   useEffect(() => {
     if (!redirectOnUnauthenticated) return;
-    if (meQuery.isLoading || logoutMutation.isPending) return;
-    if (state.user) return;
+    if (!sessionReady) return;
+    if (session) return;
     if (typeof window === "undefined") return;
-    if (window.location.pathname === redirectPath) return;
+    if (window.location.pathname === "/signin") return;
+    window.location.href = "/signin";
+  }, [redirectOnUnauthenticated, session, sessionReady]);
 
-    window.location.href = redirectPath
-  }, [
-    redirectOnUnauthenticated,
-    redirectPath,
-    logoutMutation.isPending,
-    meQuery.isLoading,
-    state.user,
-  ]);
+  const state = useMemo(
+    () => ({
+      user: meQuery.data ?? null,
+      loading: !sessionReady || meQuery.isLoading,
+      error: meQuery.error ?? null,
+      isAuthenticated: Boolean(session && meQuery.data),
+      session,
+    }),
+    [meQuery.data, meQuery.error, meQuery.isLoading, session, sessionReady]
+  );
 
   return {
     ...state,

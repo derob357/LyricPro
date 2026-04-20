@@ -15,6 +15,8 @@ import Leaderboards from "./pages/Leaderboards";
 import ProfileCompletion from "./pages/ProfileCompletion";
 import { UserDashboard } from "./pages/UserDashboard";
 import { AdminDashboard } from "./pages/AdminDashboard";
+import SignIn from "./pages/SignIn";
+import AuthCallback from "./pages/AuthCallback";
 // import JoinInvite from "./pages/JoinInvite"; // Disabled - invite codes removed
 import { PersistentHeader } from "./components/PersistentHeader";
 import { NotificationContainer } from "./components/NotificationToast";
@@ -40,6 +42,8 @@ function Router() {
       <Route path="/leaderboards" component={Leaderboards} />
       <Route path="/dashboard" component={UserDashboard} />
       <Route path="/admin" component={AdminDashboard} />
+      <Route path="/signin" component={SignIn} />
+      <Route path="/auth/callback" component={AuthCallback} />
       {/* <Route path="/join" component={JoinInvite} /> */} {/* Disabled - invite codes removed */}
       <Route path="/404" component={NotFound} />
       <Route component={NotFound} />

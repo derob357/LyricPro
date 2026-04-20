@@ -1,4 +1,5 @@
 import { trpc } from "@/lib/trpc";
+import { getCurrentAccessToken } from "@/lib/supabase";
 import { UNAUTHED_ERR_MSG } from '@shared/const';
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { httpBatchLink, TRPCClientError } from "@trpc/client";
@@ -42,6 +43,13 @@ const trpcClient = trpc.createClient({
     httpBatchLink({
       url: "/api/trpc",
       transformer: superjson,
+      async headers() {
+        // Attach the current Supabase access token on every tRPC request.
+        // The server's supabase-auth module validates it and resolves to
+        // the matching public.users row. Returns {} when unauthenticated.
+        const token = await getCurrentAccessToken();
+        return token ? { authorization: `Bearer ${token}` } : {};
+      },
       fetch(input, init) {
         return globalThis.fetch(input, {
           ...(init ?? {}),

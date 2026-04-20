@@ -5,7 +5,7 @@
 import { fetchRequestHandler } from "@trpc/server/adapters/fetch";
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 import { appRouter } from "../../server/routers";
-import { sdk } from "../../server/_core/sdk";
+import { authenticateRequest } from "../../server/_core/supabase-auth";
 import { upsertUser, getUserByOpenId } from "../../server/db";
 import type { TrpcContext } from "../../server/_core/context";
 
@@ -32,18 +32,18 @@ async function getOrCreateDevUser() {
 }
 
 async function buildContext(req: Request, res: VercelResponse): Promise<TrpcContext> {
-  // Adapt the fetch Request into the shape the SDK expects (it reads
-  // req.headers.cookie). SDK validates the session cookie against the
-  // OAuth provider.
   let user: TrpcContext["user"] = null;
   try {
-    // The SDK reads req.headers.cookie — Fetch Request headers have a get().
+    // Adapt the Fetch Request headers into the shape our Supabase auth
+    // module expects. It reads Authorization (Bearer <jwt>) first, then
+    // falls back to the Supabase SSR auth cookie.
     const shimReq = {
       headers: {
+        authorization: req.headers.get("authorization") ?? undefined,
         cookie: req.headers.get("cookie") ?? undefined,
       },
-    } as Parameters<typeof sdk.authenticateRequest>[0];
-    user = await sdk.authenticateRequest(shimReq);
+    };
+    user = await authenticateRequest(shimReq);
   } catch {
     user = null;
   }
@@ -54,8 +54,8 @@ async function buildContext(req: Request, res: VercelResponse): Promise<TrpcCont
   ) {
     user = await getOrCreateDevUser();
   }
-  // The rest of the procedures read ctx.req.ip and ctx.res — synthesize
-  // compatible shims so rate-limiters and cookie-setters keep working.
+  // Procedures read ctx.req.ip (rate limiter) and ctx.res (cookie ops).
+  // Synthesize an Express-like shape from the Fetch Request.
   const shimExpressReq = {
     ip: req.headers.get("x-forwarded-for")?.split(",")[0].trim() ?? "0.0.0.0",
     headers: Object.fromEntries(req.headers.entries()),
