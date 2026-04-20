@@ -9,7 +9,16 @@ const BUCKETS = new Map<string, Map<string | number, Bucket>>();
 
 type Config = { max: number; windowMs: number };
 
+// Rate limits are disabled in any non-production environment. This is a
+// deliberate dev-experience choice so local iteration (running the seed,
+// hammering Play Now while debugging, etc.) can't trip production-grade
+// limits. In production (NODE_ENV === "production") every call below
+// enforces the window.
+const RATE_LIMITS_ACTIVE = process.env.NODE_ENV === "production";
+
 export function rateLimit(name: string, key: string | number, cfg: Config) {
+  if (!RATE_LIMITS_ACTIVE) return;
+
   if (!BUCKETS.has(name)) BUCKETS.set(name, new Map());
   const ns = BUCKETS.get(name)!;
   const now = Date.now();

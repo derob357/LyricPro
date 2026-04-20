@@ -36,6 +36,10 @@ const CHECKOUT_BUCKETS = new Map<number, { count: number; windowStart: number }>
 const CHECKOUT_MAX = 10;
 const CHECKOUT_WINDOW_MS = 10 * 60 * 1000;
 function checkRateLimit(userId: number) {
+  // Rate limits only enforce in production — see server/_core/rateLimit.ts
+  // for the same convention applied project-wide.
+  if (process.env.NODE_ENV !== "production") return;
+
   const now = Date.now();
   const bucket = CHECKOUT_BUCKETS.get(userId);
   if (!bucket || now - bucket.windowStart > CHECKOUT_WINDOW_MS) {

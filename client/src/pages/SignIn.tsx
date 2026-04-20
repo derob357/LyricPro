@@ -1,10 +1,11 @@
 import { useState } from "react";
 import { supabase } from "@/lib/supabase";
+import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
-import { Mail, Music } from "lucide-react";
+import { Mail, Music, Terminal } from "lucide-react";
 
 // Neutral, brand-consistent sign-in. Three paths:
 // 1) Magic link (email) — default, zero external setup
@@ -18,6 +19,19 @@ export default function SignIn() {
   const [email, setEmail] = useState("");
   const [sent, setSent] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [devLink, setDevLink] = useState<string | null>(null);
+
+  // Dev-only: skip the email round-trip entirely.
+  const devGenerateLink = trpc.auth.devGenerateMagicLink.useMutation({
+    onSuccess: (data) => {
+      setDevLink(data.actionLink);
+      if (data.actionLink) {
+        navigator.clipboard?.writeText(data.actionLink).catch(() => {});
+        toast.success("Magic link copied to clipboard");
+      }
+    },
+    onError: (err) => toast.error(err.message),
+  });
 
   const sendMagicLink = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -164,6 +178,47 @@ export default function SignIn() {
             <p className="text-xs text-muted-foreground text-center mt-6">
               Only invited accounts can sign in during this preview.
             </p>
+
+            {/* DEV-ONLY: bypass the email round-trip and generate the magic
+                link URL directly. Visible only when Vite is in dev mode.
+                The server-side procedure is also gated on NODE_ENV, so this
+                cannot leak to production builds. */}
+            {import.meta.env.DEV && (
+              <div className="mt-6 border-t border-border/50 pt-4">
+                <div className="flex items-center gap-2 text-xs text-muted-foreground mb-2">
+                  <Terminal className="w-3 h-3" />
+                  <span className="uppercase tracking-wider">Dev tools</span>
+                </div>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  disabled={!email || devGenerateLink.isPending}
+                  onClick={() =>
+                    devGenerateLink.mutate({ email })
+                  }
+                  className="w-full border-border/50"
+                >
+                  {devGenerateLink.isPending
+                    ? "Generating…"
+                    : "Generate magic link URL (skip email)"}
+                </Button>
+                {devLink && (
+                  <div className="mt-3 p-3 bg-muted/50 rounded-md text-xs break-all text-muted-foreground">
+                    <p className="text-foreground mb-1">
+                      Copied to clipboard. Or click to sign in now:
+                    </p>
+                    <a
+                      href={devLink}
+                      className="text-accent underline"
+                      rel="noreferrer"
+                    >
+                      Open magic link
+                    </a>
+                  </div>
+                )}
+              </div>
+            )}
           </>
         )}
       </div>

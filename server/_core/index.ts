@@ -6,7 +6,7 @@ import helmet from "helmet";
 import { createExpressMiddleware } from "@trpc/server/adapters/express";
 // Auth is now Supabase-driven (see server/_core/supabase-auth.ts, invoked
 // from context.ts). The legacy Manus OAuth callback route has been retired.
-import { appRouter } from "../routers";
+import { appRouter } from "../app-router";
 import { createContext } from "./context";
 import { serveStatic, setupVite } from "./vite";
 import { handleStripeWebhook } from "./stripeWebhook";

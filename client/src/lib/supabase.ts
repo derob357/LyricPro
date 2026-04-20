@@ -19,7 +19,14 @@ export const supabase = createClient(url ?? "", key ?? "", {
     persistSession: true,
     autoRefreshToken: true,
     detectSessionInUrl: true, // handles the magic-link / OAuth redirect
-    flowType: "pkce",
+    // "implicit" (not PKCE) is deliberate for a non-SSR SPA: PKCE stores
+    // a code verifier in localStorage that has to survive the email
+    // round-trip. If the user opens the magic link in a different
+    // browser or the email app's in-app browser, the verifier isn't
+    // there and the exchange fails with "code verifier not found".
+    // Implicit flow puts the session tokens directly in the URL fragment
+    // so the callback works regardless of which browser opens the link.
+    flowType: "implicit",
   },
 });
 

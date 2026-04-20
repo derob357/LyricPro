@@ -37,12 +37,14 @@ export function useAuth(options?: UseAuthOptions) {
     return () => sub.subscription.unsubscribe();
   }, [utils]);
 
-  // Fetch the app-level user row. Only enabled when we have a session —
-  // avoids a 401 round-trip for anonymous visitors.
+  // Fetch the app-level user row once we've checked for a Supabase session.
+  // Not gated on session being non-null: in dev the server's DEV_AUTH_BYPASS
+  // can return a user without a Supabase session, and in prod this just
+  // hits the public auth.me procedure and gets null for anonymous visitors.
   const meQuery = trpc.auth.me.useQuery(undefined, {
     retry: false,
     refetchOnWindowFocus: false,
-    enabled: sessionReady && !!session,
+    enabled: sessionReady,
   });
 
   const logout = useCallback(async () => {
@@ -65,7 +67,12 @@ export function useAuth(options?: UseAuthOptions) {
       user: meQuery.data ?? null,
       loading: !sessionReady || meQuery.isLoading,
       error: meQuery.error ?? null,
-      isAuthenticated: Boolean(session && meQuery.data),
+      // The server (via tRPC auth.me) is the source of truth for
+      // "is there an authenticated identity?" — in prod it only resolves
+      // when a valid Supabase JWT is present; in dev DEV_AUTH_BYPASS can
+      // also resolve it. Either way, if the server returns a user, the
+      // app should treat them as signed in.
+      isAuthenticated: Boolean(meQuery.data),
       session,
     }),
     [meQuery.data, meQuery.error, meQuery.isLoading, session, sessionReady]

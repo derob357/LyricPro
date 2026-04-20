@@ -1,7 +1,7 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
 
-  "buildCommand": "vite build",
+  "buildCommand": "node scripts/build-api.mjs && vite build",
   "outputDirectory": "dist/public",
   "installCommand": "pnpm install --no-frozen-lockfile",
   "framework": "vite",
@@ -19,15 +19,6 @@
       ]
     }
   ],
-
-  "functions": {
-    "api/trpc/[trpc].ts": {
-      "maxDuration": 30
-    },
-    "api/stripe/webhook.ts": {
-      "maxDuration": 15
-    }
-  },
 
   "rewrites": [
     { "source": "/api/trpc/:path*", "destination": "/api/trpc/:path*" },

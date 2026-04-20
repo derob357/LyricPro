@@ -4,7 +4,7 @@
 
 import { fetchRequestHandler } from "@trpc/server/adapters/fetch";
 import type { VercelRequest, VercelResponse } from "@vercel/node";
-import { appRouter } from "../../server/routers";
+import { appRouter } from "../../server/app-router";
 import { authenticateRequest } from "../../server/_core/supabase-auth";
 import { upsertUser, getUserByOpenId } from "../../server/db";
 import type { TrpcContext } from "../../server/_core/context";
