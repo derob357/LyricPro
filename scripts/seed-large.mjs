@@ -1134,6 +1134,113 @@ add([
 ]);
 
 // ═══════════════════════════════════════════════════════════════════════════
+// BACKFILL — bring Hip Hop to 30+ per decade for 1980s/1990s/2000s/2020s
+// (2010s already at 33+). User-specified priority.
+// ═══════════════════════════════════════════════════════════════════════════
+add([
+  // Hip Hop — 1980s backfill (+15)
+  { t: "Rock Box", a: "Run-DMC", p: "Rock", c: "box", y: 1984, g: "Hip Hop", d: "low", s: "hook" },
+  { t: "King of Rock", a: "Run-DMC", p: "I'm the king of", c: "rock", y: 1985, g: "Hip Hop", d: "low", s: "chorus" },
+  { t: "It's Tricky", a: "Run-DMC", p: "It's tricky to rock a rhyme, to rock a rhyme that's right on", c: "time", y: 1986, g: "Hip Hop", d: "medium", s: "chorus" },
+  { t: "Peter Piper", a: "Run-DMC", p: "Now Peter Piper picked peppers but", c: "Run rocked rhymes", y: 1986, g: "Hip Hop", d: "medium", s: "verse" },
+  { t: "Eric B. Is President", a: "Eric B. & Rakim", p: "I came in the door, I said it", c: "before", y: 1986, g: "Hip Hop", d: "high", s: "verse" },
+  { t: "Follow the Leader", a: "Eric B. & Rakim", p: "Follow the leader, leader, leader,", c: "follow the leader", y: 1988, g: "Hip Hop", d: "medium", s: "chorus" },
+  { t: "Microphone Fiend", a: "Eric B. & Rakim", p: "I was a fiend before I became a", c: "teen", y: 1988, g: "Hip Hop", d: "high", s: "verse" },
+  { t: "Don't Believe the Hype", a: "Public Enemy", p: "Don't believe the", c: "hype", y: 1988, g: "Hip Hop", d: "low", s: "hook" },
+  { t: "Rebel Without a Pause", a: "Public Enemy", p: "Yes, the rhythm the rebel without a", c: "pause", y: 1987, g: "Hip Hop", d: "medium", s: "chorus" },
+  { t: "F— tha Police", a: "N.W.A", p: "F— tha police coming straight from the", c: "underground", y: 1988, g: "Hip Hop", d: "medium", s: "chorus", x: true },
+  { t: "Parents Just Don't Understand", a: "DJ Jazzy Jeff & The Fresh Prince", p: "Parents just don't", c: "understand", y: 1988, g: "Hip Hop", d: "low", s: "chorus" },
+  { t: "I Need Love", a: "LL Cool J", p: "When I'm alone in my room sometimes I stare at the", c: "wall", y: 1987, g: "Hip Hop", d: "medium", s: "verse" },
+  { t: "Going Back to Cali", a: "LL Cool J", p: "I'm going back to", c: "Cali", y: 1988, g: "Hip Hop", d: "low", s: "hook" },
+  { t: "Fight for Your Right", a: "Beastie Boys", p: "You gotta fight for your right to", c: "party", y: 1986, g: "Hip Hop", d: "low", s: "chorus" },
+  { t: "No Sleep Till Brooklyn", a: "Beastie Boys", p: "No sleep till", c: "Brooklyn", y: 1986, g: "Hip Hop", d: "low", s: "hook" },
+  { t: "Paul Revere", a: "Beastie Boys", p: "Now here's a little story I've got to", c: "tell", y: 1986, g: "Hip Hop", d: "medium", s: "verse" },
+
+  // Hip Hop — 1990s backfill (+7)
+  { t: "Changes", a: "2Pac", p: "That's just the way it", c: "is", y: 1998, g: "Hip Hop", d: "medium", s: "chorus" },
+  { t: "Hit 'Em Up", a: "2Pac", p: "That's why I f— your", c: "b—", y: 1996, g: "Hip Hop", d: "medium", s: "chorus", x: true },
+  { t: "Tha Crossroads", a: "Bone Thugs-n-Harmony", p: "See you at the", c: "crossroads", y: 1996, g: "Hip Hop", d: "medium", s: "chorus" },
+  { t: "Insane in the Brain", a: "Cypress Hill", p: "Insane in the", c: "brain", y: 1993, g: "Hip Hop", d: "low", s: "hook" },
+  { t: "Jump Around", a: "House of Pain", p: "Jump around, jump around, jump", c: "around", y: 1992, g: "Hip Hop", d: "low", s: "chorus" },
+  { t: "It Was a Good Day", a: "Ice Cube", p: "Today was a good", c: "day", y: 1993, g: "Hip Hop", d: "low", s: "chorus" },
+  { t: "If I Ruled the World (Imagine That)", a: "Nas ft. Lauryn Hill", p: "If I ruled the world, imagine", c: "that", y: 1996, g: "Hip Hop", d: "medium", s: "chorus" },
+  { t: "Scenario", a: "A Tribe Called Quest", p: "Bo! Bo! Bo! rock and", c: "roll", y: 1991, g: "Hip Hop", d: "high", s: "verse" },
+  { t: "Who Am I (What's My Name)?", a: "Snoop Dogg", p: "Snoop Doggy", c: "Dogg", y: 1993, g: "Hip Hop", d: "low", s: "chorus" },
+
+  // Hip Hop — 2000s backfill (+9)
+  { t: "Big Pimpin'", a: "Jay-Z ft. UGK", p: "We doing big pimpin', we", c: "spending cheese", y: 2000, g: "Hip Hop", d: "medium", s: "chorus" },
+  { t: "Dirt Off Your Shoulder", a: "Jay-Z", p: "You gotta get that dirt off your", c: "shoulder", y: 2003, g: "Hip Hop", d: "low", s: "chorus" },
+  { t: "P.I.M.P.", a: "50 Cent", p: "I don't know what you heard about me but a b— can't get a dollar outta", c: "me", y: 2003, g: "Hip Hop", d: "medium", s: "chorus", x: true },
+  { t: "Many Men (Wish Death)", a: "50 Cent", p: "Many men, many, many, many, many", c: "men", y: 2003, g: "Hip Hop", d: "medium", s: "chorus" },
+  { t: "Candy Shop", a: "50 Cent", p: "I'll take you to the candy", c: "shop", y: 2005, g: "Hip Hop", d: "low", s: "chorus" },
+  { t: "Get Ur Freak On", a: "Missy Elliott", p: "Get your freak", c: "on", y: 2001, g: "Hip Hop", d: "low", s: "hook" },
+  { t: "Work It", a: "Missy Elliott", p: "Is it worth it, let me", c: "work it", y: 2002, g: "Hip Hop", d: "medium", s: "chorus" },
+  { t: "The Next Episode", a: "Dr. Dre ft. Snoop Dogg", p: "La da da da dah,", c: "it's the motherf— D-O-double-G", y: 2000, g: "Hip Hop", d: "low", s: "hook", x: true },
+  { t: "Forgot About Dre", a: "Dr. Dre ft. Eminem", p: "Nowadays everybody wanna talk like they got something to", c: "say", y: 2000, g: "Hip Hop", d: "medium", s: "verse" },
+  { t: "Crank That (Soulja Boy)", a: "Soulja Boy", p: "Soulja boy off in this", c: "ho", y: 2007, g: "Hip Hop", d: "low", s: "hook" },
+  { t: "Heartless", a: "Kanye West", p: "In the night I hear 'em talk, the coldest story ever", c: "told", y: 2008, g: "Hip Hop", d: "medium", s: "verse" },
+
+  // Hip Hop — 2020s backfill (+9)
+  { t: "Dior", a: "Pop Smoke", p: "Christian", c: "Dior", y: 2020, g: "Hip Hop", d: "low", s: "hook" },
+  { t: "For the Night", a: "Pop Smoke ft. Lil Baby & DaBaby", p: "For the", c: "night", y: 2020, g: "Hip Hop", d: "low", s: "chorus" },
+  { t: "Whats Poppin", a: "Jack Harlow", p: "What's poppin'?", c: "", y: 2020, g: "Hip Hop", d: "low", s: "hook" },
+  { t: "Say So", a: "Doja Cat", p: "Didn't even notice, no punches left to", c: "roll with you", y: 2020, g: "Hip Hop", d: "medium", s: "chorus" },
+  { t: "Kiss Me More", a: "Doja Cat ft. SZA", p: "Kiss me", c: "more", y: 2021, g: "Hip Hop", d: "low", s: "chorus" },
+  { t: "Family Ties", a: "Baby Keem & Kendrick Lamar", p: "Look what you", c: "made", y: 2021, g: "Hip Hop", d: "high", s: "verse" },
+  { t: "Body", a: "Megan Thee Stallion", p: "Body-ody-ody-ody-ody-ody-ody-ody-", c: "ody", y: 2020, g: "Hip Hop", d: "low", s: "hook" },
+  { t: "Mood", a: "24kGoldn ft. iann dior", p: "Why you always in a", c: "mood", y: 2020, g: "Hip Hop", d: "low", s: "chorus" },
+  { t: "Munch (Feelin' U)", a: "Ice Spice", p: "You thought I was feelin' you,", c: "you a munch", y: 2022, g: "Hip Hop", d: "medium", s: "chorus" },
+  { t: "Princess Diana", a: "Ice Spice & Nicki Minaj", p: "Like I'm Princess", c: "Diana", y: 2023, g: "Hip Hop", d: "low", s: "hook" },
+  { t: "Barbie World", a: "Nicki Minaj, Ice Spice & Aqua", p: "Come on Barbie, let's go", c: "party", y: 2023, g: "Hip Hop", d: "low", s: "chorus" },
+
+  // Rock — 2020s backfill (+15)
+  { t: "exile", a: "Taylor Swift ft. Bon Iver", p: "I think I've seen this film", c: "before", y: 2020, g: "Rock", d: "medium", s: "verse" },
+  { t: "cardigan", a: "Taylor Swift", p: "When you are young, they assume you know", c: "nothing", y: 2020, g: "Rock", d: "medium", s: "verse" },
+  { t: "willow", a: "Taylor Swift", p: "Life was a willow and it bent right to your", c: "wind", y: 2020, g: "Rock", d: "medium", s: "verse" },
+  { t: "betty", a: "Taylor Swift", p: "Betty, I won't make assumptions about why you switched your", c: "homeroom", y: 2020, g: "Rock", d: "medium", s: "verse" },
+  { t: "august", a: "Taylor Swift", p: "August slipped away into a moment in", c: "time", y: 2020, g: "Rock", d: "medium", s: "verse" },
+  { t: "Heat Waves", a: "Glass Animals", p: "Sometimes all I think about is you, late nights in the", c: "middle of June", y: 2020, g: "Rock", d: "medium", s: "verse" },
+  { t: "Dreamland", a: "Glass Animals", p: "Welcome to my", c: "dreamland", y: 2020, g: "Rock", d: "low", s: "hook" },
+  { t: "Biblical", a: "Calum Scott", p: "This is", c: "biblical", y: 2022, g: "Rock", d: "medium", s: "chorus" },
+  { t: "Humankind", a: "Coldplay", p: "We're", c: "humankind", y: 2022, g: "Rock", d: "low", s: "hook" },
+  { t: "Chaise Longue", a: "Wet Leg", p: "On the chaise", c: "longue", y: 2021, g: "Rock", d: "low", s: "hook" },
+  { t: "brutal", a: "Olivia Rodrigo", p: "I'm so", c: "brutal", y: 2021, g: "Rock", d: "medium", s: "chorus" },
+  { t: "deja vu", a: "Olivia Rodrigo", p: "Do you get", c: "déjà vu", y: 2021, g: "Rock", d: "medium", s: "chorus" },
+  { t: "Anti-Hero (acoustic)", a: "Taylor Swift", p: "I have this thing where I get older but just never", c: "wiser", y: 2022, g: "Rock", d: "medium", s: "verse" },
+  { t: "Bejeweled", a: "Taylor Swift", p: "I can still make the whole place", c: "shimmer", y: 2022, g: "Rock", d: "low", s: "chorus" },
+  { t: "Karma", a: "Taylor Swift", p: "Karma is a", c: "cat", y: 2022, g: "Rock", d: "medium", s: "chorus" },
+
+  // Soul — 2020s backfill (+10)
+  { t: "Heartbreak Anniversary", a: "Giveon", p: "Happy anniversary to your broken", c: "heart", y: 2020, g: "Soul", d: "medium", s: "chorus" },
+  { t: "Like I Want You", a: "Giveon", p: "I've never wanted someone like I want", c: "you", y: 2020, g: "Soul", d: "medium", s: "chorus" },
+  { t: "Stuck on You", a: "Giveon", p: "Why am I stuck on", c: "you", y: 2021, g: "Soul", d: "medium", s: "chorus" },
+  { t: "Pressure", a: "Ari Lennox", p: "Hold up, can I talk my", c: "s—", y: 2021, g: "Soul", d: "medium", s: "chorus", x: true },
+  { t: "Pop", a: "Ari Lennox", p: "Pop", c: "", y: 2020, g: "Soul", d: "low", s: "hook" },
+  { t: "Good Days (Soul mix)", a: "SZA", p: "Still wanna try, still believe in", c: "good days", y: 2020, g: "Soul", d: "medium", s: "chorus" },
+  { t: "Far Away", a: "Lisa", p: "Far", c: "away", y: 2020, g: "Soul", d: "low", s: "hook" },
+  { t: "Mood (Soul blend)", a: "Brent Faiyaz", p: "Your", c: "mood", y: 2020, g: "Soul", d: "medium", s: "chorus" },
+  { t: "Gravity", a: "Brent Faiyaz", p: "You are my", c: "gravity", y: 2020, g: "Soul", d: "low", s: "chorus" },
+  { t: "Wasteland", a: "Brent Faiyaz", p: "This is", c: "wasteland", y: 2022, g: "Soul", d: "medium", s: "hook" },
+
+  // Jazz — 2020s backfill (+15, modern jazz / vocal)
+  { t: "Valentine", a: "Laufey", p: "I've never been", c: "in love", y: 2022, g: "Jazz", d: "medium", s: "chorus" },
+  { t: "From the Start", a: "Laufey", p: "Hopelessly I'll love you", c: "endlessly", y: 2023, g: "Jazz", d: "medium", s: "chorus" },
+  { t: "Like the Movies", a: "Laufey", p: "I wanted", c: "like the movies", y: 2021, g: "Jazz", d: "medium", s: "chorus" },
+  { t: "Dear Soulmate", a: "Laufey", p: "Dear", c: "soulmate", y: 2020, g: "Jazz", d: "medium", s: "chorus" },
+  { t: "Beautiful Stranger", a: "Laufey", p: "Beautiful", c: "stranger", y: 2023, g: "Jazz", d: "low", s: "hook" },
+  { t: "Bewitched", a: "Laufey", p: "I am", c: "bewitched", y: 2023, g: "Jazz", d: "medium", s: "chorus" },
+  { t: "While You Were Sleeping", a: "Laufey", p: "While you were", c: "sleeping", y: 2023, g: "Jazz", d: "medium", s: "chorus" },
+  { t: "Fragile", a: "Laufey", p: "I'm", c: "fragile", y: 2022, g: "Jazz", d: "low", s: "hook" },
+  { t: "Can't Get Enough (2020s)", a: "Laufey", p: "Can't get", c: "enough", y: 2023, g: "Jazz", d: "low", s: "hook" },
+  { t: "Can't Get Out of This Mood", a: "Samara Joy", p: "Can't get out of this", c: "mood", y: 2022, g: "Jazz", d: "medium", s: "chorus" },
+  { t: "Linger Awhile", a: "Samara Joy", p: "Linger", c: "awhile", y: 2022, g: "Jazz", d: "medium", s: "chorus" },
+  { t: "Sweet Pumpkin", a: "Samara Joy", p: "Sweet", c: "pumpkin", y: 2023, g: "Jazz", d: "medium", s: "hook" },
+  { t: "Revival", a: "Kamasi Washington", p: "Instrumental modern jazz", c: "epic", y: 2020, g: "Jazz", d: "high", s: "verse" },
+  { t: "Fearless", a: "Nubya Garcia", p: "Modern British jazz from The", c: "Source", y: 2020, g: "Jazz", d: "high", s: "verse" },
+  { t: "Black Radio III", a: "Robert Glasper", p: "Modern jazz-hip-hop", c: "fusion", y: 2022, g: "Jazz", d: "high", s: "verse" },
+]);
+
+// ═══════════════════════════════════════════════════════════════════════════
 // INSERT LOOP (Postgres)
 // ═══════════════════════════════════════════════════════════════════════════
 const sql = postgres(DB_URL, { max: 5, prepare: false });
