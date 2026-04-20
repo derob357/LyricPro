@@ -1,8 +1,9 @@
 // Large seed — ≥100 songs per genre across R&B, Hip Hop, Pop, Rock, Country,
 // Gospel, Soul, Jazz. Lyric snippets are short memorable hooks used for a
-// trivia game (fair-use scope). Uses INSERT IGNORE so it's safe to re-run.
+// trivia game (fair-use scope). Uses ON CONFLICT DO NOTHING so it's safe
+// to re-run against Postgres / Supabase.
 
-import mysql from "mysql2/promise";
+import postgres from "postgres";
 import dotenv from "dotenv";
 dotenv.config();
 
@@ -985,9 +986,9 @@ add([
 ]);
 
 // ═══════════════════════════════════════════════════════════════════════════
-// INSERT LOOP
+// INSERT LOOP (Postgres)
 // ═══════════════════════════════════════════════════════════════════════════
-const db = await mysql.createConnection(DB_URL);
+const sql = postgres(DB_URL, { max: 5, prepare: false });
 console.log(`Loaded ${RAW.length} song entries; inserting…`);
 
 let inserted = 0, skipped = 0;
@@ -995,37 +996,48 @@ for (const r of RAW) {
   if (!r.t || !r.a || !r.p || !r.c || !r.y || !r.g) { skipped++; continue; }
   const decade = decadeOf(r.y);
   try {
-    const [res] = await db.execute(
-      `INSERT IGNORE INTO songs
-        (title, artistName, lyricPrompt, lyricAnswer, releaseYear, decadeRange, difficulty, genre, lyricSectionType, explicitFlag, approvalStatus, isActive, createdAt, updatedAt)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'approved', 1, NOW(), NOW())`,
-      [
-        String(r.t).slice(0, 255),
-        String(r.a).slice(0, 255),
-        String(r.p).slice(0, 500),
-        String(r.c).slice(0, 500),
-        Number(r.y),
-        String(decade).slice(0, 32),
-        r.d ?? "medium",
-        String(r.g).slice(0, 64),
-        r.s ?? "chorus",
-        r.x ? 1 : 0,
-      ]
-    );
-    if (res.affectedRows > 0) inserted++; else skipped++;
+    const res = await sql`
+      INSERT INTO songs
+        ("title", "artistName", "lyricPrompt", "lyricAnswer", "releaseYear",
+         "decadeRange", "difficulty", "genre", "lyricSectionType",
+         "explicitFlag", "approvalStatus", "isActive", "createdAt", "updatedAt")
+      VALUES (
+        ${String(r.t).slice(0, 255)},
+        ${String(r.a).slice(0, 255)},
+        ${String(r.p).slice(0, 500)},
+        ${String(r.c).slice(0, 500)},
+        ${Number(r.y)},
+        ${String(decade).slice(0, 32)},
+        ${r.d ?? "medium"},
+        ${String(r.g).slice(0, 64)},
+        ${r.s ?? "chorus"},
+        ${!!r.x},
+        'approved', true, NOW(), NOW()
+      )
+      ON CONFLICT ("title", "artistName") DO NOTHING
+    `;
+    if (res.count > 0) inserted++; else skipped++;
   } catch (e) {
     console.error(`  skip "${r.t}" by ${r.a}:`, e.message);
     skipped++;
   }
 }
 
-const [rows] = await db.execute(
-  "SELECT genre, COUNT(*) as cnt FROM songs WHERE isActive=1 AND approvalStatus='approved' GROUP BY genre ORDER BY cnt DESC"
-);
+const rows = await sql`
+  SELECT "genre", COUNT(*) as cnt
+  FROM songs
+  WHERE "isActive" = true AND "approvalStatus" = 'approved'
+  GROUP BY "genre"
+  ORDER BY cnt DESC
+`;
 console.log(`\nInserted ${inserted}, skipped (dup or invalid) ${skipped}\n`);
 console.log("Final per-genre counts:");
-for (const row of rows) console.log(`  ${row.genre.padEnd(12)} ${row.cnt}`);
+for (const row of rows) console.log(`  ${String(row.genre).padEnd(12)} ${row.cnt}`);
 
-const [total] = await db.execute("SELECT COUNT(*) as total FROM songs WHERE isActive=1 AND approvalStatus='approved'");
+const total = await sql`
+  SELECT COUNT(*) as total
+  FROM songs
+  WHERE "isActive" = true AND "approvalStatus" = 'approved'
+`;
 console.log(`\nTotal approved: ${total[0].total}`);
-await db.end();
+await sql.end();

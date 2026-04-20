@@ -1,26 +1,37 @@
-import { eq } from "drizzle-orm";
-import { drizzle } from "drizzle-orm/mysql2";
-import mysql from "mysql2";
+import { eq, sql } from "drizzle-orm";
+import { drizzle } from "drizzle-orm/postgres-js";
+import postgres from "postgres";
 import { InsertUser, users } from "../drizzle/schema";
-import { ENV } from './_core/env';
-let _db: ReturnType<typeof drizzle> | null = null;
-// Use a connection pool so stale connections after sandbox hibernation are
-// automatically replaced instead of causing a one-time failure.
-export async function getDb() {
-  if (!_db && process.env.DATABASE_URL) {
-    try {
-      const pool = mysql.createPool({
-        uri: process.env.DATABASE_URL,
-        waitForConnections: true,
-        connectionLimit: 10,
-        enableKeepAlive: true,
-        keepAliveInitialDelay: 10000,
-      });
-      _db = drizzle(pool);
-    } catch (error) {
-      console.warn("[Database] Failed to connect:", error);
-      _db = null;
-    }
+import { ENV } from "./_core/env";
+
+type DrizzleDb = ReturnType<typeof drizzle>;
+let _db: DrizzleDb | null = null;
+let _client: ReturnType<typeof postgres> | null = null;
+
+// Supabase recommends the pooled URL (port 6543) for serverless; we'll accept
+// any DATABASE_URL and let the caller pick. Connection is lazily created.
+export async function getDb(): Promise<DrizzleDb | null> {
+  if (_db) return _db;
+  if (!process.env.DATABASE_URL) return null;
+  try {
+    _client = postgres(process.env.DATABASE_URL, {
+      // Reasonable defaults for Vercel serverless + Supabase pooler. Short
+      // idle timeout so idle connections are returned to the pool; the pool
+      // handles re-opening on next use.
+      max: 10,
+      idle_timeout: 20,
+      connect_timeout: 10,
+      // Supabase's pgbouncer doesn't support prepared statements in
+      // transaction mode. Drizzle's postgres-js driver respects this flag.
+      prepare: false,
+    });
+    _db = drizzle(_client);
+  } catch (error) {
+    console.warn(
+      "[Database] Failed to connect:",
+      error instanceof Error ? error.message : "unknown"
+    );
+    _db = null;
   }
   return _db;
 }
@@ -37,9 +48,7 @@ export async function upsertUser(user: InsertUser): Promise<void> {
   }
 
   try {
-    const values: InsertUser = {
-      openId: user.openId,
-    };
+    const values: InsertUser = { openId: user.openId };
     const updateSet: Record<string, unknown> = {};
 
     const textFields = ["name", "email", "loginMethod"] as const;
@@ -60,13 +69,11 @@ export async function upsertUser(user: InsertUser): Promise<void> {
       const parts = user.name.trim().split(/\s+/);
       const derivedFirst = parts[0] || null;
       const derivedLast = parts.length > 1 ? parts.slice(1).join(" ") : null;
-      // Only set on insert (don't overwrite user-edited names)
       values.firstName = derivedFirst;
       values.lastName = derivedLast;
       // Don't add to updateSet — preserve user-edited names on subsequent logins
     }
 
-    // Allow explicit firstName/lastName updates (e.g. from profile update mutation)
     if (user.firstName !== undefined) {
       values.firstName = user.firstName ?? null;
       updateSet.firstName = user.firstName ?? null;
@@ -84,24 +91,21 @@ export async function upsertUser(user: InsertUser): Promise<void> {
       values.role = user.role;
       updateSet.role = user.role;
     } else if (user.openId === ENV.ownerOpenId) {
-      values.role = 'admin';
-      updateSet.role = 'admin';
+      values.role = "admin";
+      updateSet.role = "admin";
     }
 
-    if (!values.lastSignedIn) {
-      values.lastSignedIn = new Date();
-    }
-
+    if (!values.lastSignedIn) values.lastSignedIn = new Date();
     if (Object.keys(updateSet).length === 0) {
       updateSet.lastSignedIn = new Date();
     }
 
-    await db.insert(users).values(values).onDuplicateKeyUpdate({
-      set: updateSet,
-    });
+    // Postgres upsert: INSERT ... ON CONFLICT (openId) DO UPDATE SET ...
+    await db
+      .insert(users)
+      .values(values)
+      .onConflictDoUpdate({ target: users.openId, set: updateSet });
   } catch (error) {
-    // Avoid logging the raw error — MySQL errors can echo parameter values
-    // including email addresses and OAuth identifiers.
     console.error(
       "[Database] Failed to upsert user:",
       error instanceof Error ? error.message : "unknown"
@@ -117,9 +121,23 @@ export async function getUserByOpenId(openId: string) {
     return undefined;
   }
 
-  const result = await db.select().from(users).where(eq(users.openId, openId)).limit(1);
+  const result = await db
+    .select()
+    .from(users)
+    .where(eq(users.openId, openId))
+    .limit(1);
 
   return result.length > 0 ? result[0] : undefined;
 }
 
-// TODO: add feature queries here as your schema grows.
+// Expose a health-check-friendly query for ops.
+export async function pingDb(): Promise<boolean> {
+  const db = await getDb();
+  if (!db) return false;
+  try {
+    await db.execute(sql`select 1`);
+    return true;
+  } catch {
+    return false;
+  }
+}
