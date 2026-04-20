@@ -1,0 +1,62 @@
+{
+  "version": "7",
+  "dialect": "mysql",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "5",
+      "when": 1774545794377,
+      "tag": "0000_curvy_ted_forrester",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "5",
+      "when": 1774545918601,
+      "tag": "0001_nasty_stick",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "5",
+      "when": 1775399623765,
+      "tag": "0002_early_blink",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "5",
+      "when": 1776116380358,
+      "tag": "0003_graceful_inhumans",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "5",
+      "when": 1776126437633,
+      "tag": "0004_good_salo",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "5",
+      "when": 1776131253904,
+      "tag": "0005_living_madripoor",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "5",
+      "when": 1776548644338,
+      "tag": "0006_omniscient_blazing_skull",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "5",
+      "when": 1776653167984,
+      "tag": "0007_amusing_zemo",
+      "breakpoints": true
+    }
+  ]
+}

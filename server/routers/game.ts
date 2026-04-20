@@ -1,0 +1,872 @@
+import { z } from "zod";
+import { and, eq, inArray, notInArray, sql } from "drizzle-orm";
+import { router, publicProcedure, protectedProcedure } from "../_core/trpc";
+import { rateLimit } from "../_core/rateLimit";
+import { getDb } from "../db";
+import {
+  songs, gameRooms, roomPlayers, teams, gameSessions, roundResults,
+  guestSessions, leaderboardEntries, artistMetadata, users,
+} from "../../drizzle/schema";
+import { nanoid } from "nanoid";
+
+// ── Helpers ──────────────────────────────────────────────────────────────────
+function generateRoomCode(): string {
+  return nanoid(6).toUpperCase();
+}
+
+function generateInviteCode(): string {
+  const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+  let code = "";
+  for (let i = 0; i < 6; i++) {
+    code += chars.charAt(Math.floor(Math.random() * chars.length));
+  }
+  return code;
+}
+
+function normalizeText(text: string): string {
+  return text.toLowerCase().replace(/[^\w\s]/g, "").replace(/\s+/g, " ").trim();
+}
+
+function levenshtein(a: string, b: string): number {
+  const m = a.length, n = b.length;
+  const dp: number[][] = Array.from({ length: m + 1 }, (_, i) =>
+    Array.from({ length: n + 1 }, (_, j) => (i === 0 ? j : j === 0 ? i : 0))
+  );
+  for (let i = 1; i <= m; i++) {
+    for (let j = 1; j <= n; j++) {
+      dp[i][j] = a[i - 1] === b[j - 1]
+        ? dp[i - 1][j - 1]
+        : 1 + Math.min(dp[i - 1][j], dp[i][j - 1], dp[i - 1][j - 1]);
+    }
+  }
+  return dp[m][n];
+}
+
+type LyricMatch = "full" | "partial" | "none";
+type ArtistMatch = "full" | "primary_only" | "none";
+
+function matchLyric(userAnswer: string, correctAnswer: string): LyricMatch {
+  const user = normalizeText(userAnswer);
+  const correct = normalizeText(correctAnswer);
+  if (!user || !correct) return "none";
+  if (user === correct) return "full";
+  // Allow up to 25% edit distance for full match (handles minor typos/punctuation)
+  if (levenshtein(user, correct) <= Math.floor(correct.length * 0.25)) return "full";
+  const correctWords = correct.split(" ").filter(w => w.length > 2);
+  const userWords = user.split(" ");
+  if (correctWords.length === 0) return "none";
+  // Allow levenshtein distance of 2 per word for typos
+  const matched = correctWords.filter(cw => userWords.some(uw => uw === cw || levenshtein(uw, cw) <= 2));
+  const ratio = matched.length / correctWords.length;
+  const missing = correctWords.length - matched.length;
+  // 60% word match = full (generous for voice input and minor typos)
+  if (ratio >= 0.60) return "full";
+  if (ratio >= 0.40 || (missing <= 2 && correctWords.length >= 3)) return "partial";
+  return "none";
+}
+
+function matchArtist(userAnswer: string, correctArtist: string, aliases?: string[]): ArtistMatch {
+  const user = normalizeText(userAnswer);
+  const correct = normalizeText(correctArtist);
+  if (!user || !correct) return "none";
+
+  const norm = (s: string) => s.replace(/\band\b/g, "&").replace(/\s+/g, " ");
+
+  // Helper: check if a single normalized user token matches the correct artist
+  const tokenMatches = (token: string): boolean => {
+    if (!token || token.length < 2) return false;
+    if (token === correct) return true;
+    if (norm(token) === norm(correct)) return true;
+    // Alias match
+    if (aliases?.some(a => token === normalizeText(a))) return true;
+    // First-name-only match
+    const firstName = correct.split(" ")[0];
+    if (firstName && firstName.length >= 3 && (token === firstName || levenshtein(token, firstName) <= 1)) return true;
+    // Fuzzy full match — 30% edit distance
+    if (levenshtein(token, correct) <= Math.max(2, Math.floor(correct.length * 0.30))) return true;
+    return false;
+  };
+
+  // Direct full match
+  if (tokenMatches(user)) return "full";
+
+  // Multi-artist answer: split by "and", "&", ",", "ft", "feat"
+  // e.g. "Ol dirty bastard and Mariah Carey" → check each part
+  const splitRe = /\s+(?:and|&|ft\.?|feat\.?|featuring|x|,)\s+/i;
+  const parts = user.split(splitRe).map(p => p.trim()).filter(p => p.length > 1);
+  if (parts.length > 1) {
+    for (const part of parts) {
+      if (tokenMatches(part)) return "full";
+    }
+  }
+
+  // Featured artist: primary-only (user named only the primary, not the featured)
+  const featRe = /\s+(?:ft\.?|feat\.?|featuring|x)\s+/i;
+  if (featRe.test(correctArtist) || correctArtist.includes(" & ") || /\band\b/i.test(correctArtist)) {
+    const primaryRaw = correctArtist.split(featRe)[0].split(" & ")[0].replace(/\band\b.*/i, "").trim();
+    const primary = normalizeText(primaryRaw);
+    if (primary && (
+      user === primary ||
+      norm(user) === norm(primary) ||
+      levenshtein(user, primary) <= Math.floor(primary.length * 0.2) ||
+      user === primary.split(" ")[0]
+    )) return "primary_only";
+  }
+  return "none";
+}
+
+function scoreYear(userYear: number | null, correctYear: number): number {
+  if (!userYear) return 0;
+  const diff = Math.abs(userYear - correctYear);
+  if (diff === 0) return 20;
+  if (diff <= 2) return 10;
+  if (diff <= 3) return 5;
+  return 0;
+}
+
+// ── Router ───────────────────────────────────────────────────────────────────
+export const gameRouter = router({
+  // Create a guest session
+  createGuestSession: publicProcedure
+    .input(z.object({ nickname: z.string().min(1).max(32) }))
+    .mutation(async ({ input }) => {
+      const db = await getDb();
+      if (!db) throw new Error("Database not available");
+      const token = nanoid(32);
+      await db.insert(guestSessions).values({ sessionToken: token, nickname: input.nickname });
+      return { token, nickname: input.nickname };
+    }),
+
+  // Create a game room
+  createRoom: publicProcedure
+    .input(z.object({
+      mode: z.enum(["solo", "multiplayer", "team"]),
+      rankingMode: z.enum(["total_points", "speed_bonus", "streak_bonus"]).default("total_points"),
+      genres: z.array(z.string()).min(1),
+      decades: z.array(z.string()).min(1),
+      difficulty: z.enum(["low", "medium", "high"]).default("medium"),
+      timerSeconds: z.number().int().min(15).max(45).default(30),
+      rounds: z.number().int().min(5).max(20).default(10),
+      explicitFilter: z.boolean().default(false),
+      guestToken: z.string().optional(),
+    }))
+    .mutation(async ({ input, ctx }) => {
+      const rlKey = ctx.user?.id ?? input.guestToken ?? ctx.req.ip ?? "anon";
+      rateLimit("createRoom", rlKey, { max: 10, windowMs: 60_000 });
+
+      const db = await getDb();
+      if (!db) throw new Error("Database not available");
+
+      let roomCode = generateRoomCode();
+      // Ensure unique
+      let attempts = 0;
+      while (attempts < 5) {
+        const existing = await db.select({ id: gameRooms.id }).from(gameRooms).where(eq(gameRooms.roomCode, roomCode)).limit(1);
+        if (existing.length === 0) break;
+        roomCode = generateRoomCode();
+        attempts++;
+      }
+
+      const hostUserId = ctx.user?.id ?? null;
+      const hostGuestToken = input.guestToken ?? null;
+
+      await db.insert(gameRooms).values({
+        roomCode,
+        hostUserId,
+        hostGuestToken,
+        mode: input.mode,
+        rankingMode: input.rankingMode,
+        timerSeconds: input.timerSeconds,
+        roundsTotal: input.rounds,
+        selectedGenres: JSON.stringify(input.genres),
+        selectedDecades: JSON.stringify(input.decades),
+        difficulty: input.difficulty,
+        explicitFilter: input.explicitFilter,
+        status: "waiting",
+        currentRound: 0,
+        currentPlayerIndex: 0,
+        usedSongIds: "[]",
+      });
+
+      // Add host as first player
+      const [room] = await db.select().from(gameRooms).where(eq(gameRooms.roomCode, roomCode)).limit(1);
+
+      await db.insert(roomPlayers).values({
+        roomId: room.id,
+        userId: hostUserId,
+        guestToken: hostGuestToken,
+        guestName: hostGuestToken ? (await db.select({ nickname: guestSessions.nickname }).from(guestSessions).where(eq(guestSessions.sessionToken, hostGuestToken)).limit(1))[0]?.nickname : null,
+        joinOrder: 0,
+        currentScore: 0,
+        currentStreak: 0,
+        isReady: input.mode === "solo",
+        isActive: true,
+      });
+
+      return { roomCode, roomId: room.id };
+    }),
+
+  // Get room state
+  getRoom: publicProcedure
+    .input(z.object({ roomCode: z.string() }))
+    .query(async ({ input }) => {
+      const db = await getDb();
+      if (!db) throw new Error("Database not available");
+
+      const [room] = await db.select().from(gameRooms).where(eq(gameRooms.roomCode, input.roomCode)).limit(1);
+      if (!room) throw new Error("Room not found");
+
+      const players = await db.select().from(roomPlayers).where(and(eq(roomPlayers.roomId, room.id), eq(roomPlayers.isActive, true)));
+      const roomTeams = await db.select().from(teams).where(eq(teams.roomId, room.id));
+
+      return {
+        ...room,
+        selectedGenres: JSON.parse(room.selectedGenres) as string[],
+        selectedDecades: JSON.parse(room.selectedDecades) as string[],
+        usedSongIds: JSON.parse(room.usedSongIds ?? "[]") as number[],
+        players,
+        teams: roomTeams,
+      };
+    }),
+
+  // Join a room
+  joinRoom: publicProcedure
+    .input(z.object({
+      roomCode: z.string(),
+      guestToken: z.string().optional(),
+    }))
+    .mutation(async ({ input, ctx }) => {
+      const db = await getDb();
+      if (!db) throw new Error("Database not available");
+
+      const [room] = await db.select().from(gameRooms).where(eq(gameRooms.roomCode, input.roomCode)).limit(1);
+      if (!room) throw new Error("Room not found");
+      if (room.status !== "waiting") throw new Error("Game already started");
+
+      const existingPlayers = await db.select().from(roomPlayers).where(eq(roomPlayers.roomId, room.id));
+
+      // Check if already joined
+      const userId = ctx.user?.id ?? null;
+      const guestToken = input.guestToken ?? null;
+      const alreadyJoined = existingPlayers.some(p =>
+        (userId && p.userId === userId) || (guestToken && p.guestToken === guestToken)
+      );
+      if (alreadyJoined) return { success: true, joinOrder: existingPlayers.find(p => (userId && p.userId === userId) || (guestToken && p.guestToken === guestToken))?.joinOrder ?? 0 };
+
+      let guestName: string | null = null;
+      if (guestToken) {
+        const [gs] = await db.select({ nickname: guestSessions.nickname }).from(guestSessions).where(eq(guestSessions.sessionToken, guestToken)).limit(1);
+        guestName = gs?.nickname ?? null;
+      }
+
+      const joinOrder = existingPlayers.length;
+      await db.insert(roomPlayers).values({
+        roomId: room.id,
+        userId,
+        guestToken,
+        guestName,
+        joinOrder,
+        currentScore: 0,
+        currentStreak: 0,
+        isReady: false,
+        isActive: true,
+      });
+
+      return { success: true, joinOrder };
+    }),
+
+  // Set player ready
+  setReady: publicProcedure
+    .input(z.object({ roomCode: z.string(), guestToken: z.string().optional() }))
+    .mutation(async ({ input, ctx }) => {
+      const db = await getDb();
+      if (!db) throw new Error("Database not available");
+      const [room] = await db.select().from(gameRooms).where(eq(gameRooms.roomCode, input.roomCode)).limit(1);
+      if (!room) throw new Error("Room not found");
+      const userId = ctx.user?.id;
+      if (userId) {
+        await db.update(roomPlayers).set({ isReady: true }).where(and(eq(roomPlayers.roomId, room.id), eq(roomPlayers.userId, userId)));
+      } else if (input.guestToken) {
+        await db.update(roomPlayers).set({ isReady: true }).where(and(eq(roomPlayers.roomId, room.id), eq(roomPlayers.guestToken, input.guestToken)));
+      }
+      return { success: true };
+    }),
+
+  // Start game (host only)
+  startGame: publicProcedure
+    .input(z.object({ roomCode: z.string(), guestToken: z.string().optional() }))
+    .mutation(async ({ input, ctx }) => {
+      const db = await getDb();
+      if (!db) throw new Error("Database not available");
+      const [room] = await db.select().from(gameRooms).where(eq(gameRooms.roomCode, input.roomCode)).limit(1);
+      if (!room) throw new Error("Room not found");
+      await db.update(gameRooms).set({ status: "active", currentRound: 1 }).where(eq(gameRooms.id, room.id));
+      return { success: true };
+    }),
+
+  // Get next song for a round
+  getNextSong: publicProcedure
+    .input(z.object({ roomCode: z.string() }))
+    .mutation(async ({ input }) => {
+      const db = await getDb();
+      if (!db) throw new Error("Database not available");
+
+      const [room] = await db.select().from(gameRooms).where(eq(gameRooms.roomCode, input.roomCode)).limit(1);
+      if (!room) throw new Error("Room not found");
+
+      const genres = JSON.parse(room.selectedGenres) as string[];
+      const decades = JSON.parse(room.selectedDecades) as string[];
+      const usedIds = JSON.parse(room.usedSongIds ?? "[]") as number[];
+
+      // Build difficulty filter
+      let difficultyFilter: ("chorus" | "hook" | "verse" | "call-response" | "bridge")[] = [];
+      if (room.difficulty === "low") difficultyFilter = ["chorus", "hook"];
+      else if (room.difficulty === "medium") difficultyFilter = ["chorus", "hook", "verse", "bridge"];
+      else difficultyFilter = ["verse", "call-response"];
+
+      // Map decades to year ranges AND short-form labels (e.g. "1980s")
+      // Note: "1980–1990" means the 1980s decade (1980-1989), end year is exclusive
+      const decadeYearRanges = decades.map(d => {
+        const match = d.match(/(\d{4})[–-](\d{4}|Present)/);
+        if (!match) return null;
+        const start = parseInt(match[1]);
+        // End is exclusive: "1980–1990" covers 1980-1989
+        const endRaw = match[2] === "Present" ? new Date().getFullYear() + 1 : parseInt(match[2]);
+        const end = endRaw - 1; // inclusive end
+        // Derive short-form label: "1980–1990" → "1980s", "2020–Present" → "2020s"
+        const shortLabel = `${match[1].slice(0, 3)}0s`;
+        return { start, end, longLabel: d, shortLabel };
+      }).filter(Boolean) as { start: number; end: number; longLabel: string; shortLabel: string }[];
+
+      // Collect all decadeRange label variants stored in DB for these decades
+      const decadeLabels: string[] = [];
+      for (const r of decadeYearRanges) {
+        decadeLabels.push(r.longLabel);
+        decadeLabels.push(r.shortLabel);
+      }
+
+      // Helper to filter songs by decade (strict)
+      const matchesDecade = (s: typeof songs.$inferSelect) =>
+        decadeLabels.includes(s.decadeRange ?? "") ||
+        decadeYearRanges.some(r => s.releaseYear >= r.start && s.releaseYear <= r.end);
+
+      // Get candidate songs matching genre + difficulty + decade
+      let candidateSongs = await db.select().from(songs).where(
+        and(
+          eq(songs.isActive, true),
+          eq(songs.approvalStatus, "approved"),
+          inArray(songs.genre, genres),
+          inArray(songs.lyricSectionType, difficultyFilter),
+          room.explicitFilter ? eq(songs.explicitFlag, false) : undefined,
+          usedIds.length > 0 ? notInArray(songs.id, usedIds) : undefined,
+        )
+      );
+
+      // Filter by decade (strict — always enforce selected decades)
+      candidateSongs = candidateSongs.filter(matchesDecade);
+
+      if (candidateSongs.length === 0) {
+        // Fallback 1: relax difficulty filter but KEEP genre + decade strict.
+        // Genre/decade are user intent — never silently swap them.
+        let relaxed = await db.select().from(songs).where(
+          and(
+            eq(songs.isActive, true),
+            eq(songs.approvalStatus, "approved"),
+            inArray(songs.genre, genres),
+            usedIds.length > 0 ? notInArray(songs.id, usedIds) : undefined,
+          )
+        );
+        relaxed = relaxed.filter(matchesDecade);
+
+        if (relaxed.length === 0) {
+          // Fallback 2: allow re-playing previously-used songs within the
+          // same genre + decade rather than switching categories.
+          let recycled = await db.select().from(songs).where(
+            and(
+              eq(songs.isActive, true),
+              eq(songs.approvalStatus, "approved"),
+              inArray(songs.genre, genres),
+            )
+          );
+          recycled = recycled.filter(matchesDecade);
+          candidateSongs = recycled;
+        } else {
+          candidateSongs = relaxed;
+        }
+      }
+
+      if (candidateSongs.length === 0) {
+        const genreLabel = genres.join(" / ");
+        const decadeLabel = decades.join(" / ");
+        throw new Error(
+          `No ${genreLabel} songs available for ${decadeLabel}. Pick a broader selection on the setup screen.`
+        );
+      }
+
+      // Pick random song
+      const song = candidateSongs[Math.floor(Math.random() * candidateSongs.length)];
+
+      // Update used songs
+      const newUsedIds = [...usedIds, song.id];
+      await db.update(gameRooms).set({ currentSongId: song.id, usedSongIds: JSON.stringify(newUsedIds) }).where(eq(gameRooms.id, room.id));
+
+      // Get artist metadata
+      let artistMeta = null;
+      if (song.artistMetadataId) {
+        const [meta] = await db.select().from(artistMetadata).where(eq(artistMetadata.id, song.artistMetadataId)).limit(1);
+        artistMeta = meta;
+      }
+
+      // Generate 4-option multiple choice for every field at every difficulty.
+      // Distractors are randomly drawn from the candidate-song pool (same
+      // genre + decade), falling back to the broader pool when needed.
+      const distractorPool = candidateSongs.filter(s => s.id !== song.id);
+
+      // If we couldn't find enough in-pool distractors, pull any approved
+      // songs so we can still present 4 options.
+      let fallbackPool: typeof distractorPool = [];
+      if (distractorPool.length < 3) {
+        fallbackPool = await db.select().from(songs).where(
+          and(eq(songs.isActive, true), eq(songs.approvalStatus, "approved"))
+        );
+        fallbackPool = fallbackPool.filter(s => s.id !== song.id);
+      }
+
+      function pickDistractors(n: number, keyOf: (s: typeof song) => string, correct: string) {
+        const shuffled = [...distractorPool, ...fallbackPool].sort(() => Math.random() - 0.5);
+        const out: string[] = [];
+        const seen = new Set<string>([correct.toLowerCase()]);
+        for (const s of shuffled) {
+          const v = keyOf(s);
+          if (!v) continue;
+          if (seen.has(v.toLowerCase())) continue;
+          seen.add(v.toLowerCase());
+          out.push(v);
+          if (out.length >= n) break;
+        }
+        return out;
+      }
+
+      const shuffle = <T>(a: T[]) => [...a].sort(() => Math.random() - 0.5);
+
+      const titleOptions = shuffle([song.title, ...pickDistractors(3, s => s.title, song.title)]);
+      const artistOptions = shuffle([song.artistName, ...pickDistractors(3, s => s.artistName, song.artistName)]);
+
+      // Year options: correct + 3 offsets (±2, ±4, ±6) with random sign.
+      const yearOffsets = [2, 4, 6].map(d => song.releaseYear + (Math.random() > 0.5 ? d : -d));
+      const yearSet = new Set<number>([song.releaseYear, ...yearOffsets]);
+      // Bounded top-up: try a small fixed number of offsets; deterministic fallbacks if still short.
+      for (let tries = 0; tries < 12 && yearSet.size < 4; tries++) {
+        yearSet.add(song.releaseYear + (Math.floor(Math.random() * 20) - 10));
+      }
+      let fallbackOffset = 7;
+      while (yearSet.size < 4 && fallbackOffset < 40) {
+        yearSet.add(song.releaseYear + fallbackOffset);
+        fallbackOffset++;
+      }
+      const yearOptions = shuffle(Array.from(yearSet));
+
+      // Lyric options (only used for High difficulty — a 4-option "fill the gap"
+      // for the final line of the lyric). Distractors are lyricAnswer strings
+      // pulled from other same-genre/decade songs.
+      const lyricOptions = shuffle([song.lyricAnswer, ...pickDistractors(3, s => s.lyricAnswer, song.lyricAnswer)]);
+
+      return {
+        id: song.id,
+        title: song.title,
+        artistName: song.artistName,
+        lyricPrompt: song.lyricPrompt,
+        lyricAnswer: song.lyricAnswer,
+        releaseYear: song.releaseYear,
+        genre: song.genre,
+        decade: song.decadeRange,
+        difficulty: song.difficulty,
+        lyricOptions,
+        titleOptions,
+        artistOptions,
+        yearOptions,
+        artistMetadata: artistMeta ? {
+          officialWebsite: artistMeta.officialWebsite,
+          instagramUrl: artistMeta.instagramUrl,
+          facebookUrl: artistMeta.facebookUrl,
+          xUrl: artistMeta.xUrl,
+          tiktokUrl: artistMeta.tiktokUrl,
+          youtubeUrl: artistMeta.youtubeUrl,
+          spotifyUrl: artistMeta.spotifyUrl,
+          appleMusicUrl: artistMeta.appleMusicUrl,
+          newsSearchUrl: artistMeta.newsSearchUrl,
+        } : null,
+      };
+    }),
+
+  // Submit an answer
+  submitAnswer: publicProcedure
+    .input(z.object({
+      roomCode: z.string(),
+      songId: z.number().int(),
+      lyricAnswer: z.string().default(""),
+      titleAnswer: z.string().default(""),
+      artistAnswer: z.string().default(""),
+      yearAnswer: z.string().default(""),
+      passUsed: z.boolean().default(false),
+      responseTimeSeconds: z.number().default(30),
+      answerMethod: z.enum(["typed", "voice"]).default("typed"),
+      guestToken: z.string().optional(),
+    }))
+    .mutation(async ({ input, ctx }) => {
+      const rlKey = ctx.user?.id ?? input.guestToken ?? ctx.req.ip ?? "anon";
+      rateLimit("submitAnswer", rlKey, { max: 30, windowMs: 60_000 });
+
+      const db = await getDb();
+      if (!db) throw new Error("Database not available");
+
+      const [room] = await db.select().from(gameRooms).where(eq(gameRooms.roomCode, input.roomCode)).limit(1);
+      if (!room) throw new Error("Room not found");
+
+      const [song] = await db.select().from(songs).where(eq(songs.id, input.songId)).limit(1);
+      if (!song) throw new Error("Song not found");
+
+      // Get artist aliases
+      let aliases: string[] = [];
+      if (song.artistMetadataId) {
+        const [meta] = await db.select({ aliases: artistMetadata.aliases }).from(artistMetadata).where(eq(artistMetadata.id, song.artistMetadataId)).limit(1);
+        if (meta?.aliases) {
+          try { aliases = JSON.parse(meta.aliases); } catch {}
+        }
+      }
+
+      // Difficulty-based point values
+      // Low:    Artist=25, Title=25, Year=50
+      // Medium: Artist=50, Title=50, Year=100
+      // High:   Lyric=50, Artist=100, Title=100, Year=200
+      const diff = room.difficulty as "low" | "medium" | "high";
+      const pts = {
+        // artistPartial = full artist points (primary-only match = full credit per spec)
+        low:    { lyric: 0,  lyricPartial: 0,  artist: 25, artistPartial: 25, title: 25, titlePartial: 15, year: 50,  yearClose2: 25, yearClose3: 10 },
+        medium: { lyric: 0,  lyricPartial: 0,  artist: 50, artistPartial: 50, title: 50, titlePartial: 30, year: 100, yearClose2: 50, yearClose3: 20 },
+        high:   { lyric: 50, lyricPartial: 25, artist: 100, artistPartial: 100, title: 100, titlePartial: 60, year: 200, yearClose2: 100, yearClose3: 40 },
+      }[diff];
+
+      // Score the answer
+      let lyricPoints = 0, titlePoints = 0, artistPoints = 0, yearPoints = 0, speedBonus = 0, streakBonus = 0;
+      let lyricMatch: LyricMatch = "none";
+      let artistMatch: ArtistMatch = "none";
+      let titleCorrect = false;
+      let titlePartial = false;
+
+      if (!input.passUsed) {
+        // For Low/Medium: no lyric completion — show full lyric, score Artist+Title+Year only
+        if (diff === "high") {
+          lyricMatch = matchLyric(input.lyricAnswer, song.lyricAnswer);
+          lyricPoints = lyricMatch === "full" ? pts.lyric : lyricMatch === "partial" ? pts.lyricPartial : 0;
+        }
+
+        // Title scoring (Low/Medium/High all score title)
+        const titleNorm = normalizeText(input.titleAnswer);
+        const correctTitleNorm = normalizeText(song.title);
+        if (titleNorm && correctTitleNorm) {
+          // Full match: exact, or up to 30% edit distance (generous for typos/voice input)
+          const titleEditDist = levenshtein(titleNorm, correctTitleNorm);
+          const titleThreshold = Math.max(2, Math.floor(correctTitleNorm.length * 0.30));
+          if (titleNorm === correctTitleNorm || titleEditDist <= titleThreshold) {
+            titleCorrect = true;
+            titlePoints = pts.title;
+          } else {
+            // Partial: significant word overlap (allow levenshtein 2 per word)
+            const titleWords = correctTitleNorm.split(" ").filter(w => w.length > 1);
+            const userTitleWords = titleNorm.split(" ");
+            if (titleWords.length > 0) {
+              const matched = titleWords.filter(tw => userTitleWords.some(uw => uw === tw || levenshtein(uw, tw) <= 2));
+              if (matched.length / titleWords.length >= 0.5) {
+                titlePartial = true;
+                titlePoints = pts.titlePartial;
+              }
+            }
+          }
+        }
+
+        artistMatch = matchArtist(input.artistAnswer, song.artistName, aliases);
+        artistPoints = artistMatch === "full" ? pts.artist : artistMatch === "primary_only" ? pts.artistPartial : 0;
+
+        // Year scoring with new point values
+        const userYear = parseInt(input.yearAnswer) || null;
+        if (userYear) {
+          const diff2 = Math.abs(userYear - song.releaseYear);
+          if (diff2 === 0) yearPoints = pts.year;
+          else if (diff2 <= 2) yearPoints = pts.yearClose2;
+          else if (diff2 <= 3) yearPoints = pts.yearClose3;
+        }
+
+        // Speed bonus
+        const anyCorrect = lyricMatch !== "none" || titleCorrect || titlePartial || artistMatch !== "none" || yearPoints > 0;
+        if (room.rankingMode === "speed_bonus" && anyCorrect) {
+          const timeRatio = 1 - (input.responseTimeSeconds / room.timerSeconds);
+          speedBonus = Math.max(0, Math.round(timeRatio * (diff === "high" ? 20 : diff === "medium" ? 10 : 5)));
+        }
+      }
+
+      const lyricCorrect = lyricMatch === "full";
+      const lyricPartialFlag = lyricMatch === "partial";
+      const artistCorrect = artistMatch === "full";
+      const artistPartial = artistMatch === "primary_only";
+      const correctCount =
+        (lyricCorrect || lyricPartialFlag ? 1 : 0) +
+        (titleCorrect || titlePartial ? 1 : 0) +
+        (artistCorrect || artistPartial ? 1 : 0) +
+        (yearPoints > 0 ? 1 : 0);
+
+      const userId = ctx.user?.id ?? null;
+      const guestToken = input.guestToken ?? null;
+
+      // Get player for streak
+      const [player] = await db.select().from(roomPlayers).where(
+        and(
+          eq(roomPlayers.roomId, room.id),
+          userId ? eq(roomPlayers.userId, userId) : eq(roomPlayers.guestToken, guestToken ?? "")
+        )
+      ).limit(1);
+
+      if (player) {
+        // Streak bonus
+        const newStreak = lyricCorrect ? player.currentStreak + 1 : 0;
+        if (room.rankingMode === "streak_bonus" && lyricCorrect && newStreak >= 2) {
+          streakBonus = Math.min(newStreak * 2, 10);
+        }
+
+        const totalRoundPoints = lyricPoints + titlePoints + artistPoints + yearPoints + speedBonus + streakBonus;
+        const newScore = player.currentScore + totalRoundPoints;
+
+        // Update player score and streak
+        await db.update(roomPlayers).set({
+          currentScore: newScore,
+          currentStreak: newStreak,
+        }).where(eq(roomPlayers.id, player.id));
+
+        // Save round result
+        await db.insert(roundResults).values({
+          roomId: room.id,
+          roundNumber: room.currentRound,
+          activePlayerId: player.id,
+          activeGuestToken: guestToken,
+          songId: input.songId,
+          userLyricAnswer: input.lyricAnswer,
+          userArtistAnswer: input.artistAnswer,
+          userYearAnswer: parseInt(input.yearAnswer) || null,
+          answerMethod: input.answerMethod,
+          responseTimeSeconds: input.responseTimeSeconds,
+          lyricPoints,
+          artistPoints,
+          yearPoints,
+          speedBonusPoints: speedBonus,
+          streakBonusPoints: streakBonus,
+          totalRoundPoints: totalRoundPoints,
+          passUsed: input.passUsed,
+        });
+
+        return {
+          lyricCorrect,
+          lyricPartial: lyricPartialFlag,
+          titleCorrect,
+          titlePartial,
+          artistCorrect,
+          artistPartial,
+          correctCount,
+          lyricPoints,
+          titlePoints,
+          artistPoints,
+          yearPoints,
+          speedBonus,
+          streakBonus,
+          total: totalRoundPoints,
+          newScore,
+          newStreak,
+          correctLyric: song.lyricAnswer,
+          correctTitle: song.title,
+          correctArtist: song.artistName,
+          correctYear: song.releaseYear,
+          difficulty: diff,
+          passUsed: input.passUsed,
+        };
+      }
+
+      return {
+        lyricCorrect, lyricPartial: lyricPartialFlag, titleCorrect, titlePartial,
+        artistCorrect, artistPartial, correctCount,
+        lyricPoints, titlePoints, artistPoints, yearPoints,
+        speedBonus, streakBonus, total: 0, newScore: 0, newStreak: 0,
+        correctLyric: song.lyricAnswer, correctTitle: song.title,
+        correctArtist: song.artistName, correctYear: song.releaseYear, difficulty: diff,
+        passUsed: input.passUsed,
+      };
+    }),
+
+  // Advance to next round
+  nextRound: publicProcedure
+    .input(z.object({ roomCode: z.string() }))
+    .mutation(async ({ input }) => {
+      const db = await getDb();
+      if (!db) throw new Error("Database not available");
+      const [room] = await db.select().from(gameRooms).where(eq(gameRooms.roomCode, input.roomCode)).limit(1);
+      if (!room) throw new Error("Room not found");
+
+      const players = await db.select().from(roomPlayers).where(and(eq(roomPlayers.roomId, room.id), eq(roomPlayers.isActive, true)));
+      const nextPlayerIndex = (room.currentPlayerIndex + 1) % players.length;
+      const nextRound = room.currentRound + 1;
+      const isGameOver = nextRound > room.roundsTotal;
+
+      await db.update(gameRooms).set({
+        currentRound: nextRound,
+        currentPlayerIndex: nextPlayerIndex,
+        status: isGameOver ? "finished" : "active",
+      }).where(eq(gameRooms.id, room.id));
+
+      if (isGameOver) {
+        // Save leaderboard entries
+        for (const player of players) {
+          const displayName = player.guestName || "Player";
+          await db.insert(leaderboardEntries).values({
+            userId: player.userId,
+            guestName: player.guestName,
+            displayName,
+            score: player.currentScore,
+            mode: room.mode,
+            genre: (JSON.parse(room.selectedGenres) as string[])[0] || null,
+            decade: (JSON.parse(room.selectedDecades) as string[])[0] || null,
+            rankingMode: room.rankingMode,
+          });
+        }
+
+        // Update user stats
+        const sortedPlayers = [...players].sort((a, b) => b.currentScore - a.currentScore);
+        for (let i = 0; i < sortedPlayers.length; i++) {
+          const p = sortedPlayers[i];
+          if (p.userId) {
+            await db.update(users).set({
+              lifetimeScore: sql`${users.lifetimeScore} + ${p.currentScore}`,
+              gamesPlayed: sql`${users.gamesPlayed} + 1`,
+              totalWins: i === 0 ? sql`${users.totalWins} + 1` : sql`${users.totalWins}`,
+            }).where(eq(users.id, p.userId));
+          }
+        }
+      }
+
+      return { nextRound, isGameOver, nextPlayerIndex };
+    }),
+
+  // Get final results
+  getFinalResults: publicProcedure
+    .input(z.object({ roomCode: z.string() }))
+    .query(async ({ input }) => {
+      const db = await getDb();
+      if (!db) throw new Error("Database not available");
+      const [room] = await db.select().from(gameRooms).where(eq(gameRooms.roomCode, input.roomCode)).limit(1);
+      if (!room) throw new Error("Room not found");
+      const players = await db.select().from(roomPlayers).where(and(eq(roomPlayers.roomId, room.id), eq(roomPlayers.isActive, true)));
+      const roomTeams = await db.select().from(teams).where(eq(teams.roomId, room.id));
+      const sorted = [...players].sort((a, b) => b.currentScore - a.currentScore);
+      return {
+        room: { ...room, selectedGenres: JSON.parse(room.selectedGenres), selectedDecades: JSON.parse(room.selectedDecades) },
+        players: sorted,
+        teams: roomTeams,
+      };
+    }),
+
+  // Get leaderboard
+  getLeaderboard: publicProcedure
+    .input(z.object({
+      mode: z.enum(["solo", "multiplayer", "team"]).optional(),
+      genre: z.string().optional(),
+      decade: z.string().optional(),
+      timeframe: z.enum(["weekly", "all_time"]).default("all_time"),
+      limit: z.number().int().min(1).max(100).default(20),
+    }))
+    .query(async ({ input }) => {
+      const db = await getDb();
+      if (!db) return [];
+
+      const conditions = [];
+      if (input.mode) conditions.push(eq(leaderboardEntries.mode, input.mode));
+      if (input.genre) conditions.push(eq(leaderboardEntries.genre, input.genre));
+      if (input.decade) conditions.push(eq(leaderboardEntries.decade, input.decade));
+      if (input.timeframe === "weekly") {
+        const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+        conditions.push(sql`${leaderboardEntries.createdAt} >= ${weekAgo}`);
+      }
+
+      const entries = await db.select().from(leaderboardEntries)
+        .where(conditions.length > 0 ? and(...conditions) : undefined)
+        .orderBy(sql`${leaderboardEntries.score} DESC`)
+        .limit(input.limit);
+
+      return entries;
+    }),
+
+  // Assign player to team
+  assignTeam: publicProcedure
+    .input(z.object({
+      roomCode: z.string(),
+      teamId: z.number().int().nullable(),
+      guestToken: z.string().optional(),
+    }))
+    .mutation(async ({ input, ctx }) => {
+      const db = await getDb();
+      if (!db) throw new Error("Database not available");
+      const [room] = await db.select().from(gameRooms).where(eq(gameRooms.roomCode, input.roomCode)).limit(1);
+      if (!room) throw new Error("Room not found");
+      const userId = ctx.user?.id ?? null;
+      const guestToken = input.guestToken ?? null;
+      if (userId) {
+        await db.update(roomPlayers).set({ teamId: input.teamId }).where(and(eq(roomPlayers.roomId, room.id), eq(roomPlayers.userId, userId)));
+      } else if (guestToken) {
+        await db.update(roomPlayers).set({ teamId: input.teamId }).where(and(eq(roomPlayers.roomId, room.id), eq(roomPlayers.guestToken, guestToken)));
+      }
+      return { success: true };
+    }),
+
+  // Create teams for a room
+  createTeams: publicProcedure
+    .input(z.object({
+      roomCode: z.string(),
+      teamCount: z.number().int().min(2).max(6).default(2),
+      guestToken: z.string().optional(),
+    }))
+    .mutation(async ({ input, ctx }) => {
+      const db = await getDb();
+      if (!db) throw new Error("Database not available");
+      const [room] = await db.select().from(gameRooms).where(eq(gameRooms.roomCode, input.roomCode)).limit(1);
+      if (!room) throw new Error("Room not found");
+
+      const TEAM_COLORS = ["#8B5CF6", "#06B6D4", "#F59E0B", "#10B981", "#EF4444", "#EC4899"];
+      const TEAM_NAMES = ["Team Purple", "Team Cyan", "Team Gold", "Team Green", "Team Red", "Team Pink"];
+
+      // Delete existing teams
+      await db.delete(teams).where(eq(teams.roomId, room.id));
+
+      const created = [];
+      for (let i = 0; i < input.teamCount; i++) {
+        await db.insert(teams).values({
+          roomId: room.id,
+          teamName: TEAM_NAMES[i] ?? `Team ${i + 1}`,
+          teamColor: TEAM_COLORS[i] ?? "#8B5CF6",
+          currentScore: 0,
+        });
+        created.push({ name: TEAM_NAMES[i], color: TEAM_COLORS[i] });
+      }
+      return { success: true, teams: created };
+    }),
+
+    // Get user profile stats
+  getProfile: protectedProcedure
+    .query(async ({ ctx }) => {
+      const db = await getDb();
+      if (!db) throw new Error("Database not available");
+      const [user] = await db.select().from(users).where(eq(users.id, ctx.user.id)).limit(1);
+      if (!user) throw new Error("User not found");
+      // Recent game history
+      const recentGames = await db.select().from(leaderboardEntries)
+        .where(eq(leaderboardEntries.userId, ctx.user.id))
+        .orderBy(sql`${leaderboardEntries.createdAt} DESC`)
+        .limit(10);
+      return { user, recentGames };
+    }),
+});
