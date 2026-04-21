@@ -159,10 +159,10 @@ export default function Home() {
         <div className="container">
           <div className="grid grid-cols-2 md:grid-cols-4 gap-6 text-center">
             {[
-              { icon: Music, label: "Song Catalog", value: "396+" },
+              { icon: Music, label: "Song Catalog", value: "1,038" },
               { icon: Users, label: "Game Modes", value: "4" },
-              { icon: Radio, label: "Genres", value: "12" },
-              { icon: Clock, label: "Decades Covered", value: "8" },
+              { icon: Radio, label: "Genres", value: "9" },
+              { icon: Clock, label: "Decades Covered", value: "7" },
             ].map(({ icon: Icon, label, value }) => (
               <div key={label} className="flex flex-col items-center gap-1">
                 <Icon className="w-5 h-5 text-primary mb-1" />
