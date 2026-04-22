@@ -159,7 +159,7 @@ export default function Home() {
         <div className="container">
           <div className="grid grid-cols-2 md:grid-cols-4 gap-6 text-center">
             {[
-              { icon: Music, label: "Song Catalog", value: "1,038" },
+              { icon: Music, label: "Song Catalog", value: "1,992" },
               { icon: Users, label: "Game Modes", value: "4" },
               { icon: Radio, label: "Genres", value: "9" },
               { icon: Clock, label: "Decades Covered", value: "7" },
