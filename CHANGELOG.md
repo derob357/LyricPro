@@ -12,6 +12,23 @@ on release.
 
 ## [Unreleased]
 
+### Added
+- **Billboard Top 100 content expansion** — song library grown from 1,038
+  to **1,992 approved songs** across 9 genres × 7 decades. Every
+  genre/decade cell now meets the ≥30 Billboard-reference target except
+  Hip Hop pre-1970s (0) and Hip Hop 1970s (1), which are historically
+  unreachable (hip-hop emerged mid-to-late 1970s and didn't chart
+  Billboard until 1979's "Rapper's Delight").
+- `scripts/matrix.mjs` — prints the live genre × decade count grid with
+  `*` markers on cells below 30, for at-a-glance content coverage.
+- `scripts/export-matrix.mjs` — regenerates
+  `exports/song-library-matrix.xlsx` (Matrix + Songs sheets) from the
+  live Supabase songs table.
+
+### Changed
+- `exports/song-library-matrix.xlsx` regenerated with the 1,992-song
+  corpus (585 KB, two sheets).
+
 ### Planned
 - First Xcode archive + TestFlight upload (needs user's Mac + Apple Developer account).
 - First Android Studio signed bundle + Play Console Internal Testing upload (needs user's Play Console + keystore).
@@ -25,9 +42,6 @@ on release.
   purchase → webhook → balance credit.
 - Golden Notes **gifting** UI + accept/decline flow (schema already
   in place; deferred from 0.3.0 to a follow-up).
-- Content expansion: every genre/decade cell to ≥20 songs. Current
-  thinnest cells: Pop 70s (6), Country 70s (8), Gospel 70s (9), Pop
-  90s (9), R&B 80s (9), Soul 10s (9), Jazz 90s (1 — needs work).
 
 ---
 
