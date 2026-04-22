@@ -50,8 +50,14 @@ const USERS = [
   },
   {
     email: "jim@conciergecareerservices.com",
-    role: "user",
+    role: "admin",
     firstName: "Jim",
+    lastName: "",
+  },
+  {
+    email: "jaz@conciergecareerservices.com",
+    role: "admin",
+    firstName: "Jaz",
     lastName: "",
   },
 ];
