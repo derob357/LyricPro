@@ -49,7 +49,7 @@ export default function SignIn() {
         email,
         options: {
           emailRedirectTo,
-          shouldCreateUser: false, // bootstrap-only accounts for now
+          shouldCreateUser: true,
         },
       });
       if (error) throw error;
