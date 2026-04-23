@@ -37,12 +37,12 @@ type SongData = {
   artistMetadata?: Record<string, string | null> | null;
 };
 
-type Stage = "main" | "artist" | "year" | "submitting";
+type Stage = "lyric" | "title" | "artist" | "year" | "submitting";
 
 const POINT_LABELS = {
-  low:    { main: 25,  artist: 25,  year: 50  },
-  medium: { main: 50,  artist: 50,  year: 100 },
-  high:   { main: 50,  artist: 100, year: 200 },
+  low:    { lyric: 25, title: 25, artist: 25,  year: 50  },
+  medium: { lyric: 50, title: 50, artist: 50,  year: 100 },
+  high:   { lyric: 50, title: 50, artist: 100, year: 200 },
 };
 
 const BUZZ_KEYS = ["q", "b", "p", "y", "w", "e"];
@@ -57,7 +57,7 @@ export default function Gameplay() {
   const guestToken = localStorage.getItem("lyricpro_guest_token");
 
   const [currentSong, setCurrentSong] = useState<SongData | null>(null);
-  const [stage, setStage] = useState<Stage>("main");
+  const [stage, setStage] = useState<Stage>("lyric");
   const [answers, setAnswers] = useState({ lyric: "", title: "", artist: "", year: "" });
   const [timeLeft, setTimeLeft] = useState(30);
   const [timerActive, setTimerActive] = useState(false);
@@ -76,7 +76,6 @@ export default function Gameplay() {
   );
 
   const difficulty = (room?.difficulty ?? "medium") as "low" | "medium" | "high";
-  const isHigh = difficulty === "high";
   const ptLabels = POINT_LABELS[difficulty];
   const isSolo = room?.mode === "solo";
 
@@ -84,7 +83,7 @@ export default function Gameplay() {
     onSuccess: (song) => {
       setCurrentSong(song);
       setAnswers({ lyric: "", title: "", artist: "", year: "" });
-      setStage("main");
+      setStage("lyric");
       setHasSubmitted(false);
       setBuzzedPlayerIndex(null);
       setTimeLeft(room?.timerSeconds ?? 30);
@@ -219,12 +218,16 @@ export default function Gameplay() {
     // Only the buzzed player can answer in MP mode; solo is always enabled.
     if (!isSolo && buzzedPlayerIndex === null) return;
     const next = { ...answers };
-    if (stage === "main") {
-      if (isHigh) next.lyric = String(value);
-      else next.title = String(value);
+    if (stage === "lyric") {
+      next.lyric = String(value);
+      setAnswers(next);
+      setStage("title");
+      setBuzzedPlayerIndex(null); // next stage re-opens buzzer
+    } else if (stage === "title") {
+      next.title = String(value);
       setAnswers(next);
       setStage("artist");
-      setBuzzedPlayerIndex(null); // next stage re-opens buzzer
+      setBuzzedPlayerIndex(null);
     } else if (stage === "artist") {
       next.artist = String(value);
       setAnswers(next);
@@ -256,36 +259,44 @@ export default function Gameplay() {
 
   // Stage metadata
   const stageInfo = (() => {
-    if (stage === "main") {
+    if (stage === "lyric") {
       return {
-        title: isHigh ? "Fill the Gap!" : "Name That Song!",
-        tag: "Main",
-        value: ptLabels.main,
-        options: (isHigh ? currentSong?.lyricOptions : currentSong?.titleOptions) ?? [],
-        prompt: isHigh
-          ? <>"{currentSong?.lyricPrompt}<span className="text-accent animate-pulse">...</span>"</>
-          : <>"{currentSong?.lyricPrompt} {currentSong?.lyricAnswer}"</>,
-        sub: isHigh ? "Pick the missing line" : "Which song is this?",
+        title: "Fill the Gap!",
+        tag: "Lyric",
+        value: ptLabels.lyric,
+        options: currentSong?.lyricOptions ?? [],
+        prompt: <>"{currentSong?.lyricPrompt}<span className="text-accent animate-pulse">...</span>"</>,
+        sub: "Pick the missing line",
+      };
+    }
+    if (stage === "title") {
+      return {
+        title: "Name That Song!",
+        tag: "Title",
+        value: ptLabels.title,
+        options: currentSong?.titleOptions ?? [],
+        prompt: <>"{currentSong?.lyricPrompt} {currentSong?.lyricAnswer}"</>,
+        sub: "Which song is this?",
       };
     }
     if (stage === "artist") {
       return {
-        title: "Bonus: Who's the Artist?",
-        tag: "Bonus 1",
+        title: "Who's the Artist?",
+        tag: "Artist",
         value: ptLabels.artist,
         options: currentSong?.artistOptions ?? [],
-        prompt: <>"{currentSong?.lyricPrompt}{isHigh ? " " + currentSong?.lyricAnswer : " " + currentSong?.lyricAnswer}" — who performed it?</>,
-        sub: `Worth ${ptLabels.artist} bonus pts`,
+        prompt: <>"{currentSong?.lyricPrompt} {currentSong?.lyricAnswer}" — who performed it?</>,
+        sub: `Worth ${ptLabels.artist} pts`,
       };
     }
     // year
     return {
-      title: "Bonus: What Year?",
-      tag: "Bonus 2",
+      title: "What Year?",
+      tag: "Year",
       value: ptLabels.year,
       options: currentSong?.yearOptions ?? [],
       prompt: <>What year was "{currentSong?.title}" released?</>,
-      sub: `Worth ${ptLabels.year} bonus pts`,
+      sub: `Worth ${ptLabels.year} pts`,
     };
   })();
 
@@ -322,7 +333,10 @@ export default function Gameplay() {
     );
   }
 
-  const stageColor = stage === "main" ? "primary" : stage === "artist" ? "accent" : "gold";
+  const stageColor =
+    stage === "lyric" || stage === "title" ? "primary" :
+    stage === "artist" ? "accent" :
+    "gold";
 
   return (
     <div className={`min-h-screen text-foreground relative overflow-hidden ${desaturated ? "stage-desaturated" : "stage-saturated"}`}>
@@ -411,7 +425,7 @@ export default function Gameplay() {
               </h2>
               <div className="flex items-center gap-2 mt-1">
                 <Badge className={`text-xs ${
-                  stage === "main" ? "bg-primary/20 text-primary border-primary/40" :
+                  stage === "lyric" || stage === "title" ? "bg-primary/20 text-primary border-primary/40" :
                   stage === "artist" ? "bg-accent/20 text-accent border-accent/40" :
                   "bg-yellow-500/20 text-yellow-400 border-yellow-500/40"
                 }`}>{stageInfo.tag}</Badge>
@@ -482,7 +496,8 @@ export default function Gameplay() {
         <div className="relative z-10 grid grid-cols-1 sm:grid-cols-2 gap-3 max-w-3xl mx-auto mb-8">
           {stageInfo.options.map((option, idx) => {
             const isChosen =
-              (stage === "main" && (isHigh ? answers.lyric : answers.title) === String(option)) ||
+              (stage === "lyric" && answers.lyric === String(option)) ||
+              (stage === "title" && answers.title === String(option)) ||
               (stage === "artist" && answers.artist === String(option)) ||
               (stage === "year" && answers.year === String(option));
             const disabled = hasSubmitted || (!isSolo && buzzedPlayerIndex !== null && buzzedPlayerIndex !== myIndex);

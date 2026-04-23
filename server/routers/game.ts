@@ -536,15 +536,18 @@ export const gameRouter = router({
       }
 
       // Difficulty-based point values
-      // Low:    Artist=25, Title=25, Year=50
-      // Medium: Artist=50, Title=50, Year=100
-      // High:   Lyric=50, Artist=100, Title=100, Year=200
+      // All difficulties score the same 4 stages (Lyric, Title, Artist, Year);
+      // difficulty is a points multiplier only. Lyric and Title share the same
+      // per-difficulty value.
+      // Low:    Lyric=25,  Title=25,  Artist=25,  Year=50
+      // Medium: Lyric=50,  Title=50,  Artist=50,  Year=100
+      // High:   Lyric=50,  Title=50,  Artist=100, Year=200
       const diff = room.difficulty as "low" | "medium" | "high";
       const pts = {
         // artistPartial = full artist points (primary-only match = full credit per spec)
-        low:    { lyric: 0,  lyricPartial: 0,  artist: 25, artistPartial: 25, title: 25, titlePartial: 15, year: 50,  yearClose2: 25, yearClose3: 10 },
-        medium: { lyric: 0,  lyricPartial: 0,  artist: 50, artistPartial: 50, title: 50, titlePartial: 30, year: 100, yearClose2: 50, yearClose3: 20 },
-        high:   { lyric: 50, lyricPartial: 25, artist: 100, artistPartial: 100, title: 100, titlePartial: 60, year: 200, yearClose2: 100, yearClose3: 40 },
+        low:    { lyric: 25, lyricPartial: 15, artist: 25,  artistPartial: 25,  title: 25, titlePartial: 15, year: 50,  yearClose2: 25,  yearClose3: 10 },
+        medium: { lyric: 50, lyricPartial: 30, artist: 50,  artistPartial: 50,  title: 50, titlePartial: 30, year: 100, yearClose2: 50,  yearClose3: 20 },
+        high:   { lyric: 50, lyricPartial: 25, artist: 100, artistPartial: 100, title: 50, titlePartial: 30, year: 200, yearClose2: 100, yearClose3: 40 },
       }[diff];
 
       // Score the answer
@@ -555,11 +558,9 @@ export const gameRouter = router({
       let titlePartial = false;
 
       if (!input.passUsed) {
-        // For Low/Medium: no lyric completion — show full lyric, score Artist+Title+Year only
-        if (diff === "high") {
-          lyricMatch = matchLyric(input.lyricAnswer, song.lyricAnswer);
-          lyricPoints = lyricMatch === "full" ? pts.lyric : lyricMatch === "partial" ? pts.lyricPartial : 0;
-        }
+        // Lyric scoring (all difficulties)
+        lyricMatch = matchLyric(input.lyricAnswer, song.lyricAnswer);
+        lyricPoints = lyricMatch === "full" ? pts.lyric : lyricMatch === "partial" ? pts.lyricPartial : 0;
 
         // Title scoring (Low/Medium/High all score title)
         const titleNorm = normalizeText(input.titleAnswer);
