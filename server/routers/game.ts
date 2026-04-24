@@ -778,7 +778,7 @@ export const gameRouter = router({
       mode: z.enum(["solo", "multiplayer", "team"]).optional(),
       genre: z.string().optional(),
       decade: z.string().optional(),
-      timeframe: z.enum(["weekly", "all_time"]).default("all_time"),
+      timeframe: z.enum(["weekly", "monthly", "all_time"]).default("all_time"),
       limit: z.number().int().min(1).max(100).default(20),
     }))
     .query(async ({ input }) => {
@@ -792,6 +792,9 @@ export const gameRouter = router({
       if (input.timeframe === "weekly") {
         const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
         conditions.push(sql`${leaderboardEntries.createdAt} >= ${weekAgo}`);
+      } else if (input.timeframe === "monthly") {
+        const monthAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+        conditions.push(sql`${leaderboardEntries.createdAt} >= ${monthAgo}`);
       }
 
       const entries = await db.select().from(leaderboardEntries)

@@ -262,7 +262,7 @@ export default function Shop() {
         <p className="text-xs text-muted-foreground text-center mt-8">
           Payments processed by Stripe. Golden Notes have no cash value and
           are non-refundable except where required by law. See{" "}
-          <a href="/terms" className="underline">Terms</a>.
+          <a href="/terms.html" className="underline">Terms</a>.
         </p>
       </div>
     </div>

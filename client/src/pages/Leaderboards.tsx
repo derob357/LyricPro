@@ -6,7 +6,8 @@ import { Badge } from "@/components/ui/badge";
 import { trpc } from "@/lib/trpc";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { getRankTier } from "@/lib/scoring";
-import { ArrowLeft, Trophy, Crown, Medal, Clock, Globe, Music, Users, User, UsersRound, Play } from "lucide-react";
+import { ArrowLeft, Trophy, Crown, Medal, CalendarDays, CalendarRange, Globe, Music, Users, User, UsersRound, Play, Search, X } from "lucide-react";
+import { Input } from "@/components/ui/input";
 
 const GENRES = ["R&B", "Hip Hop", "Pop", "Rock", "Country", "Gospel", "Soul", "Jazz", "Blues", "Alternative", "Reggae"];
 const DECADES = ["1940–1950", "1950–1960", "1960–1970", "1970–1980", "1980–1990", "1990–2000", "2000–2010", "2010–2020", "2020–Present"];
@@ -20,7 +21,8 @@ export default function Leaderboards() {
   const [selectedMode, setSelectedMode] = useState<GameMode | undefined>(undefined);
   const [selectedGenre, setSelectedGenre] = useState<string | undefined>(undefined);
   const [selectedDecade, setSelectedDecade] = useState<string | undefined>(undefined);
-  const [timeframe, setTimeframe] = useState<"weekly" | "all_time">("all_time");
+  const [timeframe, setTimeframe] = useState<"weekly" | "monthly" | "all_time">("all_time");
+  const [searchQuery, setSearchQuery] = useState("");
 
   const { data: entries, isLoading } = trpc.game.getLeaderboard.useQuery({
     mode: selectedMode,
@@ -29,6 +31,14 @@ export default function Leaderboards() {
     timeframe,
     limit: 50,
   });
+
+  const normalizedSearch = searchQuery.trim().toLowerCase();
+  const filteredEntries = normalizedSearch
+    ? entries?.filter(e => {
+        const name = (e.displayName || e.guestName || "").toLowerCase();
+        return name.includes(normalizedSearch);
+      })
+    : entries;
 
   const getRankIcon = (idx: number) => {
     if (idx === 0) return <Crown className="w-5 h-5 text-yellow-400" />;
@@ -56,28 +66,48 @@ export default function Leaderboards() {
       <div className="container py-6 max-w-2xl">
         <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="space-y-5">
 
-          {/* Timeframe toggle */}
+          {/* Timeframe toggle: Week / Month / All Time */}
           <div className="flex gap-2">
-            <button
-              onClick={() => setTimeframe("all_time")}
-              className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-xl border font-medium text-sm transition-all ${
-                timeframe === "all_time"
-                  ? "border-primary/60 bg-primary/10 text-primary"
-                  : "glass border-border/40 text-muted-foreground hover:border-primary/30"
-              }`}
-            >
-              <Globe className="w-4 h-4" /> All Time
-            </button>
-            <button
-              onClick={() => setTimeframe("weekly")}
-              className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-xl border font-medium text-sm transition-all ${
-                timeframe === "weekly"
-                  ? "border-primary/60 bg-primary/10 text-primary"
-                  : "glass border-border/40 text-muted-foreground hover:border-primary/30"
-              }`}
-            >
-              <Clock className="w-4 h-4" /> This Week
-            </button>
+            {[
+              { value: "weekly" as const,   icon: CalendarDays,  label: "Week" },
+              { value: "monthly" as const,  icon: CalendarRange, label: "Month" },
+              { value: "all_time" as const, icon: Globe,         label: "All Time" },
+            ].map(({ value, icon: Icon, label }) => (
+              <button
+                key={value}
+                type="button"
+                onClick={() => setTimeframe(value)}
+                className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-xl border font-medium text-sm transition-all ${
+                  timeframe === value
+                    ? "border-primary/60 bg-primary/10 text-primary"
+                    : "glass border-border/40 text-muted-foreground hover:border-primary/30"
+                }`}
+              >
+                <Icon className="w-4 h-4" /> {label}
+              </button>
+            ))}
+          </div>
+
+          {/* Search */}
+          <div className="relative">
+            <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" />
+            <Input
+              type="search"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Search players…"
+              className="pl-9 pr-9"
+            />
+            {searchQuery && (
+              <button
+                type="button"
+                onClick={() => setSearchQuery("")}
+                aria-label="Clear search"
+                className="absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded hover:bg-muted text-muted-foreground"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            )}
           </div>
 
           {/* Mode filter */}
@@ -162,7 +192,7 @@ export default function Leaderboards() {
             <div className="p-4 border-b border-border/30 flex items-center gap-2">
               <Trophy className="w-4 h-4 text-yellow-400" />
               <h2 className="font-display font-semibold text-foreground">
-                {timeframe === "weekly" ? "This Week's" : "All-Time"} Top Players
+                {timeframe === "weekly" ? "This Week's" : timeframe === "monthly" ? "This Month's" : "All-Time"} Top Players
               </h2>
               {(selectedMode || selectedGenre || selectedDecade) && (
                 <div className="flex gap-1 ml-auto">
@@ -178,22 +208,31 @@ export default function Leaderboards() {
                 <div className="w-8 h-8 rounded-full border-2 border-primary border-t-transparent animate-spin mx-auto mb-3" />
                 <p className="text-muted-foreground text-sm">Loading leaderboard...</p>
               </div>
-            ) : !entries || entries.length === 0 ? (
+            ) : !filteredEntries || filteredEntries.length === 0 ? (
               <div className="p-8 text-center">
                 <Music className="w-10 h-10 text-muted-foreground mx-auto mb-3" />
-                <p className="text-foreground font-medium mb-1">No entries yet</p>
-                <p className="text-muted-foreground text-sm">Be the first to set a score!</p>
-                <Button
-                  size="sm"
-                  className="mt-4 bg-primary text-primary-foreground hover:bg-primary/90"
-                  onClick={() => navigate("/setup")}
-                >
-                  Play Now
-                </Button>
+                {normalizedSearch ? (
+                  <>
+                    <p className="text-foreground font-medium mb-1">No players match "{searchQuery}"</p>
+                    <p className="text-muted-foreground text-sm">Try a different search or clear the filter.</p>
+                  </>
+                ) : (
+                  <>
+                    <p className="text-foreground font-medium mb-1">No entries yet</p>
+                    <p className="text-muted-foreground text-sm">Be the first to set a score!</p>
+                    <Button
+                      size="sm"
+                      className="mt-4 bg-primary text-primary-foreground hover:bg-primary/90"
+                      onClick={() => navigate("/setup")}
+                    >
+                      Play Now
+                    </Button>
+                  </>
+                )}
               </div>
             ) : (
               <div className="divide-y divide-border/20">
-                {entries.map((entry, idx) => {
+                {filteredEntries.map((entry, idx) => {
                   const isMe = isAuthenticated && user && entry.userId === user.id;
                   const name = entry.displayName || entry.guestName || "Anonymous";
                   const rankInfo = getRankTier(entry.score);

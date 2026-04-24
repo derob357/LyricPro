@@ -376,11 +376,13 @@ export default function Home() {
           <p className="text-muted-foreground text-sm">
             Finish the lyric. Name the artist. Guess the year. Rule the room.
           </p>
-          <div className="flex gap-4 text-sm text-muted-foreground">
+          <div className="flex flex-wrap gap-4 text-sm text-muted-foreground">
             <button onClick={() => navigate("/leaderboards")} className="hover:text-foreground transition-colors">Leaderboards</button>
             {isAuthenticated && (
               <button onClick={() => navigate("/profile")} className="hover:text-foreground transition-colors">Profile</button>
             )}
+            <a href="/privacy.html" className="hover:text-foreground transition-colors">Privacy</a>
+            <a href="/terms.html" className="hover:text-foreground transition-colors">Terms</a>
           </div>
         </div>
       </footer>
