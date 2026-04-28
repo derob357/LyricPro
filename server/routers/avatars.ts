@@ -177,4 +177,29 @@ export const avatarsRouter = router({
         return { avatarId: avatar.id, newBalance, equipped: true as const };
       });
     }),
+
+  // Set the user's equipped avatar. Must be one they own.
+  equip: protectedProcedure
+    .input(z.object({ avatarId: z.number().int().positive() }))
+    .mutation(async ({ ctx, input }) => {
+      rateLimit("avatars.equip", ctx.user.id, { max: 60, windowMs: 60_000 });
+      const db = await getDb();
+      if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Database unavailable" });
+
+      const owns = await db
+        .select({ avatarId: userAvatars.avatarId })
+        .from(userAvatars)
+        .where(and(eq(userAvatars.userId, ctx.user.id), eq(userAvatars.avatarId, input.avatarId)))
+        .limit(1);
+      if (owns.length === 0) {
+        throw new TRPCError({ code: "FORBIDDEN", message: "You don't own this avatar." });
+      }
+
+      await db
+        .update(users)
+        .set({ equippedAvatarId: input.avatarId, updatedAt: new Date() })
+        .where(eq(users.id, ctx.user.id));
+
+      return { equippedAvatarId: input.avatarId };
+    }),
 });
