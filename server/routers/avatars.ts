@@ -98,6 +98,14 @@ export const avatarsRouter = router({
       const db = await getDb();
       if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Database unavailable" });
 
+      // Ensure the balance row exists (mirrors getOrCreateBalance in
+      // goldenNotes.ts so brand-new users hit a clean "0 balance" path
+      // rather than relying on the UPDATE finding no row at all).
+      await db
+        .insert(goldenNoteBalances)
+        .values({ userId: ctx.user.id })
+        .onConflictDoNothing();
+
       // Look up avatar (server-owned price)
       const [avatar] = await db
         .select()
