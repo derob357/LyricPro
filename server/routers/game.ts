@@ -5,7 +5,7 @@ import { rateLimit } from "../_core/rateLimit";
 import { getDb } from "../db";
 import {
   songs, gameRooms, roomPlayers, teams, gameSessions, roundResults,
-  guestSessions, leaderboardEntries, artistMetadata, users,
+  guestSessions, leaderboardEntries, artistMetadata, users, avatars,
 } from "../../drizzle/schema";
 import { nanoid } from "nanoid";
 
@@ -797,12 +797,22 @@ export const gameRouter = router({
         conditions.push(sql`${leaderboardEntries.createdAt} >= ${monthAgo}`);
       }
 
-      const entries = await db.select().from(leaderboardEntries)
+      const rows = await db
+        .select({
+          entry: leaderboardEntries,
+          equippedAvatarSlug: avatars.slug,
+        })
+        .from(leaderboardEntries)
+        .leftJoin(users, eq(leaderboardEntries.userId, users.id))
+        .leftJoin(avatars, eq(users.equippedAvatarId, avatars.id))
         .where(conditions.length > 0 ? and(...conditions) : undefined)
         .orderBy(sql`${leaderboardEntries.score} DESC`)
         .limit(input.limit);
 
-      return entries;
+      return rows.map((row) => ({
+        ...row.entry,
+        equippedAvatarSlug: row.equippedAvatarSlug ?? null,
+      }));
     }),
 
   // Assign player to team
