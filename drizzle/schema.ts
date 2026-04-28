@@ -617,13 +617,14 @@ export const avatars = pgTable("avatars", {
   createdAt: createdAtColumn(),
 });
 export type Avatar = typeof avatars.$inferSelect;
+export type InsertAvatar = typeof avatars.$inferInsert;
 
 export const userAvatars = pgTable(
   "user_avatars",
   {
     userId: integer("userId").notNull(),
     avatarId: integer("avatarId").notNull(),
-    acquiredAt: createdAtColumn(),
+    acquiredAt: timestamp("acquiredAt", { withTimezone: true }).defaultNow().notNull(),
     acquiredVia: avatarAcquiredViaEnum("acquiredVia").notNull(),
     spentGn: integer("spentGn").default(0).notNull(),
   },
@@ -632,3 +633,4 @@ export const userAvatars = pgTable(
   }),
 );
 export type UserAvatar = typeof userAvatars.$inferSelect;
+export type InsertUserAvatar = typeof userAvatars.$inferInsert;
