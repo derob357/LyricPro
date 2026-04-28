@@ -4,6 +4,7 @@ import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
 import { getLoginUrl } from "@/const";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { UserAvatar } from "@/components/UserAvatar";
 
 export function PersistentHeader() {
   const { data: user } = trpc.auth.me.useQuery();
@@ -47,8 +48,9 @@ export function PersistentHeader() {
               {/* User Menu */}
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                  <Button variant="ghost" className="text-sm">
-                    {user.firstName || "Player"}
+                  <Button variant="ghost" className="text-sm flex items-center gap-2 px-2">
+                    <UserAvatar size="sm" />
+                    <span className="hidden sm:inline">{user.firstName || "Player"}</span>
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end">
@@ -63,6 +65,9 @@ export function PersistentHeader() {
                   </DropdownMenuItem>
                   <DropdownMenuItem asChild>
                     <Link href="/shop">Shop (Golden Notes)</Link>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem asChild>
+                    <Link href="/avatars">Avatars</Link>
                   </DropdownMenuItem>
                   <DropdownMenuItem asChild>
                     <button
