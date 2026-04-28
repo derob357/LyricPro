@@ -1,5 +1,6 @@
 import { useEffect } from "react";
 import { useLocation, useParams } from "wouter";
+import { UserAvatar } from "@/components/UserAvatar";
 import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -153,13 +154,16 @@ export default function FinalResults() {
                       <div className="flex items-center justify-center w-6">
                         {getRankIcon(idx)}
                       </div>
-                      <div className={`w-10 h-10 rounded-full flex items-center justify-center font-bold text-sm ${
-                        idx === 0 ? "bg-yellow-400/20 text-yellow-400" :
-                        isMe ? "bg-primary/20 text-primary" :
-                        "bg-secondary text-foreground"
-                      }`}>
-                        {name.charAt(0).toUpperCase()}
-                      </div>
+                      {isMe ? (
+                        <UserAvatar size="sm" className="w-10 h-10 rounded-full" />
+                      ) : (
+                        <div className={`w-10 h-10 rounded-full flex items-center justify-center font-bold text-sm ${
+                          idx === 0 ? "bg-yellow-400/20 text-yellow-400" :
+                          "bg-secondary text-foreground"
+                        }`}>
+                          {name.charAt(0).toUpperCase()}
+                        </div>
+                      )}
                       <div className="flex-1">
                         <div className="flex items-center gap-2">
                           <span className={`font-semibold ${isMe ? "text-primary" : "text-foreground"}`}>{name}</span>
