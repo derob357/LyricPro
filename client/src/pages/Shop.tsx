@@ -6,7 +6,7 @@ import { useAuth } from "@/_core/hooks/useAuth";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
-import { Sparkles, Music, Gift, History, Check, Globe } from "lucide-react";
+import { Music2, Music, Gift, History, Check, Globe } from "lucide-react";
 import { CAN_PURCHASE } from "@/lib/platform";
 
 // The Shop page lets web users buy Golden Notes packs via Stripe Checkout.
@@ -105,7 +105,7 @@ export default function Shop() {
         <div className="flex items-start justify-between gap-4 mb-8">
           <div>
             <div className="flex items-center gap-2 mb-2">
-              <Sparkles className="w-5 h-5 text-yellow-400 neon-gold-sm" />
+              <Music2 className="w-5 h-5 text-yellow-400 neon-gold-sm" />
               <h1 className="font-display font-black text-3xl sm:text-4xl text-gradient">
                 Golden Notes Shop
               </h1>
@@ -208,7 +208,7 @@ export default function Shop() {
                 )}
               </div>
               <div className="flex items-baseline gap-2 mb-1">
-                <Sparkles className="w-4 h-4 text-yellow-400 neon-gold-sm" />
+                <Music2 className="w-4 h-4 text-yellow-400 neon-gold-sm" />
                 <span className="font-display font-black text-2xl text-yellow-400 neon-gold">
                   {pack.notes.toLocaleString()}
                 </span>

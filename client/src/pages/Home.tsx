@@ -10,7 +10,7 @@ import SocialShareButtons from "@/components/SocialShareButtons";
 import { getHomepageShareContent } from "@/lib/shareUtils";
 import {
   Music, Mic, Users, Trophy, Zap, Star, ChevronRight,
-  Play, Radio, Clock, Target, ArrowRight, Crown, Flame
+  Play, Radio, Clock, Target, ArrowRight, Crown, Flame, ShoppingCart
 } from "lucide-react";
 
 const GENRES = ["R&B", "Hip Hop", "Pop", "Rock", "Country", "Gospel", "Soul", "Jazz"];
@@ -61,6 +61,12 @@ export default function Home() {
             <Button variant="ghost" size="sm" onClick={() => navigate("/leaderboards")}
               className="text-muted-foreground hover:text-foreground hidden sm:flex">
               <Trophy className="w-4 h-4 mr-1" /> Leaderboards
+            </Button>
+            <Button variant="ghost" size="sm" onClick={() => navigate("/shop")}
+              className="text-muted-foreground hover:text-foreground"
+              title="Shop">
+              <ShoppingCart className="w-4 h-4 sm:mr-1" />
+              <span className="hidden sm:inline">Shop</span>
             </Button>
             {isAuthenticated ? (
               <div className="flex items-center gap-2">

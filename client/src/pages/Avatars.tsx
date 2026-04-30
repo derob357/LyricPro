@@ -4,7 +4,7 @@ import { trpc } from "@/lib/trpc";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
-import { Sparkles, Check, Lock } from "lucide-react";
+import { Music2, Check, Lock } from "lucide-react";
 import { UserAvatar } from "@/components/UserAvatar";
 import { CAN_PURCHASE } from "@/lib/platform";
 
@@ -137,7 +137,7 @@ export default function Avatars() {
                       </div>
                       <div className="text-sm mt-3 text-foreground font-semibold">{a.name}</div>
                       <div className="flex items-center gap-1 text-yellow-400 neon-gold-sm text-sm font-bold mb-3">
-                        <Sparkles className="w-3 h-3" /> {a.priceGn}
+                        <Music2 className="w-3 h-3" /> {a.priceGn}
                       </div>
                       {canAfford ? (
                         <Button

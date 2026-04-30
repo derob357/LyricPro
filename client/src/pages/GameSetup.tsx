@@ -8,14 +8,14 @@ import { Label } from "@/components/ui/label";
 import { trpc } from "@/lib/trpc";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { toast } from "sonner";
-import { ArrowLeft, Users, User, UsersRound, Wifi, Clock, Layers, BarChart3, Music, Calendar, Zap, Flame, Trophy, ChevronRight, LogOut } from "lucide-react";
+import { ArrowLeft, Users, User, UsersRound, Wifi, Clock, Layers, BarChart3, Music, Calendar, ChevronRight, LogOut } from "lucide-react";
 import { getLoginUrl, getSignUpUrl } from "@/const";
-import type { GameMode, RankingMode, Difficulty } from "@/contexts/GameContext";
+import type { GameMode, Difficulty } from "@/contexts/GameContext";
 
 const GENRES = ["Country", "Hip Hop", "R&B", "Pop", "Rock", "Gospel", "Soul", "Jazz", "Blues", "Alternative", "Reggae", "Mixed"];
 const DECADES = ["1940–1950", "1950–1960", "1960–1970", "1970–1980", "1980–1990", "1990–2000", "2000–2010", "2010–2020", "2020–Present"];
 const TIMERS = [15, 30, 45];
-const ROUNDS = [5, 10, 20];
+const ROUNDS = [3, 5, 10];
 
 export default function GameSetup() {
   const [, navigate] = useLocation();
@@ -24,7 +24,6 @@ export default function GameSetup() {
   const { isAuthenticated, logout, user } = useAuth();
 
   const [mode, setMode] = useState<GameMode>((params.get("mode") as GameMode) || "solo");
-  const [rankingMode, setRankingMode] = useState<RankingMode>("total_points");
   const [selectedGenres, setSelectedGenres] = useState<string[]>([]);
   const [selectedDecades, setSelectedDecades] = useState<string[]>([]);
   const [difficulty, setDifficulty] = useState<Difficulty>("medium");
@@ -78,7 +77,6 @@ export default function GameSetup() {
     setIsCreating(true);
     createRoomMutation.mutate({
       mode,
-      rankingMode,
       genres: selectedGenres,
       decades: selectedDecades,
       difficulty,
@@ -92,12 +90,6 @@ export default function GameSetup() {
     { value: "solo", icon: User, label: "Solo", desc: "Play alone" },
     { value: "multiplayer", icon: Users, label: "Multiplayer", desc: "Turn-based" },
     { value: "team", icon: UsersRound, label: "Team Mode", desc: "Team vs team" },
-  ];
-
-  const rankingOptions = [
-    { value: "total_points", icon: Trophy, label: "Total Points", desc: "Classic scoring" },
-    { value: "speed_bonus", icon: Zap, label: "Speed Bonus", desc: "Fast answers score more" },
-    { value: "streak_bonus", icon: Flame, label: "Streak Bonus", desc: "Consecutive wins multiply" },
   ];
 
   const difficultyOptions = [
@@ -176,31 +168,6 @@ export default function GameSetup() {
                 >
                   <Icon className={`w-6 h-6 mx-auto mb-2 ${mode === value ? "text-primary" : "text-muted-foreground"}`} />
                   <div className={`font-semibold text-sm ${mode === value ? "text-primary" : "text-foreground"}`}>{label}</div>
-                  <div className="text-xs text-muted-foreground mt-0.5">{desc}</div>
-                </button>
-              ))}
-            </div>
-          </section>
-
-          {/* Ranking Mode */}
-          <section>
-            <div className="flex items-center gap-2 mb-4">
-              <BarChart3 className="w-4 h-4 text-primary" />
-              <h2 className="font-display font-semibold text-lg text-foreground">Ranking Mode</h2>
-            </div>
-            <div className="grid grid-cols-3 gap-3">
-              {rankingOptions.map(({ value, icon: Icon, label, desc }) => (
-                <button
-                  key={value}
-                  onClick={() => setRankingMode(value as RankingMode)}
-                  className={`glass rounded-xl p-4 text-center transition-all duration-200 border ${
-                    rankingMode === value
-                      ? "border-primary/60 bg-primary/10 glow-purple"
-                      : "border-border/40 hover:border-primary/30"
-                  }`}
-                >
-                  <Icon className={`w-5 h-5 mx-auto mb-2 ${rankingMode === value ? "text-primary" : "text-muted-foreground"}`} />
-                  <div className={`font-semibold text-sm ${rankingMode === value ? "text-primary" : "text-foreground"}`}>{label}</div>
                   <div className="text-xs text-muted-foreground mt-0.5">{desc}</div>
                 </button>
               ))}
@@ -345,14 +312,6 @@ export default function GameSetup() {
                 <div className="min-w-0">
                   <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Mode</p>
                   <p className="text-sm font-medium text-foreground truncate">{mode === "solo" ? "Solo" : mode === "multiplayer" ? "Multiplayer" : "Team Mode"}</p>
-                </div>
-              </div>
-              {/* Ranking Mode */}
-              <div className="flex items-center gap-2.5 bg-white/5 rounded-xl px-3 py-2.5">
-                {rankingMode === "speed_bonus" ? <Zap className="w-4 h-4 text-yellow-400 shrink-0" /> : rankingMode === "streak_bonus" ? <Flame className="w-4 h-4 text-orange-400 shrink-0" /> : <Trophy className="w-4 h-4 text-yellow-400 shrink-0" />}
-                <div className="min-w-0">
-                  <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Ranking</p>
-                  <p className="text-sm font-medium text-foreground truncate">{rankingMode === "total_points" ? "Total Points" : rankingMode === "speed_bonus" ? "Speed Bonus" : "Streak Bonus"}</p>
                 </div>
               </div>
               {/* Difficulty */}
