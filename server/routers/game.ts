@@ -6,6 +6,7 @@ import { getDb } from "../db";
 import {
   songs, gameRooms, roomPlayers, teams, gameSessions, roundResults,
   guestSessions, leaderboardEntries, artistMetadata, users, avatars,
+  lyricSectionTypeEnum,
 } from "../../drizzle/schema";
 import { nanoid } from "nanoid";
 
@@ -321,16 +322,15 @@ export const gameRouter = router({
       // Section-type filter PLUS weighted bias for the candidate pick. Low: hooks/
       // choruses only. Medium/High: chorus + hook + verse dominant; bridge and
       // call-response remain occasional picks (low weight) rather than dropped.
-      type SectionType = "chorus" | "hook" | "verse" | "call-response" | "bridge";
+      type SectionType = (typeof lyricSectionTypeEnum.enumValues)[number];
       let difficultyFilter: SectionType[];
       let sectionWeights: Record<SectionType, number>;
       if (room.difficulty === "low") {
         difficultyFilter = ["chorus", "hook"];
         sectionWeights = { chorus: 1, hook: 1, verse: 0, "call-response": 0, bridge: 0 };
-      } else if (room.difficulty === "medium") {
-        difficultyFilter = ["chorus", "hook", "verse", "bridge", "call-response"];
-        sectionWeights = { chorus: 1, hook: 1, verse: 3, bridge: 0.3, "call-response": 0.3 };
       } else {
+        // Medium and High share section sampling — they differ in what's shown
+        // to the player (lyric fill-in difficulty), not in song selection.
         difficultyFilter = ["chorus", "hook", "verse", "bridge", "call-response"];
         sectionWeights = { chorus: 1, hook: 1, verse: 3, bridge: 0.3, "call-response": 0.3 };
       }
@@ -495,8 +495,13 @@ export const gameRouter = router({
       // pulled from other same-genre/decade songs.
       // Prefer stored distractors authored alongside the song; fall back to the old
       // other-song-snippet method for any rows not yet rewritten by the migration.
+      const answerNormalized = song.lyricAnswer.toLowerCase().trim();
       const stored = Array.isArray(song.distractors)
-        ? song.distractors.filter((d): d is string => typeof d === "string" && d.length > 0)
+        ? song.distractors.filter((d): d is string =>
+            typeof d === "string" &&
+            d.length > 0 &&
+            d.toLowerCase().trim() !== answerNormalized
+          )
         : [];
       const lyricDistractors = stored.length >= 3
         ? stored.slice(0, 3)
