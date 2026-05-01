@@ -1,14 +1,19 @@
 // scripts/regenerate-lyrics.mjs
-// One-shot rewriter. For each song, asks the Forge LLM to:
+// One-shot rewriter. For each song, asks Claude to:
 //   - Reconstruct the original lyric line as ≥6 words (relaxed for hook/chorus).
 //   - Split it into prompt (first ~2/3) + answer (last ~1/3).
 //   - Generate 3 distractors that rhyme with the answer and fit the meter/genre.
 // Writes results to scripts/regenerate-lyrics.checkpoint.json. DB is NOT touched.
+//
+// Usage:
+//   node scripts/regenerate-lyrics.mjs           # process all remaining songs
+//   node scripts/regenerate-lyrics.mjs 10        # process at most 10 (smoke test)
 
 import postgres from "postgres";
 import dotenv from "dotenv";
 import fs from "node:fs";
 import path from "node:path";
+import Anthropic from "@anthropic-ai/sdk";
 
 dotenv.config();
 
@@ -21,86 +26,80 @@ if (!DB_URL) {
   process.exit(1);
 }
 
-const FORGE_URL = (process.env.BUILT_IN_FORGE_API_URL ?? "").replace(/\/$/, "");
-const FORGE_KEY = process.env.BUILT_IN_FORGE_API_KEY;
-if (!FORGE_URL || !FORGE_KEY) {
-  console.error("Set BUILT_IN_FORGE_API_URL and BUILT_IN_FORGE_API_KEY in .env");
+if (!process.env.ANTHROPIC_API_KEY) {
+  console.error("Set ANTHROPIC_API_KEY in .env");
   process.exit(1);
 }
-const FORGE_ENDPOINT = `${FORGE_URL}/v1/chat/completions`;
+
+const anthropic = new Anthropic();
+const MODEL = "claude-haiku-4-5-20251001";
 
 const CHECKPOINT_PATH = path.resolve("scripts/regenerate-lyrics.checkpoint.json");
 const CONCURRENCY = 6;
 const LIMIT = parseInt(process.argv[2] ?? "0", 10);
 
-const SCHEMA = {
-  name: "lyric_rewrite",
-  schema: {
+// Anthropic tool definition — equivalent to OpenAI's response_format json_schema.
+// The model is forced to call this tool with the structured args.
+const TOOL = {
+  name: "submit_rewrite",
+  description: "Submit the rewritten lyric prompt, answer, and 3 distractors.",
+  input_schema: {
     type: "object",
     additionalProperties: false,
     required: ["prompt", "answer", "distractors"],
     properties: {
-      prompt: { type: "string", description: "Visible part of the lyric (first ~2/3)." },
-      answer: { type: "string", description: "Hidden part of the lyric (last ~1/3)." },
+      prompt: {
+        type: "string",
+        description: "Visible part of the lyric (first ~2/3 of the line).",
+      },
+      answer: {
+        type: "string",
+        description: "Hidden part of the lyric (last ~1/3 of the line, 1-6 words).",
+      },
       distractors: {
         type: "array",
         minItems: 3,
         maxItems: 3,
         items: { type: "string" },
-        description: "Three wrong endings that rhyme with answer and could plausibly finish the line.",
+        description:
+          "Three wrong endings that rhyme (or near-rhyme) with the actual answer and could plausibly finish the line.",
       },
     },
   },
-  strict: true,
 };
 
-function buildMessages(song) {
-  const sysPrompt = `You rewrite trivia questions for a music app. For the given song, output a JSON object that:
-1. Reconstructs the actual lyric line. If the original snippet is short (e.g. just "yourself"), expand to a complete, well-known line (≥6 words) when the section is "verse" or "bridge"; for "hook" or "chorus" you may leave shorter iconic phrases as-is.
-2. Splits it as prompt (first ~2/3 of the words) + answer (last ~1/3 of the words). Word count split is approximate; keep the answer to 1-6 words.
-3. Generates 3 distractors that:
+const SYSTEM_PROMPT = `You rewrite trivia questions for a music app. For each given song, call the submit_rewrite tool with arguments that:
+1. Reconstruct the actual lyric line. If the original snippet is short (e.g. just "yourself"), expand to a complete, well-known line (≥6 words) when the section is "verse" or "bridge"; for "hook" or "chorus" you may leave shorter iconic phrases as-is.
+2. Split the line into prompt (first ~2/3 of the words) + answer (last ~1/3 of the words). The split is approximate; keep the answer to 1-6 words.
+3. Generate 3 distractors that:
    - rhyme (or near-rhyme) with the actual answer,
    - fit the song's genre, register, and era,
    - are NOT the actual answer or trivial variants of it,
    - are plausible enough that a casual listener might believe them.
 
-Return ONLY the JSON. Use real, well-known lyrics — do not invent. If you don't know the song, return your best inference based on title and artist style.`;
+Use real, well-known lyrics — do not invent. If you don't know the song, infer from title and artist style.`;
 
-  const userPrompt = `Song: "${song.title}" by ${song.artistName} (${song.releaseYear}, ${song.genre}, ${song.lyricSectionType})
+function buildUserMessage(song) {
+  return `Song: "${song.title}" by ${song.artistName} (${song.releaseYear}, ${song.genre}, ${song.lyricSectionType})
 Current snippet shown to player: "${song.lyricPrompt}"
 Current expected answer: "${song.lyricAnswer}"
 
-Rewrite per the rules.`;
-
-  return [
-    { role: "system", content: sysPrompt },
-    { role: "user", content: userPrompt },
-  ];
+Rewrite per the rules and call submit_rewrite.`;
 }
 
-async function callForge(song) {
-  const body = {
-    model: "gemini-2.5-flash",
-    messages: buildMessages(song),
+async function callClaude(song) {
+  const res = await anthropic.messages.create({
+    model: MODEL,
     max_tokens: 1024,
-    response_format: { type: "json_schema", json_schema: SCHEMA },
-  };
-  const res = await fetch(FORGE_ENDPOINT, {
-    method: "POST",
-    headers: {
-      "content-type": "application/json",
-      authorization: `Bearer ${FORGE_KEY}`,
-    },
-    body: JSON.stringify(body),
+    system: SYSTEM_PROMPT,
+    tools: [TOOL],
+    tool_choice: { type: "tool", name: "submit_rewrite" },
+    messages: [{ role: "user", content: buildUserMessage(song) }],
   });
-  if (!res.ok) {
-    const detail = await res.text().catch(() => "");
-    throw new Error(`Forge ${res.status}: ${detail.slice(0, 200)}`);
-  }
-  const json = await res.json();
-  const content = json.choices?.[0]?.message?.content;
-  if (typeof content !== "string") throw new Error("No content in response");
-  return JSON.parse(content);
+
+  const toolUse = res.content.find((b) => b.type === "tool_use");
+  if (!toolUse) throw new Error("No tool_use block in response");
+  return toolUse.input;
 }
 
 function loadCheckpoint() {
@@ -115,28 +114,32 @@ function saveCheckpoint(cp) {
 }
 
 async function processBatch(songs, cp) {
-  await Promise.all(songs.map(async (song) => {
-    try {
-      const result = await callForge(song);
-      cp.results[song.id] = {
-        id: song.id,
-        title: song.title,
-        artist: song.artistName,
-        section: song.lyricSectionType,
-        original: { prompt: song.lyricPrompt, answer: song.lyricAnswer },
-        rewritten: result,
-      };
-    } catch (err) {
-      cp.results[song.id] = { id: song.id, error: String(err) };
-    }
-  }));
+  await Promise.all(
+    songs.map(async (song) => {
+      try {
+        const result = await callClaude(song);
+        cp.results[song.id] = {
+          id: song.id,
+          title: song.title,
+          artist: song.artistName,
+          section: song.lyricSectionType,
+          original: { prompt: song.lyricPrompt, answer: song.lyricAnswer },
+          rewritten: result,
+        };
+      } catch (err) {
+        cp.results[song.id] = { id: song.id, error: String(err) };
+      }
+    })
+  );
   saveCheckpoint(cp);
 }
 
 async function main() {
   const sql = postgres(DB_URL, { max: 4 });
   const cp = loadCheckpoint();
-  console.log(`Loaded ${Object.keys(cp.results).length} prior results from checkpoint.`);
+  console.log(
+    `Loaded ${Object.keys(cp.results).length} prior results from checkpoint.`
+  );
 
   const allSongs = await sql`
     SELECT id, title, "artistName", "releaseYear", genre, "lyricPrompt", "lyricAnswer", "lyricSectionType"
@@ -144,7 +147,7 @@ async function main() {
     WHERE "isActive" = true AND "approvalStatus" = 'approved'
     ORDER BY id ASC
   `;
-  const todo = allSongs.filter(s => !cp.results[s.id]);
+  const todo = allSongs.filter((s) => !cp.results[s.id]);
   const slice = LIMIT > 0 ? todo.slice(0, LIMIT) : todo;
   console.log(`${todo.length} remaining; processing ${slice.length}.`);
 
@@ -162,7 +165,7 @@ async function main() {
   console.log(`Done. Checkpoint at ${CHECKPOINT_PATH}`);
 }
 
-main().catch(err => {
+main().catch((err) => {
   console.error(err);
   process.exit(1);
 });
