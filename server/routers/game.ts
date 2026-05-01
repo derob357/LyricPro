@@ -496,12 +496,16 @@ export const gameRouter = router({
       // Prefer stored distractors authored alongside the song; fall back to the old
       // other-song-snippet method for any rows not yet rewritten by the migration.
       const answerNormalized = song.lyricAnswer.toLowerCase().trim();
+      const seenDistractors = new Set<string>([answerNormalized]);
       const stored = Array.isArray(song.distractors)
-        ? song.distractors.filter((d): d is string =>
-            typeof d === "string" &&
-            d.length > 0 &&
-            d.toLowerCase().trim() !== answerNormalized
-          )
+        ? song.distractors.filter((d): d is string => {
+            if (typeof d !== "string") return false;
+            const norm = d.toLowerCase().trim();
+            if (norm.length === 0) return false;
+            if (seenDistractors.has(norm)) return false;
+            seenDistractors.add(norm);
+            return true;
+          })
         : [];
       const lyricDistractors = stored.length >= 3
         ? stored.slice(0, 3)
