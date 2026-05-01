@@ -29,6 +29,13 @@
       "when": 1777570386887,
       "tag": "0003_right_terror",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1777655662940,
+      "tag": "0004_curly_paper_doll",
+      "breakpoints": true
     }
   ]
 }
