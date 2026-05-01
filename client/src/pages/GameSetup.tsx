@@ -8,7 +8,7 @@ import { Label } from "@/components/ui/label";
 import { trpc } from "@/lib/trpc";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { toast } from "sonner";
-import { ArrowLeft, Users, User, UsersRound, Wifi, Clock, Layers, BarChart3, Music, Calendar, ChevronRight, LogOut } from "lucide-react";
+import { ArrowLeft, Users, User, UsersRound, Wifi, Clock, Layers, BarChart3, Music, Music2, Calendar, ChevronRight, LogOut } from "lucide-react";
 import { getLoginUrl, getSignUpUrl } from "@/const";
 import type { GameMode, Difficulty } from "@/contexts/GameContext";
 
@@ -30,6 +30,7 @@ export default function GameSetup() {
   const [timerSeconds, setTimerSeconds] = useState(30);
   const [rounds, setRounds] = useState(10);
   const [explicitFilter, setExplicitFilter] = useState(false);
+  const [streakInsurance, setStreakInsurance] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
   const [prefsApplied, setPrefsApplied] = useState(false);
   const hasHydratedRef = useRef(false);
@@ -133,6 +134,7 @@ export default function GameSetup() {
       timerSeconds,
       rounds,
       explicitFilter,
+      streakInsurance,
     });
   };
 
@@ -371,6 +373,23 @@ export default function GameSetup() {
             </div>
             <Switch checked={explicitFilter} onCheckedChange={setExplicitFilter} />
           </section>
+
+          {/* Streak Insurance — authenticated users only */}
+          {isAuthenticated && (
+            <section className="glass rounded-xl p-4 flex items-center justify-between">
+              <div>
+                <div className="flex items-center gap-2">
+                  <Label className="font-medium text-foreground">Streak Insurance</Label>
+                  <span className="flex items-center gap-0.5 text-yellow-400 neon-gold-sm text-xs font-semibold">
+                    <Music2 className="w-3.5 h-3.5" />
+                    3
+                  </span>
+                </div>
+                <p className="text-muted-foreground text-sm mt-0.5">Keep your streak if you blank one round.</p>
+              </div>
+              <Switch checked={streakInsurance} onCheckedChange={setStreakInsurance} />
+            </section>
+          )}
 
           {/* Summary & Start */}
           <div className="glass rounded-2xl p-6 space-y-5">
