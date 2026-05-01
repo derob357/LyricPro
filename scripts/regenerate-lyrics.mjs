@@ -31,11 +31,16 @@ if (!process.env.ANTHROPIC_API_KEY) {
   process.exit(1);
 }
 
-const anthropic = new Anthropic();
+// maxRetries=8 gives the SDK enough budget to recover from per-minute rate
+// limit windows (org cap ~50 req/min on this model). The SDK respects the
+// `retry-after` header from 429 responses, so retries wait the full window.
+const anthropic = new Anthropic({ maxRetries: 8 });
 const MODEL = "claude-haiku-4-5-20251001";
 
 const CHECKPOINT_PATH = path.resolve("scripts/regenerate-lyrics.checkpoint.json");
-const CONCURRENCY = 6;
+// Concurrency lowered to 2 to stay under the 50 req/min org cap. Combined with
+// SDK retries this is sustainable; pushing higher caused ~32% rate-limit fails.
+const CONCURRENCY = 2;
 const LIMIT = parseInt(process.argv[2] ?? "0", 10);
 
 // Anthropic tool definition — equivalent to OpenAI's response_format json_schema.
