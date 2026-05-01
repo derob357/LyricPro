@@ -149,6 +149,15 @@ export const users = pgTable("users", {
   lyricAccuracy: doublePrecision("lyricAccuracy").default(0),
   artistAccuracy: doublePrecision("artistAccuracy").default(0),
   yearAccuracy: doublePrecision("yearAccuracy").default(0),
+  gamePrefs: jsonb("gamePrefs").$type<{
+    mode: "solo" | "multiplayer" | "team";
+    genres: string[];
+    decades: string[];
+    difficulty: "low" | "medium" | "high";
+    timerSeconds: number;
+    rounds: number;
+    explicitFilter: boolean;
+  }>(),
   createdAt: createdAtColumn(),
   updatedAt: updatedAtColumn(),
   lastSignedIn: timestamp("lastSignedIn", { withTimezone: true })

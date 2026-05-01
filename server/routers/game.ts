@@ -147,7 +147,7 @@ export const gameRouter = router({
       decades: z.array(z.string()).min(1),
       difficulty: z.enum(["low", "medium", "high"]).default("medium"),
       timerSeconds: z.number().int().min(15).max(45).default(30),
-      rounds: z.number().int().min(5).max(20).default(10),
+      rounds: z.number().int().min(3).max(20).default(10),
       explicitFilter: z.boolean().default(false),
       guestToken: z.string().optional(),
     }))
@@ -908,6 +908,35 @@ export const gameRouter = router({
         created.push({ name: TEAM_NAMES[i], color: TEAM_COLORS[i] });
       }
       return { success: true, teams: created };
+    }),
+
+  // Get saved game preferences for the current user
+  getMyGamePrefs: publicProcedure
+    .query(async ({ ctx }) => {
+      if (!ctx.user?.id) return null;
+      const db = await getDb();
+      if (!db) return null;
+      const [u] = await db.select({ gamePrefs: users.gamePrefs }).from(users).where(eq(users.id, ctx.user.id)).limit(1);
+      return u?.gamePrefs ?? null;
+    }),
+
+  // Save game preferences for the current user
+  saveGamePrefs: publicProcedure
+    .input(z.object({
+      mode: z.enum(["solo", "multiplayer", "team"]),
+      genres: z.array(z.string()).min(1),
+      decades: z.array(z.string()).min(1),
+      difficulty: z.enum(["low", "medium", "high"]),
+      timerSeconds: z.number().int().positive(),
+      rounds: z.number().int().min(3).max(20),
+      explicitFilter: z.boolean(),
+    }))
+    .mutation(async ({ input, ctx }) => {
+      if (!ctx.user?.id) return { saved: false };
+      const db = await getDb();
+      if (!db) return { saved: false };
+      await db.update(users).set({ gamePrefs: input }).where(eq(users.id, ctx.user.id));
+      return { saved: true };
     }),
 
     // Get user profile stats

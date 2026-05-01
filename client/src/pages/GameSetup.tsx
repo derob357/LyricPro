@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useLocation, useSearch } from "wouter";
 import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
@@ -31,6 +31,8 @@ export default function GameSetup() {
   const [rounds, setRounds] = useState(10);
   const [explicitFilter, setExplicitFilter] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
+  const [prefsApplied, setPrefsApplied] = useState(false);
+  const hasHydratedRef = useRef(false);
 
   // Redirect unauthenticated users to sign in
   useEffect(() => {
@@ -38,6 +40,44 @@ export default function GameSetup() {
       window.location.href = getLoginUrl();
     }
   }, [isAuthenticated, user]);
+
+  // Fetch saved prefs for logged-in users
+  const { data: serverPrefs, isLoading: prefsLoading } = trpc.game.getMyGamePrefs.useQuery(
+    undefined,
+    { enabled: isAuthenticated }
+  );
+
+  // Hydrate form from saved prefs once on mount
+  useEffect(() => {
+    if (hasHydratedRef.current) return;
+    if (isAuthenticated && prefsLoading) return; // wait for query
+
+    let prefs: any = null;
+    if (isAuthenticated && serverPrefs) {
+      prefs = serverPrefs;
+    } else if (!isAuthenticated) {
+      try {
+        const raw = localStorage.getItem("lyricpro_game_prefs");
+        if (raw) prefs = JSON.parse(raw);
+      } catch {}
+    }
+
+    if (prefs && typeof prefs === "object") {
+      // URL ?mode= param takes precedence over saved prefs
+      if (prefs.mode && params.get("mode") === null) setMode(prefs.mode);
+      if (Array.isArray(prefs.genres)) setSelectedGenres(prefs.genres);
+      if (Array.isArray(prefs.decades)) setSelectedDecades(prefs.decades);
+      if (prefs.difficulty) setDifficulty(prefs.difficulty);
+      if (typeof prefs.timerSeconds === "number") setTimerSeconds(prefs.timerSeconds);
+      if (typeof prefs.rounds === "number") setRounds(prefs.rounds);
+      if (typeof prefs.explicitFilter === "boolean") setExplicitFilter(prefs.explicitFilter);
+      setPrefsApplied(true);
+    }
+
+    hasHydratedRef.current = true;
+  }, [isAuthenticated, serverPrefs, prefsLoading]);
+
+  const savePrefsMutation = trpc.game.saveGamePrefs.useMutation();
 
   const createRoomMutation = trpc.game.createRoom.useMutation({
     onSuccess: (data) => {
@@ -74,6 +114,16 @@ export default function GameSetup() {
       toast.error("Please select at least one decade");
       return;
     }
+
+    const prefs = { mode, genres: selectedGenres, decades: selectedDecades, difficulty, timerSeconds, rounds, explicitFilter };
+
+    // Persist prefs (fire-and-forget — don't block createRoom)
+    if (isAuthenticated) {
+      savePrefsMutation.mutate(prefs);
+    } else {
+      try { localStorage.setItem("lyricpro_game_prefs", JSON.stringify(prefs)); } catch {}
+    }
+
     setIsCreating(true);
     createRoomMutation.mutate({
       mode,
@@ -135,6 +185,26 @@ export default function GameSetup() {
           animate={{ opacity: 1, y: 0 }}
           className="space-y-8"
         >
+          {/* Quick-start card — shown when saved prefs were restored */}
+          {prefsApplied && (
+            <div className="glass rounded-2xl p-4 flex items-center justify-between gap-3">
+              <div className="min-w-0">
+                <p className="text-sm text-muted-foreground">Last settings restored</p>
+                <p className="text-xs text-muted-foreground truncate">
+                  {mode === "solo" ? "Solo" : mode === "multiplayer" ? "Multiplayer" : "Team"} · {difficulty} · {rounds} rounds · {timerSeconds}s
+                </p>
+              </div>
+              <Button
+                className="bg-primary text-primary-foreground hover:bg-primary/90 glow-purple px-6 py-3 font-semibold rounded-xl shrink-0"
+                onClick={handleStart}
+                disabled={isCreating || selectedGenres.length === 0 || selectedDecades.length === 0}
+              >
+                {isCreating ? "Creating…" : (mode === "solo" ? "Start Game" : "Create Room")}
+                <ChevronRight className="w-4 h-4 ml-1" />
+              </Button>
+            </div>
+          )}
+
           {/* Player info */}
           {isAuthenticated && (
             <div className="glass rounded-xl p-4 flex items-center gap-3">

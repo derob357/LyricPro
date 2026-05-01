@@ -5,6 +5,7 @@ import {
   Linkedin,
   MessageCircle,
   Copy,
+  Share,
   Share2,
   Instagram,
 } from "lucide-react";
@@ -123,9 +124,9 @@ export default function SocialShareButtons({
           size="sm"
           onClick={handleCopy}
           className="border-border/50 text-muted-foreground hover:text-foreground"
-          title="Copy to clipboard"
+          title="Copy link"
         >
-          <Copy className="w-4 h-4" />
+          <Share className="w-4 h-4" />
         </Button>
       </div>
     );

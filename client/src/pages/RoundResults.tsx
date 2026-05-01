@@ -58,6 +58,7 @@ export default function RoundResults() {
   const guestToken = localStorage.getItem("lyricpro_guest_token");
   const [result, setResult] = useState<RoundResult | null>(null);
   const [isAdvancing, setIsAdvancing] = useState(false);
+  const [secondsLeft, setSecondsLeft] = useState(3);
 
   const { data: room } = trpc.game.getRoom.useQuery(
     { roomCode: roomCode ?? "" },
@@ -89,6 +90,31 @@ export default function RoundResults() {
     setIsAdvancing(true);
     nextRoundMutation.mutate({ roomCode: roomCode ?? "" });
   };
+
+  // Auto-advance after 3-second countdown once result is loaded
+  useEffect(() => {
+    if (!result) return;
+
+    setSecondsLeft(3);
+    let count = 3;
+    let cancelled = false;
+
+    const interval = setInterval(() => {
+      if (cancelled) return;
+      count -= 1;
+      setSecondsLeft(count);
+      if (count <= 0) {
+        clearInterval(interval);
+        if (!cancelled) handleNext();
+      }
+    }, 1000);
+
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [result]);
 
   if (!result) {
     return (
@@ -214,8 +240,8 @@ export default function RoundResults() {
       <div className="container py-6 max-w-2xl">
         <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="space-y-5">
 
-          {/* Score summary */}
-          <div className={`glass rounded-2xl p-6 text-center relative overflow-hidden ${
+          {/* Score summary + Next Round button */}
+          <div className={`glass rounded-2xl p-4 sm:p-6 relative overflow-hidden ${
             result.total > 0 ? "border-primary/40" : "border-border/40"
           }`}>
             <div className={`absolute inset-0 bg-gradient-to-br ${
@@ -223,31 +249,47 @@ export default function RoundResults() {
               result.total > 0 ? "from-primary/5 to-transparent" :
               "from-transparent to-transparent"
             } pointer-events-none`} />
-            <div className="relative">
-              {passedRound ? (
-                <>
-                  <SkipForward className="w-10 h-10 text-muted-foreground mx-auto mb-2" />
-                  <p className="text-muted-foreground font-medium">Round Passed</p>
-                </>
-              ) : (
-                <>
-                  <motion.div
-                    initial={{ scale: 0 }}
-                    animate={{ scale: 1 }}
-                    transition={{ type: "spring", stiffness: 200, damping: 15 }}
-                    className="font-display text-6xl font-black text-gradient mb-1"
-                  >
-                    +{result.total}
-                  </motion.div>
-                  <p className="text-muted-foreground text-sm">points this round</p>
-                  {result.newStreak >= 2 && (
-                    <div className="flex items-center justify-center gap-1 mt-2">
-                      <Flame className="w-4 h-4 text-orange-400" />
-                      <span className="text-orange-400 font-medium text-sm">{result.newStreak}x Streak!</span>
-                    </div>
-                  )}
-                </>
-              )}
+            <div className="relative flex flex-col sm:flex-row items-center justify-between gap-4">
+              {/* Points / passed-round group */}
+              <div className="text-center sm:text-left">
+                {passedRound ? (
+                  <>
+                    <SkipForward className="w-10 h-10 text-muted-foreground mx-auto sm:mx-0 mb-2" />
+                    <p className="text-muted-foreground font-medium">Round Passed</p>
+                  </>
+                ) : (
+                  <>
+                    <motion.div
+                      initial={{ scale: 0 }}
+                      animate={{ scale: 1 }}
+                      transition={{ type: "spring", stiffness: 200, damping: 15 }}
+                      className="font-display text-6xl font-black text-gradient mb-1"
+                    >
+                      +{result.total}
+                    </motion.div>
+                    <p className="text-muted-foreground text-sm">points this round</p>
+                    {result.newStreak >= 2 && (
+                      <div className="flex items-center justify-center sm:justify-start gap-1 mt-2">
+                        <Flame className="w-4 h-4 text-orange-400" />
+                        <span className="text-orange-400 font-medium text-sm">{result.newStreak}x Streak!</span>
+                      </div>
+                    )}
+                  </>
+                )}
+              </div>
+
+              {/* Next Round / See Final Results button */}
+              <Button
+                className="shrink-0 bg-primary text-primary-foreground hover:bg-primary/90 glow-purple px-6 py-5 text-base font-semibold rounded-xl"
+                onClick={handleNext}
+                disabled={isAdvancing}
+              >
+                {isAdvancing ? "Loading..." : isLastRound ? (
+                  <>See Final Results{secondsLeft > 0 ? ` (${secondsLeft})` : ""} <Trophy className="w-5 h-5 ml-2" /></>
+                ) : (
+                  <>Next Round{secondsLeft > 0 ? ` (${secondsLeft})` : ""} <ChevronRight className="w-5 h-5 ml-2" /></>
+                )}
+              </Button>
             </div>
           </div>
 
@@ -382,18 +424,6 @@ export default function RoundResults() {
             </div>
           </div>
 
-          {/* Next Round Button */}
-          <Button
-            className="w-full bg-primary text-primary-foreground hover:bg-primary/90 glow-purple py-6 text-lg font-semibold rounded-xl"
-            onClick={handleNext}
-            disabled={isAdvancing}
-          >
-            {isAdvancing ? "Loading..." : isLastRound ? (
-              <>See Final Results <Trophy className="w-5 h-5 ml-2" /></>
-            ) : (
-              <>Next Round <ChevronRight className="w-5 h-5 ml-2" /></>
-            )}
-          </Button>
         </motion.div>
       </div>
     </div>

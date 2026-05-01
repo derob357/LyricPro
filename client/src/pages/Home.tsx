@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useLocation } from "wouter";
-import { motion } from "framer-motion";
+import { motion, AnimatePresence } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
@@ -10,7 +10,8 @@ import SocialShareButtons from "@/components/SocialShareButtons";
 import { getHomepageShareContent } from "@/lib/shareUtils";
 import {
   Music, Mic, Users, Trophy, Zap, Star, ChevronRight,
-  Play, Radio, Clock, Target, ArrowRight, Crown, Flame, ShoppingCart
+  Play, Radio, Clock, Target, ArrowRight, Crown, Flame, ShoppingCart,
+  User, Repeat, UsersRound, Smartphone, ChevronDown,
 } from "lucide-react";
 
 const GENRES = ["R&B", "Hip Hop", "Pop", "Rock", "Country", "Gospel", "Soul", "Jazz"];
@@ -20,6 +21,7 @@ export default function Home() {
   const [, navigate] = useLocation();
   const { user, isAuthenticated } = useAuth();
   const [authOpen, setAuthOpen] = useState(false);
+  const [openDifficulty, setOpenDifficulty] = useState<string | null>(null);
 
   const handlePlayNow = () => {
     if (isAuthenticated) {
@@ -261,38 +263,61 @@ export default function Home() {
                 { diff: "Low", color: "text-green-400", bg: "bg-green-500/10", border: "border-green-500/30", lyric: null, title: 25, artist: 25, year: 50, total: 100 },
                 { diff: "Medium", color: "text-yellow-400", bg: "bg-yellow-500/10", border: "border-yellow-500/30", lyric: null, title: 50, artist: 50, year: 100, total: 200 },
                 { diff: "High", color: "text-red-400", bg: "bg-red-500/10", border: "border-red-500/30", lyric: 50, title: 100, artist: 100, year: 200, total: 450 },
-              ].map(({ diff, color, bg, border, lyric, title, artist, year, total }) => (
-                <div key={diff} className={`rounded-2xl p-5 border ${border} ${bg}`}>
-                  <div className="flex items-center justify-between mb-3">
-                    <span className={`font-display font-bold text-lg ${color}`}>{diff}</span>
-                    <span className="text-muted-foreground text-xs">Max {total} pts/round</span>
-                  </div>
-                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                    {lyric !== null && (
-                      <div className="text-center p-3 rounded-xl bg-card/40">
-                        <Mic className="w-4 h-4 text-primary mx-auto mb-1" />
-                        <div className="font-bold text-foreground">{lyric} pts</div>
-                        <div className="text-muted-foreground text-xs">Lyric</div>
+              ].map(({ diff, color, bg, border, lyric, title, artist, year, total }) => {
+                const isOpen = openDifficulty === diff;
+                return (
+                  <div key={diff} className={`rounded-2xl border ${border} ${bg} overflow-hidden`}>
+                    <button
+                      type="button"
+                      onClick={() => setOpenDifficulty(isOpen ? null : diff)}
+                      className="w-full flex items-center justify-between p-5 text-left hover:bg-white/5 transition-colors"
+                      aria-expanded={isOpen ? "true" : "false"}
+                    >
+                      <span className={`font-display font-bold text-lg ${color}`}>{diff}</span>
+                      <div className="flex items-center gap-3">
+                        <span className="text-muted-foreground text-xs">Max {total} pts/round</span>
+                        <ChevronDown className={`w-4 h-4 ${color} transition-transform ${isOpen ? "rotate-180" : ""}`} />
                       </div>
-                    )}
-                    <div className="text-center p-3 rounded-xl bg-card/40">
-                      <Music className="w-4 h-4 text-accent mx-auto mb-1" />
-                      <div className="font-bold text-foreground">{title} pts</div>
-                      <div className="text-muted-foreground text-xs">Title</div>
-                    </div>
-                    <div className="text-center p-3 rounded-xl bg-card/40">
-                      <Star className="w-4 h-4 text-primary mx-auto mb-1" />
-                      <div className="font-bold text-foreground">{artist} pts</div>
-                      <div className="text-muted-foreground text-xs">Artist</div>
-                    </div>
-                    <div className="text-center p-3 rounded-xl bg-card/40">
-                      <Crown className="w-4 h-4 text-yellow-400 mx-auto mb-1" />
-                      <div className="font-bold text-foreground">{year} pts</div>
-                      <div className="text-muted-foreground text-xs">Year</div>
-                    </div>
+                    </button>
+                    <AnimatePresence initial={false}>
+                      {isOpen && (
+                        <motion.div
+                          initial={{ height: 0, opacity: 0 }}
+                          animate={{ height: "auto", opacity: 1 }}
+                          exit={{ height: 0, opacity: 0 }}
+                          transition={{ duration: 0.2, ease: "easeInOut" }}
+                          className="overflow-hidden"
+                        >
+                          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 p-5 pt-0">
+                            {lyric !== null && (
+                              <div className="text-center p-3 rounded-xl bg-card/40">
+                                <Mic className="w-4 h-4 text-primary mx-auto mb-1" />
+                                <div className="font-bold text-foreground">{lyric} pts</div>
+                                <div className="text-muted-foreground text-xs">Lyric</div>
+                              </div>
+                            )}
+                            <div className="text-center p-3 rounded-xl bg-card/40">
+                              <Music className="w-4 h-4 text-accent mx-auto mb-1" />
+                              <div className="font-bold text-foreground">{title} pts</div>
+                              <div className="text-muted-foreground text-xs">Title</div>
+                            </div>
+                            <div className="text-center p-3 rounded-xl bg-card/40">
+                              <Star className="w-4 h-4 text-primary mx-auto mb-1" />
+                              <div className="font-bold text-foreground">{artist} pts</div>
+                              <div className="text-muted-foreground text-xs">Artist</div>
+                            </div>
+                            <div className="text-center p-3 rounded-xl bg-card/40">
+                              <Crown className="w-4 h-4 text-yellow-400 mx-auto mb-1" />
+                              <div className="font-bold text-foreground">{year} pts</div>
+                              <div className="text-muted-foreground text-xs">Year</div>
+                            </div>
+                          </div>
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
 
             <div className="mt-6 grid sm:grid-cols-2 gap-4 text-sm text-muted-foreground">
@@ -317,11 +342,11 @@ export default function Home() {
           </h2>
           <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
             {[
-              { icon: "🎯", title: "Solo Mode", desc: "Challenge yourself. Beat your personal best.", badge: "Any time" },
-              { icon: "🔄", title: "Turn-Based", desc: "Pass the device. Take turns. Battle it out.", badge: "1 device" },
-              { icon: "👥", title: "Team Mode", desc: "Form teams. Collaborate. Crush the competition.", badge: "Group play" },
-              { icon: "📱", title: "Remote Live", desc: "Join from anywhere. Play over FaceTime or Zoom.", badge: "Any device" },
-            ].map(({ icon, title, desc, badge }) => (
+              { icon: User, title: "Solo Mode", desc: "Challenge yourself. Beat your personal best.", badge: "Any time", color: "text-primary", glow: "glow-purple" },
+              { icon: Repeat, title: "Turn-Based", desc: "Pass the device. Take turns. Battle it out.", badge: "1 device", color: "text-accent", glow: "glow-cyan" },
+              { icon: UsersRound, title: "Team Mode", desc: "Form teams. Collaborate. Crush the competition.", badge: "Group play", color: "text-yellow-400", glow: "glow-gold" },
+              { icon: Smartphone, title: "Remote Live", desc: "Join from anywhere. Play over FaceTime or Zoom.", badge: "Any device", color: "text-primary", glow: "glow-purple" },
+            ].map(({ icon: Icon, title, desc, badge, color, glow }) => (
               <motion.div
                 key={title}
                 initial={{ opacity: 0, scale: 0.95 }}
@@ -330,7 +355,9 @@ export default function Home() {
                 className="glass rounded-2xl p-6 text-center hover:border-primary/30 transition-all duration-300 cursor-pointer group"
                 onClick={handlePlayNow}
               >
-                <div className="text-4xl mb-3">{icon}</div>
+                <div className={`w-12 h-12 rounded-xl bg-card flex items-center justify-center mx-auto mb-4 ${glow}`}>
+                  <Icon className={`w-6 h-6 ${color}`} />
+                </div>
                 <Badge variant="secondary" className="mb-3 text-xs">{badge}</Badge>
                 <h3 className="font-display font-bold text-lg mb-2 text-foreground">{title}</h3>
                 <p className="text-muted-foreground text-sm">{desc}</p>
