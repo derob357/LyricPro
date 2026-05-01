@@ -318,11 +318,22 @@ export const gameRouter = router({
       const decades = JSON.parse(room.selectedDecades) as string[];
       const usedIds = JSON.parse(room.usedSongIds ?? "[]") as number[];
 
-      // Build difficulty filter
-      let difficultyFilter: ("chorus" | "hook" | "verse" | "call-response" | "bridge")[] = [];
-      if (room.difficulty === "low") difficultyFilter = ["chorus", "hook"];
-      else if (room.difficulty === "medium") difficultyFilter = ["chorus", "hook", "verse", "bridge"];
-      else difficultyFilter = ["verse", "call-response"];
+      // Section-type filter PLUS weighted bias for the candidate pick. Low: hooks/
+      // choruses only. Medium/High: chorus + hook + verse dominant; bridge and
+      // call-response remain occasional picks (low weight) rather than dropped.
+      type SectionType = "chorus" | "hook" | "verse" | "call-response" | "bridge";
+      let difficultyFilter: SectionType[];
+      let sectionWeights: Record<SectionType, number>;
+      if (room.difficulty === "low") {
+        difficultyFilter = ["chorus", "hook"];
+        sectionWeights = { chorus: 1, hook: 1, verse: 0, "call-response": 0, bridge: 0 };
+      } else if (room.difficulty === "medium") {
+        difficultyFilter = ["chorus", "hook", "verse", "bridge", "call-response"];
+        sectionWeights = { chorus: 1, hook: 1, verse: 3, bridge: 0.3, "call-response": 0.3 };
+      } else {
+        difficultyFilter = ["chorus", "hook", "verse", "bridge", "call-response"];
+        sectionWeights = { chorus: 1, hook: 1, verse: 3, bridge: 0.3, "call-response": 0.3 };
+      }
 
       // Map decades to year ranges AND short-form labels (e.g. "1980s")
       // Note: "1980–1990" means the 1980s decade (1980-1989), end year is exclusive
@@ -403,8 +414,21 @@ export const gameRouter = router({
         );
       }
 
-      // Pick random song
-      const song = candidateSongs[Math.floor(Math.random() * candidateSongs.length)];
+      // Weighted random pick: each candidate's weight comes from sectionWeights.
+      // Songs whose section has weight 0 are excluded (matches the strict low filter).
+      const weighted = candidateSongs
+        .map(s => ({ s, w: sectionWeights[(s.lyricSectionType as SectionType)] ?? 0 }))
+        .filter(x => x.w > 0);
+      const pickPool = weighted.length > 0
+        ? weighted
+        : candidateSongs.map(s => ({ s, w: 1 }));
+      const totalWeight = pickPool.reduce((acc, x) => acc + x.w, 0);
+      let r = Math.random() * totalWeight;
+      let song = pickPool[0].s;
+      for (const x of pickPool) {
+        r -= x.w;
+        if (r <= 0) { song = x.s; break; }
+      }
 
       // Update used songs
       const newUsedIds = [...usedIds, song.id];
@@ -469,7 +493,15 @@ export const gameRouter = router({
       // Lyric options (only used for High difficulty — a 4-option "fill the gap"
       // for the final line of the lyric). Distractors are lyricAnswer strings
       // pulled from other same-genre/decade songs.
-      const lyricOptions = shuffle([song.lyricAnswer, ...pickDistractors(3, s => s.lyricAnswer, song.lyricAnswer)]);
+      // Prefer stored distractors authored alongside the song; fall back to the old
+      // other-song-snippet method for any rows not yet rewritten by the migration.
+      const stored = Array.isArray(song.distractors)
+        ? song.distractors.filter((d): d is string => typeof d === "string" && d.length > 0)
+        : [];
+      const lyricDistractors = stored.length >= 3
+        ? stored.slice(0, 3)
+        : [...stored, ...pickDistractors(3 - stored.length, s => s.lyricAnswer, song.lyricAnswer)];
+      const lyricOptions = shuffle([song.lyricAnswer, ...lyricDistractors]);
 
       return {
         id: song.id,
