@@ -10,7 +10,8 @@ import SocialShareButtons from "@/components/SocialShareButtons";
 import { getHomepageShareContent } from "@/lib/shareUtils";
 import {
   Music, Mic, Users, Trophy, Zap, Star, ChevronRight,
-  Play, Radio, Clock, Target, ArrowRight, Crown, Flame, ShoppingCart
+  Play, Radio, Clock, Target, ArrowRight, Crown, Flame, ShoppingCart,
+  User, Repeat, UsersRound, Smartphone,
 } from "lucide-react";
 
 const GENRES = ["R&B", "Hip Hop", "Pop", "Rock", "Country", "Gospel", "Soul", "Jazz"];
@@ -317,11 +318,11 @@ export default function Home() {
           </h2>
           <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
             {[
-              { icon: "🎯", title: "Solo Mode", desc: "Challenge yourself. Beat your personal best.", badge: "Any time" },
-              { icon: "🔄", title: "Turn-Based", desc: "Pass the device. Take turns. Battle it out.", badge: "1 device" },
-              { icon: "👥", title: "Team Mode", desc: "Form teams. Collaborate. Crush the competition.", badge: "Group play" },
-              { icon: "📱", title: "Remote Live", desc: "Join from anywhere. Play over FaceTime or Zoom.", badge: "Any device" },
-            ].map(({ icon, title, desc, badge }) => (
+              { icon: User, title: "Solo Mode", desc: "Challenge yourself. Beat your personal best.", badge: "Any time", color: "text-primary", glow: "glow-purple" },
+              { icon: Repeat, title: "Turn-Based", desc: "Pass the device. Take turns. Battle it out.", badge: "1 device", color: "text-accent", glow: "glow-cyan" },
+              { icon: UsersRound, title: "Team Mode", desc: "Form teams. Collaborate. Crush the competition.", badge: "Group play", color: "text-yellow-400", glow: "glow-gold" },
+              { icon: Smartphone, title: "Remote Live", desc: "Join from anywhere. Play over FaceTime or Zoom.", badge: "Any device", color: "text-primary", glow: "glow-purple" },
+            ].map(({ icon: Icon, title, desc, badge, color, glow }) => (
               <motion.div
                 key={title}
                 initial={{ opacity: 0, scale: 0.95 }}
@@ -330,7 +331,9 @@ export default function Home() {
                 className="glass rounded-2xl p-6 text-center hover:border-primary/30 transition-all duration-300 cursor-pointer group"
                 onClick={handlePlayNow}
               >
-                <div className="text-4xl mb-3">{icon}</div>
+                <div className={`w-12 h-12 rounded-xl bg-card flex items-center justify-center mx-auto mb-4 ${glow}`}>
+                  <Icon className={`w-6 h-6 ${color}`} />
+                </div>
                 <Badge variant="secondary" className="mb-3 text-xs">{badge}</Badge>
                 <h3 className="font-display font-bold text-lg mb-2 text-foreground">{title}</h3>
                 <p className="text-muted-foreground text-sm">{desc}</p>
