@@ -13,6 +13,7 @@ import { ArrowLeft, Trophy, Star, Zap, Target, Music, Calendar,
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
+import { WeaknessPackCard } from "@/components/WeaknessPackCard";
 
 export default function Profile() {
   const [, navigate] = useLocation();
@@ -213,6 +214,9 @@ export default function Profile() {
               </div>
             )}
           </div>
+
+          {/* Weakness Pack Card */}
+          <WeaknessPackCard />
 
           {/* Stats grid */}
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
