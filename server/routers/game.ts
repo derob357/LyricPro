@@ -13,6 +13,7 @@ import {
 import { nanoid } from "nanoid";
 
 const STREAK_INSURANCE_PRICE_GN = 3;
+const HINT_PRICE_GN = 1;
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 function generateRoomCode(): string {
@@ -767,8 +768,24 @@ export const gameRouter = router({
       ).limit(1);
 
       if (player) {
+        // ── Streak Insurance: if the player missed the lyric stage and has an
+        // active streak, check whether streak insurance is enabled on this room.
+        // If so, preserve the streak (one-shot: flip room.streakInsurance to false).
+        let streakInsuranceUsed = false;
+        const rawNewStreak = lyricCorrect ? player.currentStreak + 1 : 0;
+        let newStreak = rawNewStreak;
+
+        if (!lyricCorrect && player.currentStreak >= 1 && room.streakInsurance) {
+          // Insurance fires — preserve the streak, consume the flag.
+          newStreak = player.currentStreak;
+          streakInsuranceUsed = true;
+          await db
+            .update(gameRooms)
+            .set({ streakInsurance: false })
+            .where(eq(gameRooms.id, room.id));
+        }
+
         // Streak bonus
-        const newStreak = lyricCorrect ? player.currentStreak + 1 : 0;
         if (room.rankingMode === "streak_bonus" && lyricCorrect && newStreak >= 2) {
           streakBonus = Math.min(newStreak * 2, 10);
         }
@@ -783,6 +800,9 @@ export const gameRouter = router({
         }).where(eq(roomPlayers.id, player.id));
 
         // Save round result
+        // NOTE: hintUsed defaults to false — client-side hint tracking is a
+        // follow-up task (Option A per plan). Wire hintUsed via submitAnswer
+        // input when client-side hint state is available.
         await db.insert(roundResults).values({
           roomId: room.id,
           roundNumber: room.currentRound,
@@ -801,6 +821,7 @@ export const gameRouter = router({
           streakBonusPoints: streakBonus,
           totalRoundPoints: totalRoundPoints,
           passUsed: input.passUsed,
+          streakInsuranceUsed,
         });
 
         return {
@@ -820,6 +841,7 @@ export const gameRouter = router({
           total: totalRoundPoints,
           newScore,
           newStreak,
+          streakInsuranceUsed,
           correctLyric: song.lyricAnswer,
           correctTitle: song.title,
           correctArtist: song.artistName,
@@ -834,9 +856,84 @@ export const gameRouter = router({
         artistCorrect, artistPartial, correctCount,
         lyricPoints, titlePoints, artistPoints, yearPoints,
         speedBonus, streakBonus, total: 0, newScore: 0, newStreak: 0,
+        streakInsuranceUsed: false,
         correctLyric: song.lyricAnswer, correctTitle: song.title,
         correctArtist: song.artistName, correctYear: song.releaseYear, difficulty: diff,
         passUsed: input.passUsed,
+      };
+    }),
+
+  // Use a hint for the current stage (costs 1 GN, auth required)
+  useHint: protectedProcedure
+    .input(z.object({
+      roomCode: z.string(),
+      songId: z.number().int(),
+      stage: z.enum(["lyric", "title", "artist", "year"]),
+    }))
+    .mutation(async ({ input, ctx }) => {
+      const db = await getDb();
+      if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Database unavailable." });
+
+      const userId = ctx.user.id;
+
+      // Check GN balance.
+      const [bal] = await db
+        .select()
+        .from(goldenNoteBalances)
+        .where(eq(goldenNoteBalances.userId, userId))
+        .limit(1);
+
+      if (!bal || bal.balance < HINT_PRICE_GN) {
+        throw new TRPCError({
+          code: "PAYMENT_REQUIRED",
+          message: `Need ${HINT_PRICE_GN} Golden Note to use a hint. You have ${bal?.balance ?? 0}.`,
+        });
+      }
+
+      const newBalance = bal.balance - HINT_PRICE_GN;
+
+      // Debit GN and record transaction.
+      await db
+        .update(goldenNoteBalances)
+        .set({
+          balance: newBalance,
+          lifetimeSpent: bal.lifetimeSpent + HINT_PRICE_GN,
+          updatedAt: new Date(),
+        })
+        .where(eq(goldenNoteBalances.userId, userId));
+
+      await db.insert(goldenNoteTransactions).values({
+        userId,
+        amount: -HINT_PRICE_GN,
+        kind: "spend_advanced_mode",
+        reason: `Hint: ${input.stage}`,
+        balanceAfter: newBalance,
+      });
+
+      // Look up song to build the hint payload.
+      const [song] = await db.select().from(songs).where(eq(songs.id, input.songId)).limit(1);
+      if (!song) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Song not found." });
+      }
+
+      if (input.stage === "year") {
+        return {
+          stage: input.stage as "year",
+          narrowedRange: [song.releaseYear - 5, song.releaseYear + 5] as [number, number],
+        };
+      }
+
+      // stage is "lyric" | "title" | "artist" — return first letter of correct answer.
+      const correctAnswer =
+        input.stage === "title" ? song.title
+        : input.stage === "artist" ? song.artistName
+        : song.lyricAnswer; // "lyric"
+
+      const firstLetter = correctAnswer.trimStart()[0]?.toUpperCase() ?? "";
+
+      return {
+        stage: input.stage as "lyric" | "title" | "artist",
+        firstLetter,
       };
     }),
 
