@@ -1,11 +1,12 @@
 import { useEffect } from "react";
-import { useLocation, useSearch } from "wouter";
+import { useLocation, useSearch, Link } from "wouter";
+import { getRankTier } from "@/lib/scoring";
 import { trpc } from "@/lib/trpc";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
-import { Sparkles, Music, Gift, History, Check, Globe } from "lucide-react";
+import { Music2, Music, Gift, History, Check, Globe } from "lucide-react";
 import { CAN_PURCHASE } from "@/lib/platform";
 
 // The Shop page lets web users buy Golden Notes packs via Stripe Checkout.
@@ -24,6 +25,9 @@ export default function Shop() {
     enabled: !loading && isAuthenticated,
   });
   const txQuery = trpc.goldenNotes.getTransactions.useQuery({ limit: 10 }, {
+    enabled: !loading && isAuthenticated,
+  });
+  const subscriptionQuery = trpc.monetization.getSubscription.useQuery(undefined, {
     enabled: !loading && isAuthenticated,
   });
 
@@ -87,6 +91,10 @@ export default function Shop() {
   const packs = packsQuery.data ?? [];
   const transactions = txQuery.data ?? [];
 
+  const lifetimeScore = (user as { lifetimeScore?: number } | null | undefined)?.lifetimeScore ?? 0;
+  const rank = getRankTier(lifetimeScore);
+  const subscriptionTier = (subscriptionQuery.data as { tier?: string } | undefined)?.tier ?? "free";
+
   return (
     <div className="min-h-screen relative overflow-hidden">
       <div className="absolute top-0 left-1/4 w-[28rem] h-[28rem] rounded-full bg-primary/20 blur-3xl pointer-events-none" />
@@ -97,7 +105,7 @@ export default function Shop() {
         <div className="flex items-start justify-between gap-4 mb-8">
           <div>
             <div className="flex items-center gap-2 mb-2">
-              <Sparkles className="w-5 h-5 text-yellow-400 neon-gold-sm" />
+              <Music2 className="w-5 h-5 text-yellow-400 neon-gold-sm" />
               <h1 className="font-display font-black text-3xl sm:text-4xl text-gradient">
                 Golden Notes Shop
               </h1>
@@ -117,6 +125,34 @@ export default function Shop() {
             </div>
             <div className="text-xs text-muted-foreground mt-1">
               Golden Notes
+            </div>
+          </div>
+        </div>
+
+        {/* Status: subscription tier + rank tier */}
+        <div className="glass rounded-2xl p-5 border border-border/50 mb-8">
+          <div className="flex flex-wrap items-center gap-x-8 gap-y-3">
+            <div>
+              <div className="text-xs uppercase tracking-wider text-muted-foreground mb-0.5">Membership</div>
+              <div className="font-display font-bold text-foreground">
+                {subscriptionTier === "free"
+                  ? "Free"
+                  : `${subscriptionTier[0].toUpperCase()}${subscriptionTier.slice(1)} plan`}
+              </div>
+            </div>
+            <div>
+              <div className="text-xs uppercase tracking-wider text-muted-foreground mb-0.5">Rank</div>
+              <div className={`font-display font-bold ${rank.color}`}>
+                {rank.tier}{" "}
+                <span className="text-muted-foreground font-normal text-xs">
+                  · {lifetimeScore.toLocaleString()} pts
+                </span>
+              </div>
+            </div>
+            <div className="ml-auto flex gap-3 text-sm">
+              <Link href="/profile" className="underline text-muted-foreground hover:text-foreground">
+                View profile →
+              </Link>
             </div>
           </div>
         </div>
@@ -172,7 +208,7 @@ export default function Shop() {
                 )}
               </div>
               <div className="flex items-baseline gap-2 mb-1">
-                <Sparkles className="w-4 h-4 text-yellow-400 neon-gold-sm" />
+                <Music2 className="w-4 h-4 text-yellow-400 neon-gold-sm" />
                 <span className="font-display font-black text-2xl text-yellow-400 neon-gold">
                   {pack.notes.toLocaleString()}
                 </span>
@@ -190,6 +226,14 @@ export default function Shop() {
               </Button>
             </div>
           ))}
+        </div>
+        <div className="text-center mb-12">
+          <Link
+            href="/avatars"
+            className="inline-flex items-center gap-2 text-sm text-primary hover:underline"
+          >
+            Looking to unlock avatars? <span className="font-semibold">Visit the Avatar Locker →</span>
+          </Link>
         </div>
         </>
         )}

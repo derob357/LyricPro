@@ -2,8 +2,10 @@ import {
   boolean,
   doublePrecision,
   integer,
+  jsonb,
   pgEnum,
   pgTable,
+  primaryKey,
   serial,
   text,
   timestamp,
@@ -97,6 +99,18 @@ export const addOnPurchaseStatusEnum = pgEnum("addon_purchase_status", [
   "completed",
   "failed",
 ]);
+export const avatarRarityEnum = pgEnum("avatar_rarity", [
+  "starter",
+  "common",
+  "rare",
+  "epic",
+  "legendary",
+]);
+export const avatarAcquiredViaEnum = pgEnum("avatar_acquired_via", [
+  "starter",
+  "purchase",
+  "admin_grant",
+]);
 
 // Shared helper: all tables with an `updatedAt` use Drizzle's $onUpdate to
 // mirror MySQL's `ON UPDATE CURRENT_TIMESTAMP`. Postgres has no native
@@ -121,6 +135,7 @@ export const users = pgTable("users", {
   loginMethod: varchar("loginMethod", { length: 64 }),
   role: userRoleEnum("role").default("user").notNull(),
   avatarUrl: text("avatarUrl"),
+  equippedAvatarId: integer("equippedAvatarId"),
   // Stats
   lifetimeScore: integer("lifetimeScore").default(0).notNull(),
   totalWins: integer("totalWins").default(0).notNull(),
@@ -186,6 +201,7 @@ export const songs = pgTable("songs", {
   decadeRange: varchar("decadeRange", { length: 32 }).notNull(),
   lyricPrompt: text("lyricPrompt").notNull(),
   lyricAnswer: text("lyricAnswer").notNull(),
+  distractors: jsonb("distractors").$type<string[]>(),
   lyricSectionType: lyricSectionTypeEnum("lyricSectionType").notNull(),
   difficulty: difficultyEnum("difficulty").notNull(),
   language: varchar("language", { length: 16 }).default("en").notNull(),
@@ -518,6 +534,7 @@ export const goldenNoteTransactionKindEnum = pgEnum(
     "spend_extra_game",
     "spend_tournament",
     "spend_advanced_mode",
+    "spend_avatar_unlock",
     "gift_sent",
     "gift_received",
     "refund",
@@ -588,3 +605,34 @@ export const goldenNoteGifts = pgTable("golden_note_gifts", {
 
 export type GoldenNoteGift = typeof goldenNoteGifts.$inferSelect;
 export type InsertGoldenNoteGift = typeof goldenNoteGifts.$inferInsert;
+
+// ─── Avatars (catalog + ownership) ───────────────────────────────────────────
+export const avatars = pgTable("avatars", {
+  id: serial("id").primaryKey(),
+  slug: varchar("slug", { length: 64 }).notNull().unique(),
+  name: varchar("name", { length: 128 }).notNull(),
+  imageUrl: varchar("imageUrl", { length: 256 }).notNull(),
+  rarity: avatarRarityEnum("rarity").notNull(),
+  priceGn: integer("priceGn").default(0).notNull(),
+  isActive: boolean("isActive").default(true).notNull(),
+  sortOrder: integer("sortOrder").default(0).notNull(),
+  createdAt: createdAtColumn(),
+});
+export type Avatar = typeof avatars.$inferSelect;
+export type InsertAvatar = typeof avatars.$inferInsert;
+
+export const userAvatars = pgTable(
+  "user_avatars",
+  {
+    userId: integer("userId").notNull(),
+    avatarId: integer("avatarId").notNull(),
+    acquiredAt: timestamp("acquiredAt", { withTimezone: true }).defaultNow().notNull(),
+    acquiredVia: avatarAcquiredViaEnum("acquiredVia").notNull(),
+    spentGn: integer("spentGn").default(0).notNull(),
+  },
+  (t) => ({
+    pk: primaryKey({ columns: [t.userId, t.avatarId] }),
+  }),
+);
+export type UserAvatar = typeof userAvatars.$inferSelect;
+export type InsertUserAvatar = typeof userAvatars.$inferInsert;

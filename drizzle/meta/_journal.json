@@ -15,6 +15,20 @@
       "when": 1776709413259,
       "tag": "0001_faithful_richard_fisk",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1777381617397,
+      "tag": "0002_fresh_magneto",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1777570386887,
+      "tag": "0003_right_terror",
+      "breakpoints": true
     }
   ]
 }

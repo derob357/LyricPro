@@ -1,9 +1,10 @@
 import { Link } from "wouter";
-import { Music, Sparkles } from "lucide-react";
+import { Music, Music2, ShoppingCart } from "lucide-react";
 import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
 import { getLoginUrl } from "@/const";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { UserAvatar } from "@/components/UserAvatar";
 
 export function PersistentHeader() {
   const { data: user } = trpc.auth.me.useQuery();
@@ -37,18 +38,27 @@ export function PersistentHeader() {
               <Link
                 href="/shop"
                 className="hidden sm:flex items-center gap-1.5 px-2 py-1 rounded-md hover:bg-primary/10 transition"
-                title="Golden Notes · Shop"
+                title="Golden Notes balance"
               >
-                <Sparkles className="w-4 h-4 text-yellow-400 neon-gold-sm" />
+                <Music2 className="w-4 h-4 text-yellow-400 neon-gold-sm" />
                 <span className="font-display font-bold text-yellow-400 neon-gold-sm text-sm">
                   {balance?.balance?.toLocaleString() ?? 0}
                 </span>
               </Link>
+              {/* Shop link */}
+              <Link
+                href="/shop"
+                className="flex items-center px-2 py-1 rounded-md hover:bg-primary/10 transition text-muted-foreground hover:text-foreground"
+                title="Shop"
+              >
+                <ShoppingCart className="w-4 h-4" />
+              </Link>
               {/* User Menu */}
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                  <Button variant="ghost" className="text-sm">
-                    {user.firstName || "Player"}
+                  <Button variant="ghost" className="text-sm flex items-center gap-2 px-2">
+                    <UserAvatar size="sm" />
+                    <span className="hidden sm:inline">{user.firstName || "Player"}</span>
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end">
@@ -62,7 +72,13 @@ export function PersistentHeader() {
                     <Link href="/leaderboards">Leaderboards</Link>
                   </DropdownMenuItem>
                   <DropdownMenuItem asChild>
-                    <Link href="/shop">Shop (Golden Notes)</Link>
+                    <Link href="/shop" className="flex items-center gap-2">
+                      <ShoppingCart className="w-4 h-4" />
+                      Shop (Golden Notes)
+                    </Link>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem asChild>
+                    <Link href="/avatars">Avatars</Link>
                   </DropdownMenuItem>
                   <DropdownMenuItem asChild>
                     <button

@@ -18,6 +18,7 @@ import { AdminDashboard } from "./pages/AdminDashboard";
 import SignIn from "./pages/SignIn";
 import AuthCallback from "./pages/AuthCallback";
 import Shop from "./pages/Shop";
+import Avatars from "./pages/Avatars";
 // import JoinInvite from "./pages/JoinInvite"; // Disabled - invite codes removed
 import { PersistentHeader } from "./components/PersistentHeader";
 import { NotificationContainer } from "./components/NotificationToast";
@@ -46,6 +47,7 @@ function Router() {
       <Route path="/signin" component={SignIn} />
       <Route path="/auth/callback" component={AuthCallback} />
       <Route path="/shop" component={Shop} />
+      <Route path="/avatars" component={Avatars} />
       {/* <Route path="/join" component={JoinInvite} /> */} {/* Disabled - invite codes removed */}
       <Route path="/404" component={NotFound} />
       <Route component={NotFound} />

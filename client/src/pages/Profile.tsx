@@ -1,7 +1,8 @@
-import { useLocation } from "wouter";
+import { useLocation, Link } from "wouter";
 import { useState } from "react";
 import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
+import { UserAvatar } from "@/components/UserAvatar";
 import { Badge } from "@/components/ui/badge";
 import { trpc } from "@/lib/trpc";
 import { useAuth } from "@/_core/hooks/useAuth";
@@ -119,11 +120,7 @@ export default function Profile() {
           <div className="glass rounded-2xl p-6 relative overflow-hidden">
             <div className="absolute inset-0 bg-gradient-to-br from-primary/10 to-accent/5 pointer-events-none" />
             <div className="relative flex items-center gap-4">
-              <div className="w-16 h-16 rounded-2xl bg-primary/20 flex items-center justify-center glow-purple">
-                <span className="font-display font-black text-2xl text-primary">
-                  {(user?.firstName || userData?.name || user?.name || "?").charAt(0).toUpperCase()}
-                </span>
-              </div>
+              <UserAvatar size="lg" className="w-16 h-16 rounded-2xl" />
               <div className="flex-1">
                 {editingName ? (
                   <div className="space-y-2">
@@ -183,6 +180,12 @@ export default function Profile() {
                 <div className="font-display font-black text-3xl text-gradient">{lifetimeScore.toLocaleString()}</div>
                 <div className="text-muted-foreground text-xs">lifetime pts</div>
               </div>
+            </div>
+
+            <div className="mt-3">
+              <Button asChild variant="outline" size="sm">
+                <Link href="/avatars">Manage avatars</Link>
+              </Button>
             </div>
 
             {/* Rank progress */}

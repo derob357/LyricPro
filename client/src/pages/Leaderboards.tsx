@@ -8,6 +8,7 @@ import { useAuth } from "@/_core/hooks/useAuth";
 import { getRankTier } from "@/lib/scoring";
 import { ArrowLeft, Trophy, Crown, Medal, CalendarDays, CalendarRange, Globe, Music, Users, User, UsersRound, Play, Search, X } from "lucide-react";
 import { Input } from "@/components/ui/input";
+import { UserAvatar } from "@/components/UserAvatar";
 
 const GENRES = ["R&B", "Hip Hop", "Pop", "Rock", "Country", "Gospel", "Soul", "Jazz", "Blues", "Alternative", "Reggae"];
 const DECADES = ["1940–1950", "1950–1960", "1960–1970", "1970–1980", "1980–1990", "1990–2000", "2000–2010", "2010–2020", "2020–Present"];
@@ -251,13 +252,11 @@ export default function Leaderboards() {
                       <div className="flex items-center justify-center w-6 shrink-0">
                         {getRankIcon(idx)}
                       </div>
-                      <div className={`w-9 h-9 rounded-full flex items-center justify-center font-bold text-sm shrink-0 ${
-                        idx === 0 ? "bg-yellow-400/20 text-yellow-400" :
-                        isMe ? "bg-primary/20 text-primary" :
-                        "bg-secondary text-foreground"
-                      }`}>
-                        {name.charAt(0).toUpperCase()}
-                      </div>
+                      <UserAvatar
+                        slug={(entry as { equippedAvatarSlug?: string | null }).equippedAvatarSlug ?? null}
+                        size="sm"
+                        className={`w-9 h-9 shrink-0 ${idx === 0 ? "ring-2 ring-yellow-400/60" : isMe ? "ring-2 ring-primary/60" : ""}`}
+                      />
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2">
                           <span className={`font-medium text-sm truncate ${isMe ? "text-primary" : "text-foreground"}`}>

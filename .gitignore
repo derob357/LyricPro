@@ -142,3 +142,6 @@ android/app/build/
 android/build/
 android/capacitor-cordova-android-plugins/build/
 android/local.properties
+
+# LLM rewrite checkpoint output (re-runnable, large)
+scripts/regenerate-lyrics.checkpoint.json
