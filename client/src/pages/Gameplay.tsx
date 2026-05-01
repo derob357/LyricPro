@@ -6,7 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { trpc } from "@/lib/trpc";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { toast } from "sonner";
-import { Clock, Flame, Volume2, VolumeX, X, Trophy } from "lucide-react";
+import { Clock, Flame, Volume2, VolumeX, X, Trophy, Lightbulb } from "lucide-react";
 import Celebration, { type CelebrationLevel } from "@/components/Celebration";
 import {
   AlertDialog,
@@ -67,6 +67,7 @@ export default function Gameplay() {
   const [celebrationLevel, setCelebrationLevel] = useState<CelebrationLevel>(0);
   const [muted, setMuted] = useState(() => localStorage.getItem("lyricpro_muted") === "true");
   const [buzzedPlayerIndex, setBuzzedPlayerIndex] = useState<number | null>(null);
+  const [hintData, setHintData] = useState<Record<string, { firstLetter?: string; narrowedRange?: [number, number] } | null>>({});
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const tickSoundRef = useRef<HTMLAudioElement | null>(null);
 
@@ -86,6 +87,7 @@ export default function Gameplay() {
       setStage("lyric");
       setHasSubmitted(false);
       setBuzzedPlayerIndex(null);
+      setHintData({});
       setTimeLeft(room?.timerSeconds ?? 30);
       setRoundStartTime(Date.now());
       setTimerActive(true);
@@ -127,6 +129,16 @@ export default function Gameplay() {
       }
     },
     onError: (e) => toast.error(e.message),
+  });
+
+  const trpcUtils = trpc.useUtils();
+
+  const useHintMutation = trpc.game.useHint.useMutation({
+    onSuccess: (result) => {
+      setHintData(prev => ({ ...prev, [result.stage]: result }));
+      trpcUtils.goldenNotes.getMyBalance.invalidate();
+    },
+    onError: (e) => toast.error(e.message || "Could not use hint"),
   });
 
   const startGameMutation = trpc.game.startGame.useMutation({
@@ -492,6 +504,21 @@ export default function Gameplay() {
           </div>
         )}
 
+        {/* Hint notice — shown above MC grid after hint is used */}
+        {stage !== "submitting" && hintData[stage] && (
+          <div className="relative z-10 max-w-3xl mx-auto mb-3">
+            <div className="glass rounded-xl px-4 py-2.5 flex items-center gap-2 border border-yellow-400/30 bg-yellow-400/5">
+              <Lightbulb className="w-4 h-4 text-yellow-400 shrink-0" />
+              <span className="text-sm text-yellow-300">
+                {stage === "year" && hintData[stage]?.narrowedRange
+                  ? `Year is between ${hintData[stage]!.narrowedRange![0]} and ${hintData[stage]!.narrowedRange![1]}`
+                  : `Starts with: ${hintData[stage]?.firstLetter}`
+                }
+              </span>
+            </div>
+          </div>
+        )}
+
         {/* MC options grid */}
         <div className="relative z-10 grid grid-cols-1 sm:grid-cols-2 gap-3 max-w-3xl mx-auto mb-8">
           {stageInfo.options.map((option, idx) => {
@@ -521,6 +548,32 @@ export default function Gameplay() {
             );
           })}
         </div>
+
+        {/* Hint button — authenticated users only, one per stage */}
+        {isAuthenticated && !hasSubmitted && stage !== "submitting" && (
+          <div className="relative z-10 text-center mb-4">
+            {hintData[stage] ? (
+              <Button variant="ghost" size="sm" disabled className="text-muted-foreground opacity-50 cursor-not-allowed">
+                <Lightbulb className="w-3.5 h-3.5 mr-1" />
+                Hint used
+              </Button>
+            ) : (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  if (!currentSong) return;
+                  useHintMutation.mutate({ roomCode: roomCode ?? "", songId: currentSong.id, stage: stage as "lyric" | "title" | "artist" | "year" });
+                }}
+                disabled={useHintMutation.isPending}
+                className="text-yellow-400 hover:text-yellow-300 hover:bg-yellow-400/10"
+              >
+                <Lightbulb className="w-3.5 h-3.5 mr-1" />
+                Hint (1 GN)
+              </Button>
+            )}
+          </div>
+        )}
 
         {/* Pass button */}
         {!hasSubmitted && (isSolo || buzzedPlayerIndex === myIndex) && (

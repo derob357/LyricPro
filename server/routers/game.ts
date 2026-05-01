@@ -1,14 +1,19 @@
 import { z } from "zod";
-import { and, eq, inArray, notInArray, sql } from "drizzle-orm";
+import { and, eq, inArray, ne, notInArray, sql } from "drizzle-orm";
+import { TRPCError } from "@trpc/server";
 import { router, publicProcedure, protectedProcedure } from "../_core/trpc";
 import { rateLimit } from "../_core/rateLimit";
 import { getDb } from "../db";
 import {
   songs, gameRooms, roomPlayers, teams, gameSessions, roundResults,
   guestSessions, leaderboardEntries, artistMetadata, users, avatars,
+  goldenNoteBalances, goldenNoteTransactions,
   lyricSectionTypeEnum,
 } from "../../drizzle/schema";
 import { nanoid } from "nanoid";
+
+const STREAK_INSURANCE_PRICE_GN = 3;
+const HINT_PRICE_GN = 1;
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 function generateRoomCode(): string {
@@ -150,6 +155,7 @@ export const gameRouter = router({
       rounds: z.number().int().min(3).max(20).default(10),
       explicitFilter: z.boolean().default(false),
       guestToken: z.string().optional(),
+      streakInsurance: z.boolean().default(false),
     }))
     .mutation(async ({ input, ctx }) => {
       const rlKey = ctx.user?.id ?? input.guestToken ?? ctx.req.ip ?? "anon";
@@ -157,6 +163,45 @@ export const gameRouter = router({
 
       const db = await getDb();
       if (!db) throw new Error("Database not available");
+
+      // ── Streak Insurance: auth + balance check + debit ──────────────────────
+      if (input.streakInsurance) {
+        if (!ctx.user?.id) {
+          throw new TRPCError({ code: "UNAUTHORIZED", message: "Sign in to use Streak Insurance." });
+        }
+
+        const [bal] = await db
+          .select()
+          .from(goldenNoteBalances)
+          .where(eq(goldenNoteBalances.userId, ctx.user.id))
+          .limit(1);
+
+        if (!bal || bal.balance < STREAK_INSURANCE_PRICE_GN) {
+          throw new TRPCError({
+            code: "PAYMENT_REQUIRED",
+            message: `Need ${STREAK_INSURANCE_PRICE_GN} Golden Notes for Streak Insurance. You have ${bal?.balance ?? 0}.`,
+          });
+        }
+
+        const newBalance = bal.balance - STREAK_INSURANCE_PRICE_GN;
+
+        await db
+          .update(goldenNoteBalances)
+          .set({
+            balance: newBalance,
+            lifetimeSpent: bal.lifetimeSpent + STREAK_INSURANCE_PRICE_GN,
+            updatedAt: new Date(),
+          })
+          .where(eq(goldenNoteBalances.userId, ctx.user.id));
+
+        await db.insert(goldenNoteTransactions).values({
+          userId: ctx.user.id,
+          amount: -STREAK_INSURANCE_PRICE_GN,
+          kind: "spend_advanced_mode",
+          reason: "Streak Insurance",
+          balanceAfter: newBalance,
+        });
+      }
 
       let roomCode = generateRoomCode();
       // Ensure unique
@@ -183,6 +228,7 @@ export const gameRouter = router({
         selectedDecades: JSON.stringify(input.decades),
         difficulty: input.difficulty,
         explicitFilter: input.explicitFilter,
+        streakInsurance: input.streakInsurance,
         status: "waiting",
         currentRound: 0,
         currentPlayerIndex: 0,
@@ -319,120 +365,173 @@ export const gameRouter = router({
       const decades = JSON.parse(room.selectedDecades) as string[];
       const usedIds = JSON.parse(room.usedSongIds ?? "[]") as number[];
 
-      // Section-type filter PLUS weighted bias for the candidate pick. Low: hooks/
-      // choruses only. Medium/High: chorus + hook + verse dominant; bridge and
-      // call-response remain occasional picks (low weight) rather than dropped.
-      type SectionType = (typeof lyricSectionTypeEnum.enumValues)[number];
-      let difficultyFilter: SectionType[];
-      let sectionWeights: Record<SectionType, number>;
-      if (room.difficulty === "low") {
-        difficultyFilter = ["chorus", "hook"];
-        sectionWeights = { chorus: 1, hook: 1, verse: 0, "call-response": 0, bridge: 0 };
+      let song: typeof songs.$inferSelect;
+      let candidateSongs: (typeof songs.$inferSelect)[];
+
+      const customPackSongIds = Array.isArray(room.customPackSongIds) && room.customPackSongIds.length > 0
+        ? room.customPackSongIds as number[]
+        : null;
+
+      if (customPackSongIds) {
+        // ── Custom-pack branch: serve songs in order, advancing by usedIds length ──
+        if (usedIds.length >= customPackSongIds.length) {
+          throw new Error("Practice pack exhausted.");
+        }
+
+        const nextSongId = customPackSongIds[usedIds.length];
+        if (nextSongId === undefined) {
+          throw new Error("Practice pack exhausted.");
+        }
+
+        const [pickedSong] = await db
+          .select()
+          .from(songs)
+          .where(eq(songs.id, nextSongId))
+          .limit(1);
+
+        if (!pickedSong) throw new Error("Custom pack song not found.");
+
+        song = pickedSong;
+
+        // Update room: push to usedSongIds and set currentSongId
+        const newUsedIds = [...usedIds, song.id];
+        await db
+          .update(gameRooms)
+          .set({ currentSongId: song.id, usedSongIds: JSON.stringify(newUsedIds) })
+          .where(eq(gameRooms.id, room.id));
+
+        // Distractor pool: same-genre songs excluding picked song
+        candidateSongs = await db
+          .select()
+          .from(songs)
+          .where(
+            and(
+              eq(songs.isActive, true),
+              eq(songs.approvalStatus, "approved"),
+              eq(songs.genre, song.genre),
+              ne(songs.id, song.id),
+            )
+          );
       } else {
-        // Medium and High share section sampling — they differ in what's shown
-        // to the player (lyric fill-in difficulty), not in song selection.
-        difficultyFilter = ["chorus", "hook", "verse", "bridge", "call-response"];
-        sectionWeights = { chorus: 1, hook: 1, verse: 3, bridge: 0.3, "call-response": 0.3 };
-      }
+        // ── Standard branch: genre / decade / difficulty filter + weighted pick ──
 
-      // Map decades to year ranges AND short-form labels (e.g. "1980s")
-      // Note: "1980–1990" means the 1980s decade (1980-1989), end year is exclusive
-      const decadeYearRanges = decades.map(d => {
-        const match = d.match(/(\d{4})[–-](\d{4}|Present)/);
-        if (!match) return null;
-        const start = parseInt(match[1]);
-        // End is exclusive: "1980–1990" covers 1980-1989
-        const endRaw = match[2] === "Present" ? new Date().getFullYear() + 1 : parseInt(match[2]);
-        const end = endRaw - 1; // inclusive end
-        // Derive short-form label: "1980–1990" → "1980s", "2020–Present" → "2020s"
-        const shortLabel = `${match[1].slice(0, 3)}0s`;
-        return { start, end, longLabel: d, shortLabel };
-      }).filter(Boolean) as { start: number; end: number; longLabel: string; shortLabel: string }[];
+        // Section-type filter PLUS weighted bias for the candidate pick. Low: hooks/
+        // choruses only. Medium/High: chorus + hook + verse dominant; bridge and
+        // call-response remain occasional picks (low weight) rather than dropped.
+        type SectionType = (typeof lyricSectionTypeEnum.enumValues)[number];
+        let difficultyFilter: SectionType[];
+        let sectionWeights: Record<SectionType, number>;
+        if (room.difficulty === "low") {
+          difficultyFilter = ["chorus", "hook"];
+          sectionWeights = { chorus: 1, hook: 1, verse: 0, "call-response": 0, bridge: 0 };
+        } else {
+          // Medium and High share section sampling — they differ in what's shown
+          // to the player (lyric fill-in difficulty), not in song selection.
+          difficultyFilter = ["chorus", "hook", "verse", "bridge", "call-response"];
+          sectionWeights = { chorus: 1, hook: 1, verse: 3, bridge: 0.3, "call-response": 0.3 };
+        }
 
-      // Collect all decadeRange label variants stored in DB for these decades
-      const decadeLabels: string[] = [];
-      for (const r of decadeYearRanges) {
-        decadeLabels.push(r.longLabel);
-        decadeLabels.push(r.shortLabel);
-      }
+        // Map decades to year ranges AND short-form labels (e.g. "1980s")
+        // Note: "1980–1990" means the 1980s decade (1980-1989), end year is exclusive
+        const decadeYearRanges = decades.map(d => {
+          const match = d.match(/(\d{4})[–-](\d{4}|Present)/);
+          if (!match) return null;
+          const start = parseInt(match[1]);
+          // End is exclusive: "1980–1990" covers 1980-1989
+          const endRaw = match[2] === "Present" ? new Date().getFullYear() + 1 : parseInt(match[2]);
+          const end = endRaw - 1; // inclusive end
+          // Derive short-form label: "1980–1990" → "1980s", "2020–Present" → "2020s"
+          const shortLabel = `${match[1].slice(0, 3)}0s`;
+          return { start, end, longLabel: d, shortLabel };
+        }).filter(Boolean) as { start: number; end: number; longLabel: string; shortLabel: string }[];
 
-      // Helper to filter songs by decade (strict)
-      const matchesDecade = (s: typeof songs.$inferSelect) =>
-        decadeLabels.includes(s.decadeRange ?? "") ||
-        decadeYearRanges.some(r => s.releaseYear >= r.start && s.releaseYear <= r.end);
+        // Collect all decadeRange label variants stored in DB for these decades
+        const decadeLabels: string[] = [];
+        for (const r of decadeYearRanges) {
+          decadeLabels.push(r.longLabel);
+          decadeLabels.push(r.shortLabel);
+        }
 
-      // Get candidate songs matching genre + difficulty + decade
-      let candidateSongs = await db.select().from(songs).where(
-        and(
-          eq(songs.isActive, true),
-          eq(songs.approvalStatus, "approved"),
-          inArray(songs.genre, genres),
-          inArray(songs.lyricSectionType, difficultyFilter),
-          room.explicitFilter ? eq(songs.explicitFlag, false) : undefined,
-          usedIds.length > 0 ? notInArray(songs.id, usedIds) : undefined,
-        )
-      );
+        // Helper to filter songs by decade (strict)
+        const matchesDecade = (s: typeof songs.$inferSelect) =>
+          decadeLabels.includes(s.decadeRange ?? "") ||
+          decadeYearRanges.some(r => s.releaseYear >= r.start && s.releaseYear <= r.end);
 
-      // Filter by decade (strict — always enforce selected decades)
-      candidateSongs = candidateSongs.filter(matchesDecade);
-
-      if (candidateSongs.length === 0) {
-        // Fallback 1: relax difficulty filter but KEEP genre + decade strict.
-        // Genre/decade are user intent — never silently swap them.
-        let relaxed = await db.select().from(songs).where(
+        // Get candidate songs matching genre + difficulty + decade
+        let stdCandidateSongs = await db.select().from(songs).where(
           and(
             eq(songs.isActive, true),
             eq(songs.approvalStatus, "approved"),
             inArray(songs.genre, genres),
+            inArray(songs.lyricSectionType, difficultyFilter),
+            room.explicitFilter ? eq(songs.explicitFlag, false) : undefined,
             usedIds.length > 0 ? notInArray(songs.id, usedIds) : undefined,
           )
         );
-        relaxed = relaxed.filter(matchesDecade);
 
-        if (relaxed.length === 0) {
-          // Fallback 2: allow re-playing previously-used songs within the
-          // same genre + decade rather than switching categories.
-          let recycled = await db.select().from(songs).where(
+        // Filter by decade (strict — always enforce selected decades)
+        stdCandidateSongs = stdCandidateSongs.filter(matchesDecade);
+
+        if (stdCandidateSongs.length === 0) {
+          // Fallback 1: relax difficulty filter but KEEP genre + decade strict.
+          // Genre/decade are user intent — never silently swap them.
+          let relaxed = await db.select().from(songs).where(
             and(
               eq(songs.isActive, true),
               eq(songs.approvalStatus, "approved"),
               inArray(songs.genre, genres),
+              usedIds.length > 0 ? notInArray(songs.id, usedIds) : undefined,
             )
           );
-          recycled = recycled.filter(matchesDecade);
-          candidateSongs = recycled;
-        } else {
-          candidateSongs = relaxed;
+          relaxed = relaxed.filter(matchesDecade);
+
+          if (relaxed.length === 0) {
+            // Fallback 2: allow re-playing previously-used songs within the
+            // same genre + decade rather than switching categories.
+            let recycled = await db.select().from(songs).where(
+              and(
+                eq(songs.isActive, true),
+                eq(songs.approvalStatus, "approved"),
+                inArray(songs.genre, genres),
+              )
+            );
+            recycled = recycled.filter(matchesDecade);
+            stdCandidateSongs = recycled;
+          } else {
+            stdCandidateSongs = relaxed;
+          }
         }
-      }
 
-      if (candidateSongs.length === 0) {
-        const genreLabel = genres.join(" / ");
-        const decadeLabel = decades.join(" / ");
-        throw new Error(
-          `No ${genreLabel} songs available for ${decadeLabel}. Pick a broader selection on the setup screen.`
-        );
-      }
+        if (stdCandidateSongs.length === 0) {
+          const genreLabel = genres.join(" / ");
+          const decadeLabel = decades.join(" / ");
+          throw new Error(
+            `No ${genreLabel} songs available for ${decadeLabel}. Pick a broader selection on the setup screen.`
+          );
+        }
 
-      // Weighted random pick: each candidate's weight comes from sectionWeights.
-      // Songs whose section has weight 0 are excluded (matches the strict low filter).
-      const weighted = candidateSongs
-        .map(s => ({ s, w: sectionWeights[(s.lyricSectionType as SectionType)] ?? 0 }))
-        .filter(x => x.w > 0);
-      const pickPool = weighted.length > 0
-        ? weighted
-        : candidateSongs.map(s => ({ s, w: 1 }));
-      const totalWeight = pickPool.reduce((acc, x) => acc + x.w, 0);
-      let r = Math.random() * totalWeight;
-      let song = pickPool[0].s;
-      for (const x of pickPool) {
-        r -= x.w;
-        if (r <= 0) { song = x.s; break; }
-      }
+        // Weighted random pick: each candidate's weight comes from sectionWeights.
+        // Songs whose section has weight 0 are excluded (matches the strict low filter).
+        const weighted = stdCandidateSongs
+          .map(s => ({ s, w: sectionWeights[(s.lyricSectionType as SectionType)] ?? 0 }))
+          .filter(x => x.w > 0);
+        const pickPool = weighted.length > 0
+          ? weighted
+          : stdCandidateSongs.map(s => ({ s, w: 1 }));
+        const totalWeight = pickPool.reduce((acc, x) => acc + x.w, 0);
+        let rnd = Math.random() * totalWeight;
+        song = pickPool[0].s;
+        for (const x of pickPool) {
+          rnd -= x.w;
+          if (rnd <= 0) { song = x.s; break; }
+        }
 
-      // Update used songs
-      const newUsedIds = [...usedIds, song.id];
-      await db.update(gameRooms).set({ currentSongId: song.id, usedSongIds: JSON.stringify(newUsedIds) }).where(eq(gameRooms.id, room.id));
+        candidateSongs = stdCandidateSongs;
+
+        // Update used songs
+        const newUsedIds = [...usedIds, song.id];
+        await db.update(gameRooms).set({ currentSongId: song.id, usedSongIds: JSON.stringify(newUsedIds) }).where(eq(gameRooms.id, room.id));
+      }
 
       // Get artist metadata
       let artistMeta = null;
@@ -669,8 +768,24 @@ export const gameRouter = router({
       ).limit(1);
 
       if (player) {
+        // ── Streak Insurance: if the player missed the lyric stage and has an
+        // active streak, check whether streak insurance is enabled on this room.
+        // If so, preserve the streak (one-shot: flip room.streakInsurance to false).
+        let streakInsuranceUsed = false;
+        const rawNewStreak = lyricCorrect ? player.currentStreak + 1 : 0;
+        let newStreak = rawNewStreak;
+
+        if (!lyricCorrect && player.currentStreak >= 1 && room.streakInsurance) {
+          // Insurance fires — preserve the streak, consume the flag.
+          newStreak = player.currentStreak;
+          streakInsuranceUsed = true;
+          await db
+            .update(gameRooms)
+            .set({ streakInsurance: false })
+            .where(eq(gameRooms.id, room.id));
+        }
+
         // Streak bonus
-        const newStreak = lyricCorrect ? player.currentStreak + 1 : 0;
         if (room.rankingMode === "streak_bonus" && lyricCorrect && newStreak >= 2) {
           streakBonus = Math.min(newStreak * 2, 10);
         }
@@ -685,6 +800,9 @@ export const gameRouter = router({
         }).where(eq(roomPlayers.id, player.id));
 
         // Save round result
+        // NOTE: hintUsed defaults to false — client-side hint tracking is a
+        // follow-up task (Option A per plan). Wire hintUsed via submitAnswer
+        // input when client-side hint state is available.
         await db.insert(roundResults).values({
           roomId: room.id,
           roundNumber: room.currentRound,
@@ -703,6 +821,7 @@ export const gameRouter = router({
           streakBonusPoints: streakBonus,
           totalRoundPoints: totalRoundPoints,
           passUsed: input.passUsed,
+          streakInsuranceUsed,
         });
 
         return {
@@ -722,6 +841,7 @@ export const gameRouter = router({
           total: totalRoundPoints,
           newScore,
           newStreak,
+          streakInsuranceUsed,
           correctLyric: song.lyricAnswer,
           correctTitle: song.title,
           correctArtist: song.artistName,
@@ -736,9 +856,84 @@ export const gameRouter = router({
         artistCorrect, artistPartial, correctCount,
         lyricPoints, titlePoints, artistPoints, yearPoints,
         speedBonus, streakBonus, total: 0, newScore: 0, newStreak: 0,
+        streakInsuranceUsed: false,
         correctLyric: song.lyricAnswer, correctTitle: song.title,
         correctArtist: song.artistName, correctYear: song.releaseYear, difficulty: diff,
         passUsed: input.passUsed,
+      };
+    }),
+
+  // Use a hint for the current stage (costs 1 GN, auth required)
+  useHint: protectedProcedure
+    .input(z.object({
+      roomCode: z.string(),
+      songId: z.number().int(),
+      stage: z.enum(["lyric", "title", "artist", "year"]),
+    }))
+    .mutation(async ({ input, ctx }) => {
+      const db = await getDb();
+      if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Database unavailable." });
+
+      const userId = ctx.user.id;
+
+      // Check GN balance.
+      const [bal] = await db
+        .select()
+        .from(goldenNoteBalances)
+        .where(eq(goldenNoteBalances.userId, userId))
+        .limit(1);
+
+      if (!bal || bal.balance < HINT_PRICE_GN) {
+        throw new TRPCError({
+          code: "PAYMENT_REQUIRED",
+          message: `Need ${HINT_PRICE_GN} Golden Note to use a hint. You have ${bal?.balance ?? 0}.`,
+        });
+      }
+
+      const newBalance = bal.balance - HINT_PRICE_GN;
+
+      // Debit GN and record transaction.
+      await db
+        .update(goldenNoteBalances)
+        .set({
+          balance: newBalance,
+          lifetimeSpent: bal.lifetimeSpent + HINT_PRICE_GN,
+          updatedAt: new Date(),
+        })
+        .where(eq(goldenNoteBalances.userId, userId));
+
+      await db.insert(goldenNoteTransactions).values({
+        userId,
+        amount: -HINT_PRICE_GN,
+        kind: "spend_advanced_mode",
+        reason: `Hint: ${input.stage}`,
+        balanceAfter: newBalance,
+      });
+
+      // Look up song to build the hint payload.
+      const [song] = await db.select().from(songs).where(eq(songs.id, input.songId)).limit(1);
+      if (!song) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Song not found." });
+      }
+
+      if (input.stage === "year") {
+        return {
+          stage: input.stage as "year",
+          narrowedRange: [song.releaseYear - 5, song.releaseYear + 5] as [number, number],
+        };
+      }
+
+      // stage is "lyric" | "title" | "artist" — return first letter of correct answer.
+      const correctAnswer =
+        input.stage === "title" ? song.title
+        : input.stage === "artist" ? song.artistName
+        : song.lyricAnswer; // "lyric"
+
+      const firstLetter = correctAnswer.trimStart()[0]?.toUpperCase() ?? "";
+
+      return {
+        stage: input.stage as "lyric" | "title" | "artist",
+        firstLetter,
       };
     }),
 

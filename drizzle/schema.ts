@@ -254,6 +254,8 @@ export const gameRooms = pgTable("game_rooms", {
   currentPlayerIndex: integer("currentPlayerIndex").default(0).notNull(),
   currentSongId: integer("currentSongId"),
   usedSongIds: text("usedSongIds"), // JSON array as text, nullable
+  customPackSongIds: jsonb("customPackSongIds").$type<number[]>(),
+  streakInsurance: boolean("streakInsurance").default(false).notNull(),
   createdAt: createdAtColumn(),
   updatedAt: updatedAtColumn(),
 });
@@ -334,6 +336,8 @@ export const roundResults = pgTable("round_results", {
   streakBonusPoints: integer("streakBonusPoints").default(0).notNull(),
   totalRoundPoints: integer("totalRoundPoints").default(0).notNull(),
   passUsed: boolean("passUsed").default(false).notNull(),
+  hintUsed: boolean("hintUsed").default(false).notNull(),
+  streakInsuranceUsed: boolean("streakInsuranceUsed").default(false).notNull(),
   createdAt: createdAtColumn(),
 });
 
@@ -645,3 +649,20 @@ export const userAvatars = pgTable(
 );
 export type UserAvatar = typeof userAvatars.$inferSelect;
 export type InsertUserAvatar = typeof userAvatars.$inferInsert;
+
+// ─── User Insights ────────────────────────────────────────────────────────────
+// Cached AI-generated weakness diagnosis + recommended practice-pack song IDs.
+// One row per user; refreshed when stale (>24h) or invalidated on next round.
+export const userInsights = pgTable("user_insights", {
+  id: serial("id").primaryKey(),
+  userId: integer("userId").notNull().unique(),
+  diagnosis: text("diagnosis").notNull(),
+  packSongIds: jsonb("packSongIds").$type<number[]>().notNull(),
+  roundsAnalyzed: integer("roundsAnalyzed").notNull(),
+  weakestGenre: varchar("weakestGenre", { length: 64 }),
+  weakestDecade: varchar("weakestDecade", { length: 32 }),
+  weakestCategory: varchar("weakestCategory", { length: 16 }), // 'lyric' | 'artist' | 'year' | 'title'
+  computedAt: timestamp("computedAt", { withTimezone: true }).defaultNow().notNull(),
+});
+
+export type UserInsights = typeof userInsights.$inferSelect;

@@ -8,6 +8,7 @@ import { useAuth } from "@/_core/hooks/useAuth";
 import { getLoginUrl, getSignUpUrl } from "@/const";
 import SocialShareButtons from "@/components/SocialShareButtons";
 import { getHomepageShareContent } from "@/lib/shareUtils";
+import { WeaknessPackCard } from "@/components/WeaknessPackCard";
 import {
   Music, Mic, Users, Trophy, Zap, Star, ChevronRight,
   Play, Radio, Clock, Target, ArrowRight, Crown, Flame, ShoppingCart,
@@ -181,6 +182,15 @@ export default function Home() {
           </div>
         </div>
       </section>
+
+      {/* ── Weakness Pack Card (authenticated users only) ── */}
+      {isAuthenticated && (
+        <section className="py-6 px-4">
+          <div className="container max-w-3xl">
+            <WeaknessPackCard />
+          </div>
+        </section>
+      )}
 
       {/* ── How It Works ── */}
       <section className="py-20 px-4">
