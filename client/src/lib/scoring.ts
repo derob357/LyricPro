@@ -118,11 +118,7 @@ export function matchArtist(
 // ── Year proximity scoring ────────────────────────────────────────────────────
 export function scoreYear(userYear: number | null, correctYear: number): number {
   if (!userYear || isNaN(userYear)) return 0;
-  const diff = Math.abs(userYear - correctYear);
-  if (diff === 0) return 20;
-  if (diff <= 2) return 10;
-  if (diff <= 3) return 5;
-  return 0;
+  return userYear === correctYear ? 20 : 0;
 }
 
 // ── Full round scoring ────────────────────────────────────────────────────────

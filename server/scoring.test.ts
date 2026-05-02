@@ -79,11 +79,7 @@ function matchArtist(userAnswer: string, correctArtist: string, aliases?: string
 
 function scoreYear(userYear: number | null, correctYear: number): number {
   if (!userYear) return 0;
-  const diff = Math.abs(userYear - correctYear);
-  if (diff === 0) return 20;
-  if (diff <= 2) return 10;
-  if (diff <= 3) return 5;
-  return 0;
+  return userYear === correctYear ? 20 : 0;
 }
 
 function lyricPts(m: LyricMatch) { return m === "full" ? 10 : m === "partial" ? 5 : 0; }
@@ -154,12 +150,12 @@ describe("matchArtist", () => {
 // ── scoreYear ─────────────────────────────────────────────────────────────────
 describe("scoreYear", () => {
   it("20 for exact year", () => expect(scoreYear(1995, 1995)).toBe(20));
-  it("10 for 1 year off", () => expect(scoreYear(1994, 1995)).toBe(10));
-  it("10 for 2 years off", () => expect(scoreYear(1993, 1995)).toBe(10));
-  it("5 for 3 years off", () => expect(scoreYear(1992, 1995)).toBe(5));
+  it("0 for 1 year off", () => expect(scoreYear(1994, 1995)).toBe(0));
+  it("0 for 2 years off", () => expect(scoreYear(1993, 1995)).toBe(0));
+  it("0 for 3 years off", () => expect(scoreYear(1992, 1995)).toBe(0));
   it("0 for 4+ years off", () => expect(scoreYear(1990, 1995)).toBe(0));
   it("0 for null year", () => expect(scoreYear(null, 1995)).toBe(0));
-  it("handles future year proximity", () => expect(scoreYear(1997, 1995)).toBe(10));
+  it("0 for any non-exact future year", () => expect(scoreYear(1997, 1995)).toBe(0));
 });
 
 // ── levenshtein ───────────────────────────────────────────────────────────────

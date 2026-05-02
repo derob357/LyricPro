@@ -685,9 +685,9 @@ export const gameRouter = router({
       const diff = room.difficulty as "low" | "medium" | "high";
       const pts = {
         // artistPartial = full artist points (primary-only match = full credit per spec)
-        low:    { lyric: 25, lyricPartial: 15, artist: 25,  artistPartial: 25,  title: 25, titlePartial: 15, year: 50,  yearClose2: 25,  yearClose3: 10 },
-        medium: { lyric: 50, lyricPartial: 30, artist: 50,  artistPartial: 50,  title: 50, titlePartial: 30, year: 100, yearClose2: 50,  yearClose3: 20 },
-        high:   { lyric: 50, lyricPartial: 25, artist: 100, artistPartial: 100, title: 50, titlePartial: 30, year: 200, yearClose2: 100, yearClose3: 40 },
+        low:    { lyric: 25, lyricPartial: 15, artist: 25,  artistPartial: 25,  title: 25, titlePartial: 15, year: 50,  yearClose2: 0,  yearClose3: 0 },
+        medium: { lyric: 50, lyricPartial: 30, artist: 50,  artistPartial: 50,  title: 50, titlePartial: 30, year: 100, yearClose2: 0,  yearClose3: 0 },
+        high:   { lyric: 50, lyricPartial: 25, artist: 100, artistPartial: 100, title: 50, titlePartial: 30, year: 200, yearClose2: 0,  yearClose3: 0 },
       }[diff];
 
       // Score the answer
