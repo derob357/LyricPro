@@ -145,3 +145,4 @@ android/local.properties
 
 # LLM rewrite checkpoint output (re-runnable, large)
 scripts/regenerate-lyrics.checkpoint.json
+scripts/resplit-lyrics-half.checkpoint.json
