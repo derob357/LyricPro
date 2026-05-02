@@ -58,7 +58,6 @@ export default function RoundResults() {
   const guestToken = localStorage.getItem("lyricpro_guest_token");
   const [result, setResult] = useState<RoundResult | null>(null);
   const [isAdvancing, setIsAdvancing] = useState(false);
-  const [secondsLeft, setSecondsLeft] = useState(3);
 
   const { data: room } = trpc.game.getRoom.useQuery(
     { roomCode: roomCode ?? "" },
@@ -260,9 +259,9 @@ export default function RoundResults() {
                 disabled={isAdvancing}
               >
                 {isAdvancing ? "Loading..." : isLastRound ? (
-                  <>See Final Results{secondsLeft > 0 ? ` (${secondsLeft})` : ""} <Trophy className="w-5 h-5 ml-2" /></>
+                  <>See Final Results <Trophy className="w-5 h-5 ml-2" /></>
                 ) : (
-                  <>Next Round{secondsLeft > 0 ? ` (${secondsLeft})` : ""} <ChevronRight className="w-5 h-5 ml-2" /></>
+                  <>Next Round <ChevronRight className="w-5 h-5 ml-2" /></>
                 )}
               </Button>
             </div>
