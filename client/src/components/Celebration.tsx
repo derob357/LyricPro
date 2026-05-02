@@ -279,12 +279,6 @@ export default function Celebration({ level, onComplete, duration, muted }: Cele
 
     function tick(now: number) {
       const elapsed = now - startTimeRef.current;
-      if (elapsed >= totalDuration) {
-        ctx2d!.clearRect(0, 0, W, H);
-        dismiss();
-        return;
-      }
-
       ctx2d!.clearRect(0, 0, W, H);
 
       // Level 3: spawn new firework bursts periodically

@@ -105,16 +105,12 @@ export default function Gameplay() {
         ...result,
         song: currentSong,
       }));
-      if (result.total === 0 && result.passUsed) {
-        setTimeout(() => nextRoundMutation.mutate({ roomCode: roomCode ?? "" }), 800);
-        return;
-      }
       const cnt = result.correctCount ?? 0;
       const lvl = (cnt >= 3 ? 3 : cnt >= 2 ? 2 : cnt >= 1 ? 1 : 0) as CelebrationLevel;
       if (lvl > 0) {
         setTimeout(() => setCelebrationLevel(lvl), 600);
       } else {
-        setTimeout(() => navigate(`/results/round/${roomCode}`), 600);
+        navigate(`/results/round/${roomCode}`);
       }
     },
     onError: (e) => { toast.error(e.message); setHasSubmitted(false); },
