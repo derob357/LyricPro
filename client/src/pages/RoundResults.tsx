@@ -91,31 +91,6 @@ export default function RoundResults() {
     nextRoundMutation.mutate({ roomCode: roomCode ?? "" });
   };
 
-  // Auto-advance after 3-second countdown once result is loaded
-  useEffect(() => {
-    if (!result) return;
-
-    setSecondsLeft(3);
-    let count = 3;
-    let cancelled = false;
-
-    const interval = setInterval(() => {
-      if (cancelled) return;
-      count -= 1;
-      setSecondsLeft(count);
-      if (count <= 0) {
-        clearInterval(interval);
-        if (!cancelled) handleNext();
-      }
-    }, 1000);
-
-    return () => {
-      cancelled = true;
-      clearInterval(interval);
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [result]);
-
   if (!result) {
     return (
       <div className="min-h-screen flex items-center justify-center">
