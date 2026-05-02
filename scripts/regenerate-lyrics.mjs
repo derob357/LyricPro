@@ -1,7 +1,7 @@
 // scripts/regenerate-lyrics.mjs
 // One-shot rewriter. For each song, asks Claude to:
 //   - Reconstruct the original lyric line as ≥6 words (relaxed for hook/chorus).
-//   - Split it into prompt (first ~2/3) + answer (last ~1/3).
+//   - Split it into prompt (first ~1/2) + answer (last ~1/2).
 //   - Generate 3 distractors that rhyme with the answer and fit the meter/genre.
 // Writes results to scripts/regenerate-lyrics.checkpoint.json. DB is NOT touched.
 //
@@ -55,11 +55,11 @@ const TOOL = {
     properties: {
       prompt: {
         type: "string",
-        description: "Visible part of the lyric (first ~2/3 of the line).",
+        description: "Visible part of the lyric (first ~1/2 of the line).",
       },
       answer: {
         type: "string",
-        description: "Hidden part of the lyric (last ~1/3 of the line, 1-6 words).",
+        description: "Hidden part of the lyric (last ~1/2 of the line, 1-6 words).",
       },
       distractors: {
         type: "array",
@@ -75,7 +75,7 @@ const TOOL = {
 
 const SYSTEM_PROMPT = `You rewrite trivia questions for a music app. For each given song, call the submit_rewrite tool with arguments that:
 1. Reconstruct the actual lyric line. If the original snippet is short (e.g. just "yourself"), expand to a complete, well-known line (≥6 words) when the section is "verse" or "bridge"; for "hook" or "chorus" you may leave shorter iconic phrases as-is.
-2. Split the line into prompt (first ~2/3 of the words) + answer (last ~1/3 of the words). The split is approximate; keep the answer to 1-6 words.
+2. Split the line into prompt (first ~1/2 of the words) + answer (last ~1/2 of the words). The split is approximate; keep the answer to 1-6 words.
 3. Generate 3 distractors that:
    - rhyme (or near-rhyme) with the actual answer,
    - fit the song's genre, register, and era,
