@@ -134,7 +134,6 @@ Service at least 30 days before the change takes effect.
 Privacy questions, data subject requests, or concerns:
 
 **Email:** deric@intentionai.ai
-**Mail:** [COMPANY LEGAL ADDRESS]
 
 For EU / UK data subjects, if we appoint a representative in the EU / UK
 under GDPR / UK GDPR, their contact information will be listed here.

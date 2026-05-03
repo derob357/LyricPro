@@ -167,7 +167,7 @@ policy apply in parallel to these Terms.
 
 - These Terms are governed by the laws of Georgia, USA, excluding conflict
   of laws rules.
-- Any dispute will be resolved in the state or federal courts of [COUNTY],
+- Any dispute will be resolved in the state or federal courts located in
   Georgia, and you consent to personal jurisdiction there.
 - **Class-action waiver:** disputes must be brought individually, not as a
   class. (This waiver may not apply in some jurisdictions.)
@@ -187,4 +187,3 @@ updated Terms.
 Questions, concerns, or notices under these Terms:
 
 **Email:** deric@intentionai.ai
-**Mail:** [COMPANY LEGAL ADDRESS]
