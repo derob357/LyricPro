@@ -1,7 +1,7 @@
 # LyricPro Ai — Terms of Service
 
-**Effective date:** [DATE BEFORE PUBLIC LAUNCH]
-**Last updated:** [DATE]
+**Effective date:** 2026-03-01
+**Last updated:** 2026-05-02
 
 > ⚠️ **DRAFT / TEMPLATE** — this is a working starting point reflecting how the
 > product currently operates. It is **not a substitute for legal review**. Have
@@ -17,7 +17,7 @@ By creating an account or using LyricPro Ai (the "Service"), you agree to
 these Terms of Service and the [Privacy Policy](privacy-policy.md). If you
 do not agree, do not use the Service.
 
-These Terms are a binding contract between you and [COMPANY LEGAL NAME]
+These Terms are a binding contract between you and F1systems Inc.
 ("LyricPro", "we", "us").
 
 ## 2. Eligibility
@@ -55,7 +55,7 @@ You agree **not** to:
 ### Our content
 
 - The LyricPro Ai software, UI, scoring engine, game modes, and branding
-  are owned by [COMPANY LEGAL NAME] and protected by copyright, trademark,
+  are owned by F1systems Inc. and protected by copyright, trademark,
   and other IP laws.
 - We grant you a limited, non-exclusive, non-transferable, revocable license
   to use the Service for personal, non-commercial use.
@@ -165,10 +165,10 @@ policy apply in parallel to these Terms.
 
 ## 10. Governing law and disputes
 
-- These Terms are governed by the laws of [STATE], USA, excluding conflict
+- These Terms are governed by the laws of Georgia, USA, excluding conflict
   of laws rules.
-- Any dispute will be resolved in the state or federal courts of [COUNTY,
-  STATE], and you consent to personal jurisdiction there.
+- Any dispute will be resolved in the state or federal courts of [COUNTY],
+  Georgia, and you consent to personal jurisdiction there.
 - **Class-action waiver:** disputes must be brought individually, not as a
   class. (This waiver may not apply in some jurisdictions.)
 - Before filing a formal dispute, please email us at

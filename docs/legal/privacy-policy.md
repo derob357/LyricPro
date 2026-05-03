@@ -1,7 +1,7 @@
 # LyricPro Ai — Privacy Policy
 
-**Effective date:** [DATE BEFORE PUBLIC LAUNCH]
-**Last updated:** [DATE]
+**Effective date:** 2026-03-01
+**Last updated:** 2026-05-02
 
 > ⚠️ **DRAFT / TEMPLATE** — this is a starting point that accurately reflects the
 > app's current technical data handling. It is **not a substitute for legal review**.
@@ -14,7 +14,7 @@
 ## 1. Who we are
 
 LyricPro Ai ("LyricPro", "we", "us") is a music-lyric trivia game operated
-by [COMPANY LEGAL NAME], registered in [STATE / COUNTRY], with support
+by F1systems Inc., registered in Georgia, USA, with support
 reachable at **deric@intentionai.ai**.
 
 For GDPR purposes we are the **Data Controller** for personal data collected
