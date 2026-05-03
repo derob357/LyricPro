@@ -109,7 +109,7 @@ export default function FinalResults() {
               </motion.div>
               <h1 className="font-display text-3xl font-black mb-2">
                 {isMyWin ? (
-                  <span className="text-gradient-gold">You Won!</span>
+                  <span className="text-gradient-gold">Your Score</span>
                 ) : (
                   <span className="text-gradient">Game Over!</span>
                 )}
