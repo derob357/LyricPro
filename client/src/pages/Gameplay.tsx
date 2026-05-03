@@ -105,6 +105,9 @@ export default function Gameplay() {
         ...result,
         song: currentSong,
       }));
+      // Pull fresh player score so the top-bar trophy total animates to the
+      // new value while the score flash is flying toward it.
+      refetchRoom();
       const cnt = result.correctCount ?? 0;
       const lvl = (cnt >= 3 ? 3 : cnt >= 2 ? 2 : cnt >= 1 ? 1 : 0) as CelebrationLevel;
       if (lvl > 0) {
@@ -406,7 +409,15 @@ export default function Gameplay() {
           </Button>
           <div className="flex items-center gap-2">
             <Trophy className="w-4 h-4 text-yellow-400" />
-            <span className="font-semibold text-foreground">{myPlayer?.currentScore ?? 0}</span>
+            <motion.span
+              key={myPlayer?.currentScore ?? 0}
+              initial={{ scale: 1.5, color: "#fbbf24" }}
+              animate={{ scale: 1, color: "var(--foreground)" }}
+              transition={{ duration: 0.4, ease: "easeOut" }}
+              className="font-semibold text-foreground inline-block"
+            >
+              {myPlayer?.currentScore ?? 0}
+            </motion.span>
           </div>
         </div>
       </div>
@@ -462,13 +473,14 @@ export default function Gameplay() {
           />
         </div>
 
-        {/* Score flash */}
+        {/* Score flash — flies up toward the top-bar trophy on exit */}
         <AnimatePresence>
           {showScoreFlash !== null && (
             <motion.div
               initial={{ opacity: 0, scale: 0.5, y: -20 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.5, y: -20 }}
+              exit={{ opacity: 0, scale: 0.3, y: -64, x: "42vw" }}
+              transition={{ exit: { duration: 0.5, ease: "easeIn" } }}
               className="fixed top-20 left-1/2 -translate-x-1/2 z-50 bg-primary text-primary-foreground px-6 py-3 rounded-2xl font-display font-black text-2xl glow-purple"
             >
               +{showScoreFlash} pts!
