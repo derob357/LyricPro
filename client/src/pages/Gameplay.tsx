@@ -8,6 +8,7 @@ import { useAuth } from "@/_core/hooks/useAuth";
 import { toast } from "sonner";
 import { Clock, Flame, Volume2, VolumeX, X, Trophy, Lightbulb, Music2 } from "lucide-react";
 import Celebration, { type CelebrationLevel } from "@/components/Celebration";
+import { usePaused } from "@/lib/pauseState";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -70,6 +71,7 @@ export default function Gameplay() {
   const [hintData, setHintData] = useState<Record<string, { firstLetter?: string; narrowedRange?: [number, number] } | null>>({});
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const tickSoundRef = useRef<HTMLAudioElement | null>(null);
+  const paused = usePaused();
 
   const { data: room, refetch: refetchRoom } = trpc.game.getRoom.useQuery(
     { roomCode: roomCode ?? "" },
@@ -184,6 +186,9 @@ export default function Gameplay() {
       return;
     }
     timerRef.current = setInterval(() => {
+      // Admin "freeze the world" — skip the tick so timeLeft holds steady
+      // and the auto-submit at 0 doesn't fire during a pause.
+      if (paused) return;
       setTimeLeft(prev => {
         if (prev <= 1) {
           clearInterval(timerRef.current!);
@@ -199,7 +204,7 @@ export default function Gameplay() {
       });
     }, 1000);
     return () => { if (timerRef.current) clearInterval(timerRef.current); };
-  }, [timerActive, hasSubmitted, muted, answers, submitAnswers]);
+  }, [timerActive, hasSubmitted, muted, answers, submitAnswers, paused]);
 
   // Buzz-in keyboard listener.
   useEffect(() => {

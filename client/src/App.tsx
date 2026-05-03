@@ -23,6 +23,7 @@ import Avatars from "./pages/Avatars";
 import { PersistentHeader } from "./components/PersistentHeader";
 import { NotificationContainer } from "./components/NotificationToast";
 import FeedbackWidget from "./components/FeedbackWidget";
+import { AdminPauseButton } from "./components/AdminPauseButton";
 
 // Wrapper that keys Gameplay on the ?round= param so it fully remounts each round
 function GameplayWithKey() {
@@ -64,6 +65,7 @@ function App() {
           <PersistentHeader />
           <NotificationContainer />
           <FeedbackWidget />
+          <AdminPauseButton />
           <div className="pt-16">
             <Router />
           </div>

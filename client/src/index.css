@@ -206,3 +206,13 @@
 ::-webkit-scrollbar-track { background: oklch(0.10 0.015 270); }
 ::-webkit-scrollbar-thumb { background: oklch(0.30 0.025 270); border-radius: 3px; }
 ::-webkit-scrollbar-thumb:hover { background: oklch(0.65 0.28 290 / 0.6); }
+
+/* Admin "freeze the world" pause — toggled via lib/pauseState.
+   Pauses every CSS animation and disables transitions globally. The
+   gameplay countdown timer reads the same flag and skips ticks. */
+[data-paused="true"] *,
+[data-paused="true"] *::before,
+[data-paused="true"] *::after {
+  animation-play-state: paused !important;
+  transition: none !important;
+}
