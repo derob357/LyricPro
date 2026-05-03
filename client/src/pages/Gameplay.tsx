@@ -6,7 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { trpc } from "@/lib/trpc";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { toast } from "sonner";
-import { Clock, Flame, Volume2, VolumeX, X, Trophy, Lightbulb } from "lucide-react";
+import { Clock, Flame, Volume2, VolumeX, X, Trophy, Lightbulb, Music2 } from "lucide-react";
 import Celebration, { type CelebrationLevel } from "@/components/Celebration";
 import {
   AlertDialog,
@@ -444,8 +444,9 @@ export default function Gameplay() {
             </div>
           </div>
           <div className="text-right shrink-0">
-            <div className="font-display font-black text-3xl sm:text-4xl text-yellow-400 neon-gold">
-              ${stageInfo.value}
+            <div className="font-display font-black text-3xl sm:text-4xl text-yellow-400 neon-gold inline-flex items-center justify-end gap-1.5">
+              <Music2 className="w-7 h-7 sm:w-9 sm:h-9" />
+              {stageInfo.value}
             </div>
             <div className={`inline-flex items-center gap-1 mt-1 text-sm font-mono ${isUrgent ? "timer-urgent" : "text-accent"}`}>
               <Clock className="w-3.5 h-3.5" /> 0:{String(timeLeft).padStart(2, "0")}
