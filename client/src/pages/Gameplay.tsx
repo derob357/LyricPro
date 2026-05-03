@@ -6,7 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { trpc } from "@/lib/trpc";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { toast } from "sonner";
-import { Clock, Flame, Volume2, VolumeX, X, Trophy, Lightbulb, Music2, ChevronRight } from "lucide-react";
+import { Clock, Flame, Volume2, VolumeX, X, Trophy, Lightbulb, Music2 } from "lucide-react";
 import Celebration, { type CelebrationLevel } from "@/components/Celebration";
 import {
   AlertDialog,
@@ -141,6 +141,18 @@ export default function Gameplay() {
     onSuccess: () => refetchRoom(),
     onError: (e) => toast.error("Could not start game: " + e.message),
   });
+
+  useEffect(() => {
+    if (room && room.status === "waiting" && !startGameMutation.isPending) {
+      startGameMutation.mutate({ roomCode: roomCode ?? "", guestToken: guestToken ?? undefined });
+    }
+  }, [room?.status]);
+
+  useEffect(() => {
+    if (room && room.status === "active" && !currentSong && !getNextSongMutation.isPending) {
+      getNextSongMutation.mutate({ roomCode: roomCode ?? "" });
+    }
+  }, [room?.status]);
 
   // Submit accumulated answers to server.
   const submitAnswers = useCallback((final: typeof answers, passUsed = false) => {
@@ -300,51 +312,29 @@ export default function Gameplay() {
   const ghostWord = NUMBER_WORDS[(room?.currentRound ?? 1)] ?? "one";
 
   if (!room || !currentSong) {
-    const isError = getNextSongMutation.isError;
-    const needsGameStart = room?.status === "waiting" && !startGameMutation.isPending;
-    const needsRoundStart = room?.status === "active" && !currentSong && !isError && !getNextSongMutation.isPending;
-    const spinnerMsg = !room
+    const loadingMsg = !room
       ? "Connecting to game..."
-      : startGameMutation.isPending
+      : room.status === "waiting"
       ? "Starting game..."
+      : getNextSongMutation.isError
+      ? "Failed to load song. No songs match your selection."
       : "Loading round...";
-
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="text-center space-y-4">
-          {isError ? (
-            <>
-              <div className="text-4xl">🎵</div>
-              <p className="text-muted-foreground">Failed to load song. No songs match your selection.</p>
-              <Button variant="outline" onClick={() => navigate("/")}>Back to Home</Button>
-            </>
-          ) : needsGameStart ? (
-            <>
-              <p className="text-muted-foreground">Ready when you are.</p>
-              <Button
-                size="lg"
-                className="bg-primary text-primary-foreground glow-purple px-8 py-6 text-lg font-semibold rounded-xl"
-                onClick={() => startGameMutation.mutate({ roomCode: roomCode ?? "", guestToken: guestToken ?? undefined })}
-              >
-                Start Game <ChevronRight className="w-5 h-5 ml-2" />
-              </Button>
-            </>
-          ) : needsRoundStart ? (
-            <>
-              <p className="text-muted-foreground">Round {room.currentRound} of {room.roundsTotal}</p>
-              <Button
-                size="lg"
-                className="bg-primary text-primary-foreground glow-purple px-8 py-6 text-lg font-semibold rounded-xl"
-                onClick={() => getNextSongMutation.mutate({ roomCode: roomCode ?? "" })}
-              >
-                Start Round {room.currentRound} <ChevronRight className="w-5 h-5 ml-2" />
-              </Button>
-            </>
+          {getNextSongMutation.isError ? (
+            <div className="text-4xl">🎵</div>
           ) : (
-            <>
-              <div className="w-12 h-12 rounded-full border-2 border-primary border-t-transparent animate-spin mx-auto" />
-              <p className="text-muted-foreground">{spinnerMsg}</p>
-            </>
+            <div className="w-12 h-12 rounded-full border-2 border-primary border-t-transparent animate-spin mx-auto" />
+          )}
+          <p className="text-muted-foreground">{loadingMsg}</p>
+          {getNextSongMutation.isError && (
+            <Button variant="outline" onClick={() => navigate("/")}>Back to Home</Button>
+          )}
+          {room && room.status === "active" && !getNextSongMutation.isError && !getNextSongMutation.isPending && (
+            <Button variant="outline" size="sm" onClick={() => getNextSongMutation.mutate({ roomCode: roomCode ?? "" })}>
+              Retry
+            </Button>
           )}
         </div>
       </div>
