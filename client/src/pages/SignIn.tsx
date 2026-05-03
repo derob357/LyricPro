@@ -183,10 +183,6 @@ export default function SignIn() {
               </Button>
             </div>
 
-            <p className="text-xs text-muted-foreground text-center mt-6">
-              Only invited accounts can sign in during this preview.
-            </p>
-
             {/* DEV-ONLY: bypass the email round-trip and generate the magic
                 link URL directly. Visible only when Vite is in dev mode.
                 The server-side procedure is also gated on NODE_ENV, so this
