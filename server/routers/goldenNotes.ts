@@ -108,7 +108,12 @@ export const goldenNotesRouter = router({
       const pack = GN_PACKS[input.packId];
 
       const { default: Stripe } = await import("stripe");
-      const key = process.env.STRIPE_SECRET_KEY;
+      // Admins hit Stripe test mode so they can validate the checkout flow
+      // without spending real money. Everyone else hits live keys.
+      const useTestMode = ctx.user.role === "admin";
+      const key = useTestMode
+        ? (process.env.STRIPE_TEST2_KEY_STRIPE_SECRET_KEY ?? process.env.STRIPE_SECRET_KEY)
+        : process.env.STRIPE_SECRET_KEY;
       if (!key || key === "sk_test_placeholder") {
         throw new TRPCError({
           code: "PRECONDITION_FAILED",
