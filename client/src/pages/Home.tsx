@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useLocation } from "wouter";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
@@ -10,9 +10,9 @@ import SocialShareButtons from "@/components/SocialShareButtons";
 import { getHomepageShareContent } from "@/lib/shareUtils";
 import { WeaknessPackCard } from "@/components/WeaknessPackCard";
 import {
-  Music, Mic, Users, Trophy, Zap, Star, ChevronRight,
-  Play, Radio, Clock, Target, ArrowRight, Crown, Flame, ShoppingCart,
-  User, Repeat, UsersRound, Smartphone, ChevronDown,
+  Music, Mic, Users, Trophy, Zap, ChevronRight,
+  Play, Radio, Clock, Target, ArrowRight, ShoppingCart,
+  User, Repeat, UsersRound, Smartphone,
 } from "lucide-react";
 
 const GENRES = ["R&B", "Hip Hop", "Pop", "Rock", "Country", "Gospel", "Soul", "Jazz"];
@@ -22,7 +22,6 @@ export default function Home() {
   const [, navigate] = useLocation();
   const { user, isAuthenticated } = useAuth();
   const [authOpen, setAuthOpen] = useState(false);
-  const [openDifficulty, setOpenDifficulty] = useState<string | null>(null);
 
   const handlePlayNow = () => {
     if (isAuthenticated) {
@@ -254,92 +253,6 @@ export default function Home() {
                 <p className="text-muted-foreground leading-relaxed">{desc}</p>
               </motion.div>
             ))}
-          </div>
-        </div>
-      </section>
-
-      {/* ── Scoring breakdown ── */}
-      <section className="py-16 px-4">
-        <div className="container">
-          <div className="glass rounded-3xl p-8 md:p-12 max-w-4xl mx-auto">
-            <h2 className="font-display text-3xl font-bold text-center mb-3">
-              <span className="text-gradient">Point System</span>
-            </h2>
-            <p className="text-muted-foreground text-center text-sm mb-10">Points scale with difficulty. Low & Medium show the full lyric — name the song, artist, and year.</p>
-
-            {/* Difficulty table */}
-            <div className="space-y-4">
-              {[
-                { diff: "Low", color: "text-green-400", bg: "bg-green-500/10", border: "border-green-500/30", lyric: null, title: 25, artist: 25, year: 50, total: 100 },
-                { diff: "Medium", color: "text-yellow-400", bg: "bg-yellow-500/10", border: "border-yellow-500/30", lyric: null, title: 50, artist: 50, year: 100, total: 200 },
-                { diff: "High", color: "text-red-400", bg: "bg-red-500/10", border: "border-red-500/30", lyric: 50, title: 100, artist: 100, year: 200, total: 450 },
-              ].map(({ diff, color, bg, border, lyric, title, artist, year, total }) => {
-                const isOpen = openDifficulty === diff;
-                return (
-                  <div key={diff} className={`rounded-2xl border ${border} ${bg} overflow-hidden`}>
-                    <button
-                      type="button"
-                      onClick={() => setOpenDifficulty(isOpen ? null : diff)}
-                      className="w-full flex items-center justify-between p-5 text-left hover:bg-white/5 transition-colors"
-                      aria-expanded={isOpen ? "true" : "false"}
-                    >
-                      <span className={`font-display font-bold text-lg ${color}`}>{diff}</span>
-                      <div className="flex items-center gap-3">
-                        <span className="text-muted-foreground text-xs">Max {total} pts/round</span>
-                        <ChevronDown className={`w-4 h-4 ${color} transition-transform ${isOpen ? "rotate-180" : ""}`} />
-                      </div>
-                    </button>
-                    <AnimatePresence initial={false}>
-                      {isOpen && (
-                        <motion.div
-                          initial={{ height: 0, opacity: 0 }}
-                          animate={{ height: "auto", opacity: 1 }}
-                          exit={{ height: 0, opacity: 0 }}
-                          transition={{ duration: 0.2, ease: "easeInOut" }}
-                          className="overflow-hidden"
-                        >
-                          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 p-5 pt-0">
-                            {lyric !== null && (
-                              <div className="text-center p-3 rounded-xl bg-card/40">
-                                <Mic className="w-4 h-4 text-primary mx-auto mb-1" />
-                                <div className="font-bold text-foreground">{lyric} pts</div>
-                                <div className="text-muted-foreground text-xs">Lyric</div>
-                              </div>
-                            )}
-                            <div className="text-center p-3 rounded-xl bg-card/40">
-                              <Music className="w-4 h-4 text-accent mx-auto mb-1" />
-                              <div className="font-bold text-foreground">{title} pts</div>
-                              <div className="text-muted-foreground text-xs">Title</div>
-                            </div>
-                            <div className="text-center p-3 rounded-xl bg-card/40">
-                              <Star className="w-4 h-4 text-primary mx-auto mb-1" />
-                              <div className="font-bold text-foreground">{artist} pts</div>
-                              <div className="text-muted-foreground text-xs">Artist</div>
-                            </div>
-                            <div className="text-center p-3 rounded-xl bg-card/40">
-                              <Crown className="w-4 h-4 text-yellow-400 mx-auto mb-1" />
-                              <div className="font-bold text-foreground">{year} pts</div>
-                              <div className="text-muted-foreground text-xs">Year</div>
-                            </div>
-                          </div>
-                        </motion.div>
-                      )}
-                    </AnimatePresence>
-                  </div>
-                );
-              })}
-            </div>
-
-            <div className="mt-6 grid sm:grid-cols-2 gap-4 text-sm text-muted-foreground">
-              <div className="flex items-center gap-2 p-3 rounded-xl bg-card/30">
-                <Flame className="w-4 h-4 text-orange-400 shrink-0" />
-                <span>Within ±2 years = <strong className="text-foreground">50% of year pts</strong></span>
-              </div>
-              <div className="flex items-center gap-2 p-3 rounded-xl bg-card/30">
-                <Zap className="w-4 h-4 text-yellow-400 shrink-0" />
-                <span>Within ±3 years = <strong className="text-foreground">20% of year pts</strong></span>
-              </div>
-            </div>
           </div>
         </div>
       </section>

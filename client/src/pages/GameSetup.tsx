@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { useLocation, useSearch } from "wouter";
-import { motion } from "framer-motion";
+import { motion, AnimatePresence } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
@@ -8,7 +8,7 @@ import { Label } from "@/components/ui/label";
 import { trpc } from "@/lib/trpc";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { toast } from "sonner";
-import { ArrowLeft, Users, User, UsersRound, Wifi, Clock, Layers, BarChart3, Music, Music2, Calendar, ChevronRight, LogOut } from "lucide-react";
+import { ArrowLeft, Users, User, UsersRound, Wifi, Clock, Layers, BarChart3, Music, Music2, Calendar, ChevronRight, ChevronDown, Mic, Star, Crown, Trophy, LogOut } from "lucide-react";
 import { getLoginUrl, getSignUpUrl } from "@/const";
 import type { GameMode, Difficulty } from "@/contexts/GameContext";
 
@@ -27,6 +27,7 @@ export default function GameSetup() {
   const [selectedGenres, setSelectedGenres] = useState<string[]>([]);
   const [selectedDecades, setSelectedDecades] = useState<string[]>([]);
   const [difficulty, setDifficulty] = useState<Difficulty>("medium");
+  const [openDifficulty, setOpenDifficulty] = useState<string | null>(null);
   const [timerSeconds, setTimerSeconds] = useState(30);
   const [rounds, setRounds] = useState(10);
   const [explicitFilter, setExplicitFilter] = useState(false);
@@ -315,6 +316,76 @@ export default function GameSetup() {
                   <div className="text-xs text-muted-foreground mt-1">{desc}</div>
                 </button>
               ))}
+            </div>
+          </section>
+
+          {/* Point System */}
+          <section>
+            <div className="flex items-center gap-2 mb-2">
+              <Trophy className="w-4 h-4 text-primary" />
+              <h2 className="font-display font-semibold text-lg text-foreground">Point System</h2>
+            </div>
+            <p className="text-muted-foreground text-sm mb-4">Points scale with difficulty. Low &amp; Medium show the full lyric — name the song, artist, and year.</p>
+            <div className="space-y-2">
+              {[
+                { diff: "Low", color: "text-green-400", bg: "bg-green-500/10", border: "border-green-500/30", lyric: null, title: 25, artist: 25, year: 50, total: 100 },
+                { diff: "Medium", color: "text-yellow-400", bg: "bg-yellow-500/10", border: "border-yellow-500/30", lyric: null, title: 50, artist: 50, year: 100, total: 200 },
+                { diff: "High", color: "text-red-400", bg: "bg-red-500/10", border: "border-red-500/30", lyric: 50, title: 100, artist: 100, year: 200, total: 450 },
+              ].map(({ diff, color, bg, border, lyric, title, artist, year, total }) => {
+                const isOpen = openDifficulty === diff;
+                return (
+                  <div key={diff} className={`rounded-xl border ${border} ${bg} overflow-hidden`}>
+                    <button
+                      type="button"
+                      onClick={() => setOpenDifficulty(isOpen ? null : diff)}
+                      className="w-full flex items-center justify-between px-4 py-3 text-left hover:bg-white/5 transition-colors"
+                      aria-expanded={isOpen}
+                    >
+                      <span className={`font-display font-bold text-base ${color}`}>{diff}</span>
+                      <div className="flex items-center gap-3">
+                        <span className="text-muted-foreground text-xs">Max {total} pts/round</span>
+                        <ChevronDown className={`w-4 h-4 ${color} transition-transform ${isOpen ? "rotate-180" : ""}`} />
+                      </div>
+                    </button>
+                    <AnimatePresence initial={false}>
+                      {isOpen && (
+                        <motion.div
+                          initial={{ height: 0, opacity: 0 }}
+                          animate={{ height: "auto", opacity: 1 }}
+                          exit={{ height: 0, opacity: 0 }}
+                          transition={{ duration: 0.2, ease: "easeInOut" }}
+                          className="overflow-hidden"
+                        >
+                          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 px-4 pb-4 pt-0">
+                            {lyric !== null && (
+                              <div className="text-center p-2 rounded-lg bg-card/40">
+                                <Mic className="w-4 h-4 text-primary mx-auto mb-1" />
+                                <div className="font-bold text-foreground text-sm">{lyric} pts</div>
+                                <div className="text-muted-foreground text-xs">Lyric</div>
+                              </div>
+                            )}
+                            <div className="text-center p-2 rounded-lg bg-card/40">
+                              <Music className="w-4 h-4 text-accent mx-auto mb-1" />
+                              <div className="font-bold text-foreground text-sm">{title} pts</div>
+                              <div className="text-muted-foreground text-xs">Title</div>
+                            </div>
+                            <div className="text-center p-2 rounded-lg bg-card/40">
+                              <Star className="w-4 h-4 text-primary mx-auto mb-1" />
+                              <div className="font-bold text-foreground text-sm">{artist} pts</div>
+                              <div className="text-muted-foreground text-xs">Artist</div>
+                            </div>
+                            <div className="text-center p-2 rounded-lg bg-card/40">
+                              <Crown className="w-4 h-4 text-yellow-400 mx-auto mb-1" />
+                              <div className="font-bold text-foreground text-sm">{year} pts</div>
+                              <div className="text-muted-foreground text-xs">Year</div>
+                            </div>
+                          </div>
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
+                  </div>
+                );
+              })}
             </div>
           </section>
 
