@@ -18,6 +18,7 @@ import { users } from "../drizzle/schema";
 import { createClient } from "@supabase/supabase-js";
 import { TRPCError } from "@trpc/server";
 import { sendMagicLinkEmail } from "./_core/sendMagicLinkEmail";
+import { sendPasswordResetEmail } from "./_core/sendPasswordResetEmail";
 
 export const appRouter = router({
   system: systemRouter,
@@ -143,6 +144,79 @@ export const appRouter = router({
           // configuration error (missing API key, unverified domain) will
           // surface in server logs immediately.
           console.error("[sendMagicLink] Resend send failed:", err instanceof Error ? err.message : err);
+        }
+
+        return { ok: true } as const;
+      }),
+
+    // Send a password-reset email via Resend, mirroring sendMagicLink.
+    // Generates a recovery link with the Supabase service-role key, then
+    // ships it through Resend. Always returns ok=true to prevent account
+    // enumeration. The recovery URL lands on /auth/reset-password where
+    // the user finishes the flow client-side.
+    sendPasswordReset: publicProcedure
+      .input(z.object({
+        email: z.string().email(),
+      }))
+      .mutation(async ({ input, ctx }) => {
+        rateLimit(
+          "auth.sendPasswordReset.email",
+          input.email.toLowerCase(),
+          { max: 3, windowMs: 60 * 60_000 } // 3/hr per email
+        );
+        rateLimit(
+          "auth.sendPasswordReset.ip",
+          ctx.req.ip ?? "anon",
+          { max: 20, windowMs: 60 * 60_000 } // 20/hr per IP
+        );
+
+        const url = process.env.VITE_SUPABASE_PROJECT_URL;
+        const secret = process.env.SUPABASE_SECRET_KEY;
+        if (!url || !secret) {
+          throw new TRPCError({
+            code: "PRECONDITION_FAILED",
+            message: "Auth not configured on server (missing Supabase env)",
+          });
+        }
+
+        const allowlist = (process.env.ALLOWED_ORIGINS ?? "")
+          .split(",")
+          .map(s => s.trim())
+          .filter(Boolean);
+        const claimedOrigin = ctx.req.headers.origin;
+        const trustedOrigin =
+          claimedOrigin && allowlist.includes(String(claimedOrigin))
+            ? String(claimedOrigin)
+            : "https://lyricpro-ai.vercel.app";
+        const redirectTo = `${trustedOrigin}/auth/reset-password`;
+
+        const admin = createClient(url, secret, {
+          auth: { autoRefreshToken: false, persistSession: false },
+        });
+
+        const { data, error } = await admin.auth.admin.generateLink({
+          type: "recovery",
+          email: input.email,
+          options: { redirectTo },
+        });
+        if (error) {
+          console.error("[sendPasswordReset] generateLink failed:", error.message);
+          return { ok: true } as const;
+        }
+
+        const actionLink = data.properties?.action_link;
+        if (!actionLink) {
+          console.error("[sendPasswordReset] no action_link in Supabase response");
+          return { ok: true } as const;
+        }
+
+        try {
+          await sendPasswordResetEmail({ to: input.email, resetUrl: actionLink });
+        } catch (err) {
+          console.error(
+            "[sendPasswordReset] Resend send failed:",
+            err instanceof Error ? err.message : err
+          );
         }
 
         return { ok: true } as const;
