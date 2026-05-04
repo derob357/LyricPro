@@ -212,6 +212,20 @@ export const songs = pgTable("songs", {
   lyricPrompt: text("lyricPrompt").notNull(),
   lyricAnswer: text("lyricAnswer").notNull(),
   distractors: jsonb("distractors").$type<string[]>(),
+  // Per-song lyric variants. Each entry is a complete question
+  // ({prompt, answer, distractors, sectionType}). Populated by
+  // scripts/seed-lyric-variants.mjs (variant[0] from legacy columns) and
+  // scripts/generate-lyric-variants.mjs (LLM-rewritten variants[1..]).
+  // getNextSong picks an unseen variant per user within the dedup window
+  // so the same song can be re-shown with a different lyric line.
+  lyricVariants: jsonb("lyricVariants").$type<
+    Array<{
+      prompt: string;
+      answer: string;
+      distractors: string[];
+      sectionType: string;
+    }>
+  >(),
   lyricSectionType: lyricSectionTypeEnum("lyricSectionType").notNull(),
   difficulty: difficultyEnum("difficulty").notNull(),
   language: varchar("language", { length: 16 }).default("en").notNull(),
