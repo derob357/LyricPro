@@ -4,7 +4,8 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell } from "recharts";
-import { TrendingUp, Users, DollarSign, Trophy } from "lucide-react";
+import { TrendingUp, Users, DollarSign, Trophy, ListMusic } from "lucide-react";
+import { Link } from "wouter";
 
 const formatCurrency = (amount: number) => {
   return new Intl.NumberFormat('en-US', {
@@ -50,11 +51,19 @@ export function AdminDashboard() {
     <div className="min-h-screen bg-background p-4 md:p-8">
       <div className="max-w-7xl mx-auto">
         {/* Header */}
-        <div className="mb-8">
-          <h1 className="text-3xl font-bold mb-2">Admin Dashboard</h1>
-          <p className="text-muted-foreground">
-            LyricPro Ai Analytics & Management
-          </p>
+        <div className="mb-8 flex items-start justify-between gap-4 flex-wrap">
+          <div>
+            <h1 className="text-3xl font-bold mb-2">Admin Dashboard</h1>
+            <p className="text-muted-foreground">
+              LyricPro Ai Analytics & Management
+            </p>
+          </div>
+          <Link href="/admin/usage">
+            <Button variant="outline" className="gap-2">
+              <ListMusic className="w-4 h-4" />
+              Song Usage Report
+            </Button>
+          </Link>
         </div>
 
         {/* Key Metrics */}

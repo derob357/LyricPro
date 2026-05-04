@@ -15,6 +15,7 @@ import Leaderboards from "./pages/Leaderboards";
 import ProfileCompletion from "./pages/ProfileCompletion";
 import { UserDashboard } from "./pages/UserDashboard";
 import { AdminDashboard } from "./pages/AdminDashboard";
+import UsageReport from "./pages/UsageReport";
 import SignIn from "./pages/SignIn";
 import AuthCallback from "./pages/AuthCallback";
 import AccountSecurity from "./pages/AccountSecurity";
@@ -47,6 +48,7 @@ function Router() {
       <Route path="/leaderboards" component={Leaderboards} />
       <Route path="/dashboard" component={UserDashboard} />
       <Route path="/admin" component={AdminDashboard} />
+      <Route path="/admin/usage" component={UsageReport} />
       <Route path="/signin" component={SignIn} />
       <Route path="/auth/callback" component={AuthCallback} />
       <Route path="/auth/reset-password" component={PasswordReset} />
