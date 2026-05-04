@@ -131,6 +131,29 @@ function scoreYear(userYear: number | null, correctYear: number): number {
   return 0;
 }
 
+// Variant accessor for getNextSong's per-song lyric rotation.
+// Returns the song's stored lyricVariants array if non-empty, otherwise
+// synthesizes a single variant from the legacy columns so songs that
+// haven't been seeded yet still play. Once seed-lyric-variants.mjs has
+// run against production, the fallback path is no longer hit for live data.
+type SongVariant = {
+  prompt: string;
+  answer: string;
+  distractors: string[];
+  sectionType: string;
+};
+function variantsOf(song: typeof songs.$inferSelect): SongVariant[] {
+  if (Array.isArray(song.lyricVariants) && song.lyricVariants.length > 0) {
+    return song.lyricVariants as SongVariant[];
+  }
+  return [{
+    prompt: song.lyricPrompt,
+    answer: song.lyricAnswer,
+    distractors: Array.isArray(song.distractors) ? song.distractors : [],
+    sectionType: song.lyricSectionType,
+  }];
+}
+
 // ── Router ───────────────────────────────────────────────────────────────────
 export const gameRouter = router({
   // Create a guest session
@@ -600,6 +623,53 @@ export const gameRouter = router({
         await db.update(gameRooms).set({ currentSongId: song.id, usedSongIds: JSON.stringify(newUsedIds) }).where(eq(gameRooms.id, room.id));
       }
 
+      // ── Variant pick (per-song lyric rotation) ─────────────────────────────
+      // Runs in BOTH branches (standard + customPack) so practice-pack users
+      // also get variant rotation. song-level dedup decided whether the song
+      // appears at all; THIS step decides which lyric line to show.
+      //
+      // Query song_displays for variant indices already shown to this
+      // user/guest for THIS specific song within the 10-day window. Pick a
+      // variant they haven't seen. If all variants seen, fall back to
+      // variantIndex 0 (preserves the song-level dedup behavior — the song
+      // selection step decided this song is fair game; we just don't have
+      // a fresh variant to offer).
+      const allVariants = variantsOf(song);
+      const dedupCutoff = new Date(Date.now() - 10 * 24 * 60 * 60 * 1000);
+      let seenVariantIndices = new Set<number>();
+      if (dedupUserId !== null) {
+        const rows = await db
+          .select({ variantIndex: songDisplays.variantIndex })
+          .from(songDisplays)
+          .where(
+            and(
+              eq(songDisplays.userId, dedupUserId),
+              eq(songDisplays.songId, song.id),
+              gte(songDisplays.shownAt, dedupCutoff),
+            ),
+          );
+        seenVariantIndices = new Set(rows.map(r => r.variantIndex));
+      } else if (dedupGuestToken !== null) {
+        const rows = await db
+          .select({ variantIndex: songDisplays.variantIndex })
+          .from(songDisplays)
+          .where(
+            and(
+              eq(songDisplays.guestToken, dedupGuestToken),
+              eq(songDisplays.songId, song.id),
+              gte(songDisplays.shownAt, dedupCutoff),
+            ),
+          );
+        seenVariantIndices = new Set(rows.map(r => r.variantIndex));
+      }
+      const unseenIndices = allVariants
+        .map((_, i) => i)
+        .filter(i => !seenVariantIndices.has(i));
+      const pickedVariantIndex = unseenIndices.length > 0
+        ? unseenIndices[Math.floor(Math.random() * unseenIndices.length)]
+        : 0;
+      const pickedVariant = allVariants[pickedVariantIndex] ?? allVariants[0];
+
       // ── Display log + global counter bump ──────────────────────────────────
       // Runs in BOTH branches so practice-pack rounds also feed the dedup
       // window and the usage report. Back-to-back rather than wrapped in a
@@ -612,7 +682,7 @@ export const gameRouter = router({
           ? dedupGuestToken.slice(0, 64)
           : null,
         roomCode: room.roomCode ?? null,
-        variantIndex: 0,
+        variantIndex: pickedVariantIndex,
       });
       await db
         .update(songs)
@@ -681,12 +751,13 @@ export const gameRouter = router({
       // Lyric options (only used for High difficulty — a 4-option "fill the gap"
       // for the final line of the lyric). Distractors are lyricAnswer strings
       // pulled from other same-genre/decade songs.
-      // Prefer stored distractors authored alongside the song; fall back to the old
-      // other-song-snippet method for any rows not yet rewritten by the migration.
-      const answerNormalized = song.lyricAnswer.toLowerCase().trim();
+      // Prefer the picked variant's authored distractors; fall back to the old
+      // other-song-snippet method when the variant has fewer than 3 stored.
+      const variantAnswer = pickedVariant.answer;
+      const answerNormalized = variantAnswer.toLowerCase().trim();
       const seenDistractors = new Set<string>([answerNormalized]);
-      const stored = Array.isArray(song.distractors)
-        ? song.distractors.filter((d): d is string => {
+      const stored = Array.isArray(pickedVariant.distractors)
+        ? pickedVariant.distractors.filter((d): d is string => {
             if (typeof d !== "string") return false;
             const norm = d.toLowerCase().trim();
             if (norm.length === 0) return false;
@@ -697,15 +768,15 @@ export const gameRouter = router({
         : [];
       const lyricDistractors = stored.length >= 3
         ? stored.slice(0, 3)
-        : [...stored, ...pickDistractors(3 - stored.length, s => s.lyricAnswer, song.lyricAnswer)];
-      const lyricOptions = shuffle([song.lyricAnswer, ...lyricDistractors]);
+        : [...stored, ...pickDistractors(3 - stored.length, s => s.lyricAnswer, variantAnswer)];
+      const lyricOptions = shuffle([variantAnswer, ...lyricDistractors]);
 
       return {
         id: song.id,
         title: song.title,
         artistName: song.artistName,
-        lyricPrompt: song.lyricPrompt,
-        lyricAnswer: song.lyricAnswer,
+        lyricPrompt: pickedVariant.prompt,
+        lyricAnswer: pickedVariant.answer,
         releaseYear: song.releaseYear,
         genre: song.genre,
         decade: song.decadeRange,
@@ -755,6 +826,34 @@ export const gameRouter = router({
       const [song] = await db.select().from(songs).where(eq(songs.id, input.songId)).limit(1);
       if (!song) throw new Error("Song not found");
 
+      // ── Variant alignment for scoring ───────────────────────────────────────
+      // getNextSong picks a variant per (user|guest, song) display and writes
+      // the variantIndex into song_displays. We re-read the most recent display
+      // row for THIS room+song+identity so scoring matches the lyric the player
+      // actually saw. Falls back to variant 0 (legacy lyricAnswer) for clients
+      // that pre-date Phase 2a.
+      const scoringUserId: number | null = ctx.user?.id ?? null;
+      const scoringGuestToken: string | null =
+        scoringUserId === null ? (input.guestToken ?? null) : null;
+      const displayConditions = [
+        eq(songDisplays.songId, song.id),
+        eq(songDisplays.roomCode, room.roomCode),
+      ];
+      if (scoringUserId !== null) {
+        displayConditions.push(eq(songDisplays.userId, scoringUserId));
+      } else if (scoringGuestToken !== null) {
+        displayConditions.push(eq(songDisplays.guestToken, scoringGuestToken.slice(0, 64)));
+      }
+      const [latestDisplay] = await db
+        .select({ variantIndex: songDisplays.variantIndex })
+        .from(songDisplays)
+        .where(and(...displayConditions))
+        .orderBy(sql`${songDisplays.shownAt} DESC`)
+        .limit(1);
+      const allVariants = variantsOf(song);
+      const playedVariant =
+        allVariants[latestDisplay?.variantIndex ?? 0] ?? allVariants[0];
+
       // Get artist aliases
       let aliases: string[] = [];
       if (song.artistMetadataId) {
@@ -787,8 +886,9 @@ export const gameRouter = router({
       let titlePartial = false;
 
       if (!input.passUsed) {
-        // Lyric scoring (all difficulties)
-        lyricMatch = matchLyric(input.lyricAnswer, song.lyricAnswer);
+        // Lyric scoring (all difficulties) — use the variant the player saw,
+        // not the legacy column, so variant rotation scores correctly.
+        lyricMatch = matchLyric(input.lyricAnswer, playedVariant.answer);
         lyricPoints = lyricMatch === "full" ? pts.lyric : lyricMatch === "partial" ? pts.lyricPartial : 0;
 
         // Title scoring (Low/Medium/High all score title)
@@ -931,7 +1031,7 @@ export const gameRouter = router({
           newScore,
           newStreak,
           streakInsuranceUsed,
-          correctLyric: song.lyricAnswer,
+          correctLyric: playedVariant.answer,
           correctTitle: song.title,
           correctArtist: song.artistName,
           correctYear: song.releaseYear,
@@ -946,7 +1046,7 @@ export const gameRouter = router({
         lyricPoints, titlePoints, artistPoints, yearPoints,
         speedBonus, streakBonus, total: 0, newScore: 0, newStreak: 0,
         streakInsuranceUsed: false,
-        correctLyric: song.lyricAnswer, correctTitle: song.title,
+        correctLyric: playedVariant.answer, correctTitle: song.title,
         correctArtist: song.artistName, correctYear: song.releaseYear, difficulty: diff,
         passUsed: input.passUsed,
       };
@@ -1012,11 +1112,32 @@ export const gameRouter = router({
         };
       }
 
+      // For the lyric stage, the hint must align with the variant the player
+      // actually saw — look up the latest song_displays row for this user/song
+      // and use that variant's answer (falls back to legacy column if absent).
+      let lyricAnswerForHint = song.lyricAnswer;
+      if (input.stage === "lyric") {
+        const [latestDisplay] = await db
+          .select({ variantIndex: songDisplays.variantIndex })
+          .from(songDisplays)
+          .where(
+            and(
+              eq(songDisplays.userId, userId),
+              eq(songDisplays.songId, song.id),
+            ),
+          )
+          .orderBy(sql`${songDisplays.shownAt} DESC`)
+          .limit(1);
+        const variants = variantsOf(song);
+        lyricAnswerForHint =
+          variants[latestDisplay?.variantIndex ?? 0]?.answer ?? song.lyricAnswer;
+      }
+
       // stage is "lyric" | "title" | "artist" — return first letter of correct answer.
       const correctAnswer =
         input.stage === "title" ? song.title
         : input.stage === "artist" ? song.artistName
-        : song.lyricAnswer; // "lyric"
+        : lyricAnswerForHint; // "lyric"
 
       const firstLetter = correctAnswer.trimStart()[0]?.toUpperCase() ?? "";
 
