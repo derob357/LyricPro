@@ -35,32 +35,25 @@ export default function SignIn() {
     onError: (err) => toast.error(err.message),
   });
 
+  // Server-side magic link via Resend (avoids Supabase's free-tier email
+  // rate limit). The mutation always returns ok=true so we can't surface
+  // a per-email error here — server logs are the source of truth.
+  const sendMagicLinkMutation = trpc.auth.sendMagicLink.useMutation({
+    onSuccess: () => {
+      setSent(true);
+    },
+    onError: (err) => toast.error(err.message),
+    onSettled: () => setLoading(false),
+  });
+
   const sendMagicLink = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!email) return;
     setLoading(true);
-    try {
-      // Native: deep-link back into the app via lyricpro:// scheme.
-      // Web: redirect to the SPA /auth/callback route as before.
-      const emailRedirectTo = IS_NATIVE
-        ? AUTH_CALLBACK_URL
-        : `${window.location.origin}/auth/callback`;
-      const { error } = await supabase.auth.signInWithOtp({
-        email,
-        options: {
-          emailRedirectTo,
-          shouldCreateUser: true,
-        },
-      });
-      if (error) throw error;
-      setSent(true);
-    } catch (err) {
-      toast.error(
-        err instanceof Error ? err.message : "Failed to send magic link"
-      );
-    } finally {
-      setLoading(false);
-    }
+    const redirectTo = IS_NATIVE
+      ? AUTH_CALLBACK_URL
+      : `${window.location.origin}/auth/callback`;
+    sendMagicLinkMutation.mutate({ email, redirectTo });
   };
 
   const signInWith = async (provider: "google" | "apple") => {

@@ -17,6 +17,7 @@ import { eq } from "drizzle-orm";
 import { users } from "../drizzle/schema";
 import { createClient } from "@supabase/supabase-js";
 import { TRPCError } from "@trpc/server";
+import { sendMagicLinkEmail } from "./_core/sendMagicLinkEmail";
 
 export const appRouter = router({
   system: systemRouter,
@@ -45,6 +46,106 @@ export const appRouter = router({
           lastName: input.lastName || null,
         }).where(eq(users.openId, ctx.user.openId));
         return { success: true };
+      }),
+
+    // Public mutation: generate a magic-link URL with the Supabase
+    // service-role key, then deliver it via Resend so we sidestep
+    // Supabase's built-in email rate limit.
+    //
+    // Replaces the client-side `supabase.auth.signInWithOtp` for new and
+    // returning users. Always returns a generic success shape regardless of
+    // whether the email exists in our system, to avoid account enumeration.
+    sendMagicLink: publicProcedure
+      .input(z.object({
+        email: z.string().email(),
+        redirectTo: z.string().url().optional(),
+      }))
+      .mutation(async ({ input, ctx }) => {
+        // Per-email cap stops one address from being spammed; per-IP cap
+        // stops a single attacker from harvesting the whole user list.
+        rateLimit(
+          "auth.sendMagicLink.email",
+          input.email.toLowerCase(),
+          { max: 5, windowMs: 60 * 60_000 } // 5/hr per email
+        );
+        rateLimit(
+          "auth.sendMagicLink.ip",
+          ctx.req.ip ?? "anon",
+          { max: 30, windowMs: 60 * 60_000 } // 30/hr per IP
+        );
+
+        const url = process.env.VITE_SUPABASE_PROJECT_URL;
+        const secret = process.env.SUPABASE_SECRET_KEY;
+        if (!url || !secret) {
+          throw new TRPCError({
+            code: "PRECONDITION_FAILED",
+            message:
+              "Auth not configured on server (missing Supabase env)",
+          });
+        }
+
+        // Validate redirectTo against ALLOWED_ORIGINS so a forged Origin
+        // can't trick us into emailing a phishing redirect URL. Mirrors
+        // the Stripe checkout origin guard in goldenNotes.ts.
+        const allowlist = (process.env.ALLOWED_ORIGINS ?? "")
+          .split(",")
+          .map(s => s.trim())
+          .filter(Boolean);
+        const claimedOrigin = ctx.req.headers.origin;
+        const trustedOrigin =
+          claimedOrigin && allowlist.includes(String(claimedOrigin))
+            ? String(claimedOrigin)
+            : "https://lyricpro-ai.vercel.app";
+        const defaultRedirect = `${trustedOrigin}/auth/callback`;
+
+        // If the caller passed a redirectTo, only honor it when it shares
+        // an origin with the trusted one (handles native deep links via
+        // a separately-allowlisted scheme upstream).
+        let redirectTo = defaultRedirect;
+        if (input.redirectTo) {
+          try {
+            const parsed = new URL(input.redirectTo);
+            const trustedHost = new URL(trustedOrigin).host;
+            if (parsed.host === trustedHost) {
+              redirectTo = input.redirectTo;
+            }
+          } catch {
+            // ignore — fall back to defaultRedirect
+          }
+        }
+
+        const admin = createClient(url, secret, {
+          auth: { autoRefreshToken: false, persistSession: false },
+        });
+
+        const { data, error } = await admin.auth.admin.generateLink({
+          type: "magiclink",
+          email: input.email,
+          options: { redirectTo },
+        });
+        if (error) {
+          // Log internally but return generic success to the client to
+          // avoid leaking which addresses are registered.
+          console.error("[sendMagicLink] generateLink failed:", error.message);
+          return { ok: true } as const;
+        }
+
+        const actionLink = data.properties?.action_link;
+        if (!actionLink) {
+          console.error("[sendMagicLink] no action_link in Supabase response");
+          return { ok: true } as const;
+        }
+
+        try {
+          await sendMagicLinkEmail({ to: input.email, magicLinkUrl: actionLink });
+        } catch (err) {
+          // Same rationale: log, swallow, return generic success. A real
+          // configuration error (missing API key, unverified domain) will
+          // surface in server logs immediately.
+          console.error("[sendMagicLink] Resend send failed:", err instanceof Error ? err.message : err);
+        }
+
+        return { ok: true } as const;
       }),
 
     // DEV-ONLY: skip Supabase's email rate limit by generating the magic
