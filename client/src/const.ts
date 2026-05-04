@@ -5,4 +5,9 @@ export { COOKIE_NAME, ONE_YEAR_MS } from "@shared/const";
 // for API compatibility with the old Manus OAuth helpers.
 export const getLoginUrl = (_returnPath?: string) => "/signin";
 export const getSignUpUrl = (_returnPath?: string) => "/signin";
+// Password-reset entry point. The /signin page handles the "request a reset
+// link" form when the user picks the Password tab and clicks "Forgot password?".
+// The reset-completion page lives at /auth/reset-password (linked from the
+// emailed reset URL).
 export const getPasswordResetUrl = () => "/signin";
+export const getAccountSecurityUrl = () => "/account/security";

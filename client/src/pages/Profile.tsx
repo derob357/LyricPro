@@ -315,6 +315,14 @@ export default function Profile() {
           >
             <Play className="w-4 h-4 mr-2" /> Play Another Game
           </Button>
+
+          <button
+            type="button"
+            onClick={() => navigate("/account/security")}
+            className="block w-full text-center text-sm text-muted-foreground hover:text-foreground transition-colors mt-2"
+          >
+            Account security &amp; password
+          </button>
         </motion.div>
       </div>
     </div>

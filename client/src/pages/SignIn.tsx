@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useLocation } from "wouter";
 import { supabase } from "@/lib/supabase";
 import { trpc } from "@/lib/trpc";
 import { IS_NATIVE } from "@/lib/platform";
@@ -9,17 +10,23 @@ import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
 import { Mail, Music, Terminal } from "lucide-react";
 
-// Neutral, brand-consistent sign-in. Three paths:
-// 1) Magic link (email) — default, zero external setup
-// 2) Continue with Google — requires Google OAuth app configured in
-//    Supabase Dashboard → Authentication → Providers
-// 3) Continue with Apple — requires Apple Services ID + private key
-//    configured in Supabase Dashboard. Also required by Apple for
-//    App Store submission if any social login is offered.
+// Sign-in paths offered:
+// 1) Magic link (email) — default, passwordless. Delivered via Resend
+//    (auth.sendMagicLink) so we sidestep Supabase's email rate limit.
+// 2) Email + password — for users who've set one via /account/security.
+// 3) Forgot password — sends a recovery link via Resend
+//    (auth.sendPasswordReset) that lands on /auth/reset-password.
+// 4) Continue with Google / Apple — Supabase OAuth, unchanged.
+
+type Mode = "magic" | "password" | "reset-request";
 
 export default function SignIn() {
+  const [, navigate] = useLocation();
+  const [mode, setMode] = useState<Mode>("magic");
   const [email, setEmail] = useState("");
-  const [sent, setSent] = useState(false);
+  const [password, setPassword] = useState("");
+  const [magicSent, setMagicSent] = useState(false);
+  const [resetSent, setResetSent] = useState(false);
   const [loading, setLoading] = useState(false);
   const [devLink, setDevLink] = useState<string | null>(null);
 
@@ -35,18 +42,19 @@ export default function SignIn() {
     onError: (err) => toast.error(err.message),
   });
 
-  // Server-side magic link via Resend (avoids Supabase's free-tier email
-  // rate limit). The mutation always returns ok=true so we can't surface
-  // a per-email error here — server logs are the source of truth.
   const sendMagicLinkMutation = trpc.auth.sendMagicLink.useMutation({
-    onSuccess: () => {
-      setSent(true);
-    },
+    onSuccess: () => setMagicSent(true),
     onError: (err) => toast.error(err.message),
     onSettled: () => setLoading(false),
   });
 
-  const sendMagicLink = async (e: React.FormEvent) => {
+  const sendPasswordResetMutation = trpc.auth.sendPasswordReset.useMutation({
+    onSuccess: () => setResetSent(true),
+    onError: (err) => toast.error(err.message),
+    onSettled: () => setLoading(false),
+  });
+
+  const sendMagicLink = (e: React.FormEvent) => {
     e.preventDefault();
     if (!email) return;
     setLoading(true);
@@ -54,6 +62,33 @@ export default function SignIn() {
       ? AUTH_CALLBACK_URL
       : `${window.location.origin}/auth/callback`;
     sendMagicLinkMutation.mutate({ email, redirectTo });
+  };
+
+  const signInWithPassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!email || !password) return;
+    setLoading(true);
+    try {
+      const { error } = await supabase.auth.signInWithPassword({ email, password });
+      if (error) {
+        // Generic message — never differentiate "no such email" from
+        // "wrong password" to prevent account enumeration.
+        toast.error("Invalid email or password");
+        return;
+      }
+      // Session is now set in the supabase client. Land on home and let
+      // the auth context pick it up on next render.
+      navigate("/");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const sendPasswordReset = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!email) return;
+    setLoading(true);
+    sendPasswordResetMutation.mutate({ email });
   };
 
   const signInWith = async (provider: "google" | "apple") => {
@@ -70,13 +105,13 @@ export default function SignIn() {
       // signInWithOAuth redirects the browser — no further code runs here.
     } catch (err) {
       toast.error(
-        err instanceof Error
-          ? err.message
-          : `Failed to start ${provider} sign-in`
+        err instanceof Error ? err.message : `Failed to start ${provider} sign-in`
       );
       setLoading(false);
     }
   };
+
+  const showSent = (magicSent && mode === "magic") || (resetSent && mode === "reset-request");
 
   return (
     <div className="min-h-screen flex items-center justify-center px-4 relative overflow-hidden">
@@ -93,20 +128,23 @@ export default function SignIn() {
           </h1>
         </div>
 
-        {sent ? (
+        {showSent ? (
           <div className="text-center py-8">
             <Mail className="w-8 h-8 text-accent mx-auto mb-3" />
             <p className="text-foreground font-medium">Check your inbox</p>
             <p className="text-muted-foreground text-sm mt-2">
-              We sent a sign-in link to <strong>{email}</strong>. Click it to
-              finish signing in.
+              {magicSent
+                ? <>We sent a sign-in link to <strong>{email}</strong>. Click it to finish signing in.</>
+                : <>If an account exists for <strong>{email}</strong>, we sent a password-reset link.</>}
             </p>
             <Button
               variant="ghost"
               className="mt-6"
               onClick={() => {
-                setSent(false);
+                setMagicSent(false);
+                setResetSent(false);
                 setEmail("");
+                setMode("magic");
               }}
             >
               Use a different email
@@ -114,38 +152,151 @@ export default function SignIn() {
           </div>
         ) : (
           <>
-            <form onSubmit={sendMagicLink} className="space-y-3">
-              <Label htmlFor="email" className="text-foreground">
-                Email
-              </Label>
-              <Input
-                id="email"
-                type="email"
-                required
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="you@example.com"
-                className="bg-input border-border/50"
-                disabled={loading}
-                autoFocus
-              />
-              <Button
-                type="submit"
-                disabled={loading || !email}
-                className="w-full bg-primary text-primary-foreground hover:bg-primary/90 glow-purple"
-              >
-                {loading ? "Sending…" : "Send magic link"}
-              </Button>
-            </form>
+            {/* Mode tabs — Magic link is the default */}
+            {mode !== "reset-request" && (
+              <div className="grid grid-cols-2 gap-1 p-1 bg-muted/40 rounded-lg mb-4">
+                <button
+                  type="button"
+                  onClick={() => setMode("magic")}
+                  className={`text-sm font-medium py-2 rounded-md transition-colors ${
+                    mode === "magic"
+                      ? "bg-card text-foreground shadow-sm"
+                      : "text-muted-foreground hover:text-foreground"
+                  }`}
+                >
+                  Magic link
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setMode("password")}
+                  className={`text-sm font-medium py-2 rounded-md transition-colors ${
+                    mode === "password"
+                      ? "bg-card text-foreground shadow-sm"
+                      : "text-muted-foreground hover:text-foreground"
+                  }`}
+                >
+                  Password
+                </button>
+              </div>
+            )}
+
+            {mode === "magic" && (
+              <form onSubmit={sendMagicLink} className="space-y-3">
+                <Label htmlFor="email" className="text-foreground">Email</Label>
+                <Input
+                  id="email"
+                  type="email"
+                  required
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder="you@example.com"
+                  className="bg-input border-border/50"
+                  disabled={loading}
+                  autoFocus
+                  autoComplete="email"
+                />
+                <Button
+                  type="submit"
+                  disabled={loading || !email}
+                  className="w-full bg-primary text-primary-foreground hover:bg-primary/90 glow-purple"
+                >
+                  {loading ? "Sending…" : "Send magic link"}
+                </Button>
+              </form>
+            )}
+
+            {mode === "password" && (
+              <form onSubmit={signInWithPassword} className="space-y-3">
+                <div>
+                  <Label htmlFor="email" className="text-foreground">Email</Label>
+                  <Input
+                    id="email"
+                    type="email"
+                    required
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    placeholder="you@example.com"
+                    className="bg-input border-border/50"
+                    disabled={loading}
+                    autoFocus
+                    autoComplete="email"
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="password" className="text-foreground">Password</Label>
+                  <Input
+                    id="password"
+                    type="password"
+                    required
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    placeholder="Your password"
+                    className="bg-input border-border/50"
+                    disabled={loading}
+                    autoComplete="current-password"
+                    maxLength={128}
+                  />
+                </div>
+                <Button
+                  type="submit"
+                  disabled={loading || !email || !password}
+                  className="w-full bg-primary text-primary-foreground hover:bg-primary/90 glow-purple"
+                >
+                  {loading ? "Signing in…" : "Sign in"}
+                </Button>
+                <button
+                  type="button"
+                  onClick={() => { setMode("reset-request"); setPassword(""); }}
+                  className="block w-full text-center text-xs text-muted-foreground hover:text-foreground transition-colors"
+                >
+                  Forgot password?
+                </button>
+              </form>
+            )}
+
+            {mode === "reset-request" && (
+              <form onSubmit={sendPasswordReset} className="space-y-3">
+                <div>
+                  <Label htmlFor="email" className="text-foreground">Email</Label>
+                  <p className="text-xs text-muted-foreground mt-1 mb-2">
+                    We'll send a link to choose a new password.
+                  </p>
+                  <Input
+                    id="email"
+                    type="email"
+                    required
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    placeholder="you@example.com"
+                    className="bg-input border-border/50"
+                    disabled={loading}
+                    autoFocus
+                    autoComplete="email"
+                  />
+                </div>
+                <Button
+                  type="submit"
+                  disabled={loading || !email}
+                  className="w-full bg-primary text-primary-foreground hover:bg-primary/90 glow-purple"
+                >
+                  {loading ? "Sending…" : "Send reset link"}
+                </Button>
+                <button
+                  type="button"
+                  onClick={() => setMode("password")}
+                  className="block w-full text-center text-xs text-muted-foreground hover:text-foreground transition-colors"
+                >
+                  Back to sign in
+                </button>
+              </form>
+            )}
 
             <div className="relative my-6">
               <div className="absolute inset-0 flex items-center">
                 <span className="w-full border-t border-border/50" />
               </div>
               <div className="relative flex justify-center text-xs uppercase">
-                <span className="bg-card px-2 text-muted-foreground">
-                  Or continue with
-                </span>
+                <span className="bg-card px-2 text-muted-foreground">Or continue with</span>
               </div>
             </div>
 
@@ -177,10 +328,8 @@ export default function SignIn() {
             </div>
 
             {/* DEV-ONLY: bypass the email round-trip and generate the magic
-                link URL directly. Visible only when Vite is in dev mode.
-                The server-side procedure is also gated on NODE_ENV, so this
-                cannot leak to production builds. */}
-            {import.meta.env.DEV && (
+                link URL directly. Visible only when Vite is in dev mode. */}
+            {import.meta.env.DEV && mode === "magic" && (
               <div className="mt-6 border-t border-border/50 pt-4">
                 <div className="flex items-center gap-2 text-xs text-muted-foreground mb-2">
                   <Terminal className="w-3 h-3" />
@@ -191,25 +340,15 @@ export default function SignIn() {
                   variant="outline"
                   size="sm"
                   disabled={!email || devGenerateLink.isPending}
-                  onClick={() =>
-                    devGenerateLink.mutate({ email })
-                  }
+                  onClick={() => devGenerateLink.mutate({ email })}
                   className="w-full border-border/50"
                 >
-                  {devGenerateLink.isPending
-                    ? "Generating…"
-                    : "Generate magic link URL (skip email)"}
+                  {devGenerateLink.isPending ? "Generating…" : "Generate magic link URL (skip email)"}
                 </Button>
                 {devLink && (
                   <div className="mt-3 p-3 bg-muted/50 rounded-md text-xs break-all text-muted-foreground">
-                    <p className="text-foreground mb-1">
-                      Copied to clipboard. Or click to sign in now:
-                    </p>
-                    <a
-                      href={devLink}
-                      className="text-accent underline"
-                      rel="noreferrer"
-                    >
+                    <p className="text-foreground mb-1">Copied to clipboard. Or click to sign in now:</p>
+                    <a href={devLink} className="text-accent underline" rel="noreferrer">
                       Open magic link
                     </a>
                   </div>

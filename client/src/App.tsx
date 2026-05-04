@@ -17,6 +17,8 @@ import { UserDashboard } from "./pages/UserDashboard";
 import { AdminDashboard } from "./pages/AdminDashboard";
 import SignIn from "./pages/SignIn";
 import AuthCallback from "./pages/AuthCallback";
+import AccountSecurity from "./pages/AccountSecurity";
+import PasswordReset from "./pages/PasswordReset";
 import Shop from "./pages/Shop";
 import Avatars from "./pages/Avatars";
 // import JoinInvite from "./pages/JoinInvite"; // Disabled - invite codes removed
@@ -47,6 +49,8 @@ function Router() {
       <Route path="/admin" component={AdminDashboard} />
       <Route path="/signin" component={SignIn} />
       <Route path="/auth/callback" component={AuthCallback} />
+      <Route path="/auth/reset-password" component={PasswordReset} />
+      <Route path="/account/security" component={AccountSecurity} />
       <Route path="/shop" component={Shop} />
       <Route path="/avatars" component={Avatars} />
       {/* <Route path="/join" component={JoinInvite} /> */} {/* Disabled - invite codes removed */}
