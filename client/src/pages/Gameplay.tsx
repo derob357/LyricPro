@@ -484,8 +484,7 @@ export default function Gameplay() {
             <motion.div
               initial={{ opacity: 0, scale: 0.5, y: -20 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.3, y: -64, x: "42vw" }}
-              transition={{ exit: { duration: 0.5, ease: "easeIn" } }}
+              exit={{ opacity: 0, scale: 0.3, y: -64, x: "42vw", transition: { duration: 0.5, ease: "easeIn" } }}
               className="fixed top-20 left-1/2 -translate-x-1/2 z-50 bg-primary text-primary-foreground px-6 py-3 rounded-2xl font-display font-black text-2xl glow-purple"
             >
               +{showScoreFlash} pts!
