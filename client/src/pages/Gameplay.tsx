@@ -155,7 +155,10 @@ export default function Gameplay() {
 
   useEffect(() => {
     if (room && room.status === "active" && !currentSong && !getNextSongMutation.isPending) {
-      getNextSongMutation.mutate({ roomCode: roomCode ?? "" });
+      getNextSongMutation.mutate({
+        roomCode: roomCode ?? "",
+        guestToken: guestToken ?? undefined,
+      });
     }
   }, [room?.status]);
 
@@ -340,7 +343,7 @@ export default function Gameplay() {
             <Button variant="outline" onClick={() => navigate("/")}>Back to Home</Button>
           )}
           {room && room.status === "active" && !getNextSongMutation.isError && !getNextSongMutation.isPending && (
-            <Button variant="outline" size="sm" onClick={() => getNextSongMutation.mutate({ roomCode: roomCode ?? "" })}>
+            <Button variant="outline" size="sm" onClick={() => getNextSongMutation.mutate({ roomCode: roomCode ?? "", guestToken: guestToken ?? undefined })}>
               Retry
             </Button>
           )}

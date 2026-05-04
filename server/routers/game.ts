@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { and, eq, inArray, ne, notInArray, sql } from "drizzle-orm";
+import { and, eq, gte, inArray, isNotNull, ne, notInArray, sql } from "drizzle-orm";
 import { TRPCError } from "@trpc/server";
 import { router, publicProcedure, protectedProcedure } from "../_core/trpc";
 import { rateLimit } from "../_core/rateLimit";
@@ -8,6 +8,7 @@ import {
   songs, gameRooms, roomPlayers, teams, gameSessions, roundResults,
   guestSessions, leaderboardEntries, artistMetadata, users, avatars,
   goldenNoteBalances, goldenNoteTransactions,
+  songDisplays,
   lyricSectionTypeEnum,
 } from "../../drizzle/schema";
 import { nanoid } from "nanoid";
@@ -353,8 +354,11 @@ export const gameRouter = router({
 
   // Get next song for a round
   getNextSong: publicProcedure
-    .input(z.object({ roomCode: z.string() }))
-    .mutation(async ({ input }) => {
+    .input(z.object({
+      roomCode: z.string(),
+      guestToken: z.string().optional(),
+    }))
+    .mutation(async ({ input, ctx }) => {
       const db = await getDb();
       if (!db) throw new Error("Database not available");
 
@@ -364,6 +368,15 @@ export const gameRouter = router({
       const genres = JSON.parse(room.selectedGenres) as string[];
       const decades = JSON.parse(room.selectedDecades) as string[];
       const usedIds = JSON.parse(room.usedSongIds ?? "[]") as number[];
+
+      // Identity for per-user dedup + display logging. Auth wins over the
+      // optional guestToken (signed-in users may carry a stale guest cookie
+      // from before they logged in). We tolerate both being null — that
+      // path skips dedup and logs the display with both columns null,
+      // which is harmless for the usage report's totals.
+      const dedupUserId: number | null = ctx.user?.id ?? null;
+      const dedupGuestToken: string | null =
+        dedupUserId === null ? (input.guestToken ?? null) : null;
 
       let song: typeof songs.$inferSelect;
       let candidateSongs: (typeof songs.$inferSelect)[];
@@ -510,10 +523,64 @@ export const gameRouter = router({
           );
         }
 
-        // Weighted random pick: each candidate's weight comes from sectionWeights.
-        // Songs whose section has weight 0 are excluded (matches the strict low filter).
+        // ── Per-identity dedup window ────────────────────────────────────────
+        // Exclude songs already shown to THIS user/guest in the last 10 days.
+        // If that empties the pool, relax to 7 days. If still empty, drop
+        // dedup entirely so we never block the player — preserves the
+        // existing "never empty" guarantee of the fallback chain.
+        const dedupDb = db;
+        const songIdsShownSince = async (days: number): Promise<Set<number>> => {
+          const cutoff = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+          let rows: { songId: number }[] = [];
+          if (dedupUserId !== null) {
+            rows = await dedupDb
+              .select({ songId: songDisplays.songId })
+              .from(songDisplays)
+              .where(
+                and(
+                  eq(songDisplays.userId, dedupUserId),
+                  gte(songDisplays.shownAt, cutoff),
+                ),
+              );
+          } else if (dedupGuestToken !== null) {
+            rows = await dedupDb
+              .select({ songId: songDisplays.songId })
+              .from(songDisplays)
+              .where(
+                and(
+                  eq(songDisplays.guestToken, dedupGuestToken),
+                  gte(songDisplays.shownAt, cutoff),
+                ),
+              );
+          }
+          return new Set(rows.map(r => r.songId));
+        };
+
+        if (dedupUserId !== null || dedupGuestToken !== null) {
+          const recent10 = await songIdsShownSince(10);
+          let dedupedPool = stdCandidateSongs.filter(s => !recent10.has(s.id));
+          if (dedupedPool.length === 0) {
+            const recent7 = await songIdsShownSince(7);
+            dedupedPool = stdCandidateSongs.filter(s => !recent7.has(s.id));
+          }
+          // If still empty, fall through with the unfiltered pool — the
+          // global penalty below still discourages over-shown picks.
+          if (dedupedPool.length > 0) {
+            stdCandidateSongs = dedupedPool;
+          }
+        }
+
+        // Weighted random pick: each candidate's section weight is divided
+        // by log10(1 + displayCount) so globally over-shown songs slide
+        // down without being banned. Songs whose section has weight 0
+        // (low difficulty filtering out verses, etc.) are still excluded.
         const weighted = stdCandidateSongs
-          .map(s => ({ s, w: sectionWeights[(s.lyricSectionType as SectionType)] ?? 0 }))
+          .map(s => ({
+            s,
+            w:
+              ((sectionWeights[(s.lyricSectionType as SectionType)] ?? 0) /
+                (1 + Math.log10(1 + (s.displayCount ?? 0)))),
+          }))
           .filter(x => x.w > 0);
         const pickPool = weighted.length > 0
           ? weighted
@@ -532,6 +599,28 @@ export const gameRouter = router({
         const newUsedIds = [...usedIds, song.id];
         await db.update(gameRooms).set({ currentSongId: song.id, usedSongIds: JSON.stringify(newUsedIds) }).where(eq(gameRooms.id, room.id));
       }
+
+      // ── Display log + global counter bump ──────────────────────────────────
+      // Runs in BOTH branches so practice-pack rounds also feed the dedup
+      // window and the usage report. Back-to-back rather than wrapped in a
+      // transaction to match the surrounding style — the worst case if the
+      // counter UPDATE fails is one missing display row, not a corrupt game.
+      await db.insert(songDisplays).values({
+        songId: song.id,
+        userId: dedupUserId,
+        guestToken: dedupGuestToken
+          ? dedupGuestToken.slice(0, 64)
+          : null,
+        roomCode: room.roomCode ?? null,
+        variantIndex: 0,
+      });
+      await db
+        .update(songs)
+        .set({
+          displayCount: sql`${songs.displayCount} + 1`,
+          lastShownAt: new Date(),
+        })
+        .where(eq(songs.id, song.id));
 
       // Get artist metadata
       let artistMeta = null;
