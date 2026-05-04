@@ -1,6 +1,7 @@
 import {
   boolean,
   doublePrecision,
+  index,
   integer,
   jsonb,
   pgEnum,
@@ -219,6 +220,12 @@ export const songs = pgTable("songs", {
     .default("approved")
     .notNull(),
   isActive: boolean("isActive").default(true).notNull(),
+  // Aggregate counters seeded by scripts/backfill-song-displays.mjs and
+  // updated transactionally by getNextSong. Used to power the global
+  // over-show penalty in selection + the admin usage report. song_displays
+  // remains the source of truth — these columns are a denormalized cache.
+  displayCount: integer("displayCount").default(0).notNull(),
+  lastShownAt: timestamp("lastShownAt", { withTimezone: true }),
   createdAt: createdAtColumn(),
   updatedAt: updatedAtColumn(),
 }, (t) => ({
@@ -232,6 +239,45 @@ export const songs = pgTable("songs", {
 
 export type Song = typeof songs.$inferSelect;
 export type InsertSong = typeof songs.$inferInsert;
+
+// ─── Song Displays ────────────────────────────────────────────────────────────
+// Insert-only audit log of every (user|guest, song) display. Drives the
+// per-identity 10-day dedup window in getNextSong and the usage report.
+// userId XOR guestToken is set per row; both null is invalid (we always
+// have at least one identity from the room context).
+//
+// Indexes are ESSENTIAL for the hot path:
+//   - (userId, shownAt)     — dedup query for signed-in players
+//   - (guestToken, shownAt) — dedup query for guests
+//   - (songId)              — usage report aggregations
+export const songDisplays = pgTable(
+  "song_displays",
+  {
+    id: serial("id").primaryKey(),
+    songId: integer("songId").notNull(),
+    userId: integer("userId"),
+    guestToken: varchar("guestToken", { length: 64 }),
+    roomCode: varchar("roomCode", { length: 8 }),
+    // Placeholder for future per-song lyric-variant rotation. Always 0
+    // today; extending later requires no schema change.
+    variantIndex: integer("variantIndex").default(0).notNull(),
+    shownAt: timestamp("shownAt", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => ({
+    userShownAtIdx: index("song_displays_user_shown_at_idx").on(
+      t.userId,
+      t.shownAt,
+    ),
+    guestShownAtIdx: index("song_displays_guest_shown_at_idx").on(
+      t.guestToken,
+      t.shownAt,
+    ),
+    songIdIdx: index("song_displays_song_id_idx").on(t.songId),
+  }),
+);
+
+export type SongDisplay = typeof songDisplays.$inferSelect;
+export type InsertSongDisplay = typeof songDisplays.$inferInsert;
 
 // ─── Game Rooms ───────────────────────────────────────────────────────────────
 export const gameRooms = pgTable("game_rooms", {
