@@ -158,16 +158,17 @@ function variantsOf(song: typeof songs.$inferSelect): SongVariant[] {
 //   - prompt is non-empty after trim (else the player sees a hollow "...")
 //     — this rule applies at every difficulty
 //   - prompt + answer combined is at least 6 words
-//     — this rule applies on Low and Medium only; on Hard the player can
-//       see shorter snippets (4-5 word hooks etc.) since Hard is meant
-//       to be tough trivia, not friendly fill-in-the-gap
+//     — this rule applies on Medium only. Low gets the short iconic hooks
+//       ("Eye of the Tiger", "Whoomp! There it is") because that's the
+//       point of Easy — popular, instantly-recognizable lines. Hard is
+//       length-agnostic too since it's about depth, not friendliness.
 type Difficulty = "low" | "medium" | "high";
 
 function isVariantPlayable(v: SongVariant, difficulty: Difficulty): boolean {
   const prompt = String(v?.prompt ?? "").trim();
   const answer = String(v?.answer ?? "").trim();
   if (!prompt) return false;
-  if (difficulty === "high") return true;
+  if (difficulty !== "medium") return true;
   const lineWords = (prompt + " " + answer).trim().split(/\s+/).filter(Boolean).length;
   return lineWords >= 6;
 }
