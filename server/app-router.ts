@@ -141,10 +141,18 @@ export const appRouter = router({
         try {
           await sendMagicLinkEmail({ to: input.email, magicLinkUrl: actionLink });
         } catch (err) {
-          // Same rationale: log, swallow, return generic success. A real
-          // configuration error (missing API key, unverified domain) will
-          // surface in server logs immediately.
-          console.error("[sendMagicLink] Resend send failed:", err instanceof Error ? err.message : err);
+          // Log the full error object (sender already JSON-logged the
+          // structured Resend fields at source) and surface failure to
+          // the client. Resend send failures don't leak account existence
+          // — we only get here after generateLink succeeded — so an
+          // INTERNAL_SERVER_ERROR is safe vs the anti-enumeration goal,
+          // and tells the user to retry instead of waiting silently.
+          console.error("[sendMagicLink] Resend send failed:", err);
+          throw new TRPCError({
+            code: "INTERNAL_SERVER_ERROR",
+            message:
+              "We couldn't send the sign-in email right now. Please try again in a minute or contact support.",
+          });
         }
 
         return { ok: true } as const;
@@ -214,10 +222,12 @@ export const appRouter = router({
         try {
           await sendPasswordResetEmail({ to: input.email, resetUrl: actionLink });
         } catch (err) {
-          console.error(
-            "[sendPasswordReset] Resend send failed:",
-            err instanceof Error ? err.message : err
-          );
+          console.error("[sendPasswordReset] Resend send failed:", err);
+          throw new TRPCError({
+            code: "INTERNAL_SERVER_ERROR",
+            message:
+              "We couldn't send the password-reset email right now. Please try again in a minute or contact support.",
+          });
         }
 
         return { ok: true } as const;

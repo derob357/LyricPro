@@ -31,7 +31,19 @@ export async function sendPasswordResetEmail(params: {
   });
 
   if (error) {
-    throw new Error(`Resend send failed: ${error.message}`);
+    console.error(
+      "[sendPasswordResetEmail:resend]",
+      JSON.stringify({
+        name: error.name,
+        message: error.message,
+        statusCode: (error as { statusCode?: number }).statusCode,
+      })
+    );
+    const e: Error & { resendError?: unknown } = new Error(
+      `Resend send failed: ${error.name}: ${error.message}`
+    );
+    e.resendError = error;
+    throw e;
   }
 }
 

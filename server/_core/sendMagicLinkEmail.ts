@@ -38,10 +38,23 @@ export async function sendMagicLinkEmail(params: {
   });
 
   if (error) {
-    // Surface Resend's structured error so callers can decide whether to
-    // propagate or swallow. Caller already sanitizes the response so this
-    // detail does not leak to end users.
-    throw new Error(`Resend send failed: ${error.message}`);
+    // Log the structured fields at source — Vercel's log table truncates
+    // long messages, and stringifying through err.message hid the real
+    // reason during the noreply@lyricpro.ai outage. JSON-encoded so each
+    // field shows up in the table even after truncation.
+    console.error(
+      "[sendMagicLinkEmail:resend]",
+      JSON.stringify({
+        name: error.name,
+        message: error.message,
+        statusCode: (error as { statusCode?: number }).statusCode,
+      })
+    );
+    const e: Error & { resendError?: unknown } = new Error(
+      `Resend send failed: ${error.name}: ${error.message}`
+    );
+    e.resendError = error;
+    throw e;
   }
 }
 
