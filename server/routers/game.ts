@@ -1168,13 +1168,23 @@ export const gameRouter = router({
       }).where(eq(gameRooms.id, room.id));
 
       if (isGameOver) {
-        // Save leaderboard entries
+        // Save leaderboard entries — authed users get their firstName
+        // snapshotted (vs. the legacy "Player" placeholder); guests use
+        // whatever name they typed at room-join time.
         for (const player of players) {
-          const displayName = player.guestName || "Player";
+          let displayName: string | null = player.guestName;
+          if (!displayName && player.userId) {
+            const [u] = await db
+              .select({ firstName: users.firstName })
+              .from(users)
+              .where(eq(users.id, player.userId))
+              .limit(1);
+            displayName = u?.firstName ?? null;
+          }
           await db.insert(leaderboardEntries).values({
             userId: player.userId,
             guestName: player.guestName,
-            displayName,
+            displayName: displayName || "Player",
             score: player.currentScore,
             mode: room.mode,
             genre: (JSON.parse(room.selectedGenres) as string[])[0] || null,
