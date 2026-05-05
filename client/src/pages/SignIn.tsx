@@ -137,6 +137,9 @@ export default function SignIn() {
                 ? <>We sent a sign-in link to <strong>{email}</strong>. Click it to finish signing in.</>
                 : <>If an account exists for <strong>{email}</strong>, we sent a password-reset link.</>}
             </p>
+            <p className="text-muted-foreground text-xs mt-2 italic">
+              (Don't forget to check your spam folder)
+            </p>
             <Button
               variant="ghost"
               className="mt-6"
