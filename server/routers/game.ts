@@ -154,6 +154,34 @@ function variantsOf(song: typeof songs.$inferSelect): SongVariant[] {
   }];
 }
 
+// A variant is playable iff:
+//   - prompt is non-empty after trim (else the player sees a hollow "...")
+//   - prompt + answer combined is at least 6 words (per product rule)
+function isVariantPlayable(v: SongVariant): boolean {
+  const prompt = String(v?.prompt ?? "").trim();
+  const answer = String(v?.answer ?? "").trim();
+  if (!prompt) return false;
+  const lineWords = (prompt + " " + answer).trim().split(/\s+/).filter(Boolean).length;
+  return lineWords >= 6;
+}
+
+function playableVariantsOf(song: typeof songs.$inferSelect): SongVariant[] {
+  return variantsOf(song).filter(isVariantPlayable);
+}
+
+// Returns the ORIGINAL indices (within variantsOf(song)) of variants that
+// pass isVariantPlayable. Original indices matter because song_displays
+// stores variantIndex, and submitAnswer/useHint resolve scoring by that
+// index back into variantsOf(song)[i].
+function playableVariantIndicesOf(song: typeof songs.$inferSelect): number[] {
+  const all = variantsOf(song);
+  const out: number[] = [];
+  for (let i = 0; i < all.length; i++) {
+    if (isVariantPlayable(all[i])) out.push(i);
+  }
+  return out;
+}
+
 // ── Router ───────────────────────────────────────────────────────────────────
 export const gameRouter = router({
   // Create a guest session
@@ -546,6 +574,21 @@ export const gameRouter = router({
           );
         }
 
+        // ── Playability filter ───────────────────────────────────────────────
+        // Drop songs whose variants are all unplayable (empty prompt, or
+        // line < 6 words). Without this, the player can land on a hollow
+        // "..." question or a too-short snippet. If filtering empties the
+        // pool, the user has selected a slice of the library where every
+        // matching song needs lyric work — surface that explicitly.
+        stdCandidateSongs = stdCandidateSongs.filter(
+          s => playableVariantIndicesOf(s).length > 0,
+        );
+        if (stdCandidateSongs.length === 0) {
+          throw new Error(
+            "No playable songs match the selected genre/decade right now. Try a broader selection on the setup screen."
+          );
+        }
+
         // ── Per-identity dedup window ────────────────────────────────────────
         // Exclude songs already shown to THIS user/guest in the last 10 days.
         // If that empties the pool, relax to 7 days. If still empty, drop
@@ -635,6 +678,12 @@ export const gameRouter = router({
       // selection step decided this song is fair game; we just don't have
       // a fresh variant to offer).
       const allVariants = variantsOf(song);
+      // Only consider variants that pass the playability rules. Indices are
+      // the ORIGINAL indices in allVariants so song_displays stays scoring-
+      // compatible. For customPack songs that slipped past the standard
+      // candidate filter, fall back to [0] as a last resort.
+      const playableIndices = playableVariantIndicesOf(song);
+      const candidateIndices = playableIndices.length > 0 ? playableIndices : [0];
       const dedupCutoff = new Date(Date.now() - 10 * 24 * 60 * 60 * 1000);
       let seenVariantIndices = new Set<number>();
       if (dedupUserId !== null) {
@@ -662,12 +711,10 @@ export const gameRouter = router({
           );
         seenVariantIndices = new Set(rows.map(r => r.variantIndex));
       }
-      const unseenIndices = allVariants
-        .map((_, i) => i)
-        .filter(i => !seenVariantIndices.has(i));
+      const unseenIndices = candidateIndices.filter(i => !seenVariantIndices.has(i));
       const pickedVariantIndex = unseenIndices.length > 0
         ? unseenIndices[Math.floor(Math.random() * unseenIndices.length)]
-        : 0;
+        : candidateIndices[0];
       const pickedVariant = allVariants[pickedVariantIndex] ?? allVariants[0];
 
       // ── Display log + global counter bump ──────────────────────────────────
