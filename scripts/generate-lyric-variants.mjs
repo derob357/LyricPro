@@ -190,9 +190,13 @@ async function processSong(sql, song, cp) {
     const additional = result.additional_variants ?? [];
     const composed = [seed, ...additional];
     if (!DRY_RUN) {
+      // postgres-js double-encodes when given a JSON.stringify'd array bound
+      // to a jsonb column (the string gets stored as a jsonb string instead
+      // of a jsonb array). Use the sql.json() helper, which is the documented
+      // way to pass a value that should land as proper jsonb.
       await sql`
         UPDATE songs
-        SET "lyricVariants" = ${JSON.stringify(composed)}::jsonb
+        SET "lyricVariants" = ${sql.json(composed)}
         WHERE id = ${song.id}
       `;
     }
