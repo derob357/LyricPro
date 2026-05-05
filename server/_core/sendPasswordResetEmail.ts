@@ -7,7 +7,7 @@
 
 import { Resend } from "resend";
 
-const FROM_ADDRESS = "LyricPro <noreply@lyricpro.ai>";
+const FROM_ADDRESS = "LyricPro <noreply@playlyricpro.com>";
 const SUBJECT = "Reset your LyricPro Ai password";
 
 export async function sendPasswordResetEmail(params: {

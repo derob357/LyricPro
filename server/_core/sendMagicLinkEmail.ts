@@ -13,7 +13,7 @@
 
 import { Resend } from "resend";
 
-const FROM_ADDRESS = "LyricPro <noreply@lyricpro.ai>";
+const FROM_ADDRESS = "LyricPro <noreply@playlyricpro.com>";
 const SUBJECT = "Sign in to LyricPro Ai";
 
 export async function sendMagicLinkEmail(params: {
