@@ -156,28 +156,34 @@ function variantsOf(song: typeof songs.$inferSelect): SongVariant[] {
 
 // A variant is playable iff:
 //   - prompt is non-empty after trim (else the player sees a hollow "...")
-//   - prompt + answer combined is at least 6 words (per product rule)
-function isVariantPlayable(v: SongVariant): boolean {
+//     — this rule applies at every difficulty
+//   - prompt + answer combined is at least 6 words
+//     — this rule applies on Low and Medium only; on Hard the player can
+//       see shorter snippets (4-5 word hooks etc.) since Hard is meant
+//       to be tough trivia, not friendly fill-in-the-gap
+type Difficulty = "low" | "medium" | "high";
+
+function isVariantPlayable(v: SongVariant, difficulty: Difficulty): boolean {
   const prompt = String(v?.prompt ?? "").trim();
   const answer = String(v?.answer ?? "").trim();
   if (!prompt) return false;
+  if (difficulty === "high") return true;
   const lineWords = (prompt + " " + answer).trim().split(/\s+/).filter(Boolean).length;
   return lineWords >= 6;
 }
 
-function playableVariantsOf(song: typeof songs.$inferSelect): SongVariant[] {
-  return variantsOf(song).filter(isVariantPlayable);
-}
-
 // Returns the ORIGINAL indices (within variantsOf(song)) of variants that
-// pass isVariantPlayable. Original indices matter because song_displays
-// stores variantIndex, and submitAnswer/useHint resolve scoring by that
-// index back into variantsOf(song)[i].
-function playableVariantIndicesOf(song: typeof songs.$inferSelect): number[] {
+// pass isVariantPlayable for the given difficulty. Original indices matter
+// because song_displays stores variantIndex, and submitAnswer / useHint
+// resolve scoring by that index back into variantsOf(song)[i].
+function playableVariantIndicesOf(
+  song: typeof songs.$inferSelect,
+  difficulty: Difficulty,
+): number[] {
   const all = variantsOf(song);
   const out: number[] = [];
   for (let i = 0; i < all.length; i++) {
-    if (isVariantPlayable(all[i])) out.push(i);
+    if (isVariantPlayable(all[i], difficulty)) out.push(i);
   }
   return out;
 }
@@ -576,16 +582,18 @@ export const gameRouter = router({
 
         // ── Playability filter ───────────────────────────────────────────────
         // Drop songs whose variants are all unplayable (empty prompt, or
-        // line < 6 words). Without this, the player can land on a hollow
-        // "..." question or a too-short snippet. If filtering empties the
-        // pool, the user has selected a slice of the library where every
-        // matching song needs lyric work — surface that explicitly.
+        // line < 6 words on Low/Medium; <6 words is allowed on Hard).
+        // Without this, the player can land on a hollow "..." question
+        // or a too-short snippet. If filtering empties the pool, the
+        // selected genre/decade slice has no songs ready for this
+        // difficulty — surface that explicitly.
+        const diffForFilter = room.difficulty as Difficulty;
         stdCandidateSongs = stdCandidateSongs.filter(
-          s => playableVariantIndicesOf(s).length > 0,
+          s => playableVariantIndicesOf(s, diffForFilter).length > 0,
         );
         if (stdCandidateSongs.length === 0) {
           throw new Error(
-            "No playable songs match the selected genre/decade right now. Try a broader selection on the setup screen."
+            "No playable songs match the selected genre/decade at this difficulty. Try Hard mode or a broader selection on the setup screen."
           );
         }
 
@@ -678,11 +686,12 @@ export const gameRouter = router({
       // selection step decided this song is fair game; we just don't have
       // a fresh variant to offer).
       const allVariants = variantsOf(song);
-      // Only consider variants that pass the playability rules. Indices are
-      // the ORIGINAL indices in allVariants so song_displays stays scoring-
-      // compatible. For customPack songs that slipped past the standard
-      // candidate filter, fall back to [0] as a last resort.
-      const playableIndices = playableVariantIndicesOf(song);
+      // Only consider variants that pass the playability rules at this
+      // room's difficulty. Indices are the ORIGINAL indices in allVariants
+      // so song_displays stays scoring-compatible. For customPack songs
+      // that slipped past the standard candidate filter, fall back to [0]
+      // as a last resort.
+      const playableIndices = playableVariantIndicesOf(song, room.difficulty as Difficulty);
       const candidateIndices = playableIndices.length > 0 ? playableIndices : [0];
       const dedupCutoff = new Date(Date.now() - 10 * 24 * 60 * 60 * 1000);
       let seenVariantIndices = new Set<number>();
