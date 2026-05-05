@@ -97,7 +97,7 @@ export const appRouter = router({
         const trustedOrigin =
           claimedOrigin && allowlist.includes(String(claimedOrigin))
             ? String(claimedOrigin)
-            : "https://lyricpro-ai.vercel.app";
+            : "https://www.playlyricpro.com";
         const defaultRedirect = `${trustedOrigin}/auth/callback`;
 
         // If the caller passed a redirectTo, only honor it when it shares
@@ -196,7 +196,7 @@ export const appRouter = router({
         const trustedOrigin =
           claimedOrigin && allowlist.includes(String(claimedOrigin))
             ? String(claimedOrigin)
-            : "https://lyricpro-ai.vercel.app";
+            : "https://www.playlyricpro.com";
         const redirectTo = `${trustedOrigin}/auth/reset-password`;
 
         const admin = createClient(url, secret, {
