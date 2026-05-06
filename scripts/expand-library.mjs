@@ -5,7 +5,11 @@
 //   1. Query existing songs in the bucket (genre + year range).
 //   2. Ask Claude (Haiku) for 10 popular suggestions, excluding what we already have.
 //   3. Verify each suggestion against MusicBrainz (serial, 1.1 s gap — 1 req/sec cap).
-//   4. INSERT verified suggestions into `songs` with placeholder lyric fields.
+//   4. Phase 4 verification gate: fetch canonical lyrics via LRClib → Musixmatch
+//      → Genius. If `source === "none"`, do NOT insert — log the song as
+//      "no canonical source available; not added to catalog". This prevents
+//      adding songs we'll never be able to verify.
+//   5. INSERT remaining suggestions into `songs` with placeholder lyric fields.
 //      `regenerate-lyrics.mjs` will fill prompt/answer/distractors later — it picks
 //      these rows up automatically via WHERE isActive=true AND approvalStatus='approved'.
 //
@@ -25,6 +29,8 @@ import fs from "node:fs";
 import path from "node:path";
 import Anthropic from "@anthropic-ai/sdk";
 
+import { fetchCanonicalLyrics } from "./_lib/lyrics-sources.mjs";
+
 dotenv.config();
 
 // ─── Config ───────────────────────────────────────────────────────────────────
@@ -36,14 +42,15 @@ if (!DB_URL) {
   console.error("Set SUPABASE_SESSION_POOLER_STRING in .env");
   process.exit(1);
 }
-if (!process.env.ANTHROPIC_API_KEY) {
-  console.error("Set ANTHROPIC_API_KEY in .env");
-  process.exit(1);
-}
+// Anthropic key is only required for live runs — dry-run skips both the
+// Claude suggestion call and the lyrics fetches.
+const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY ?? "";
+const MUSIXMATCH_API_KEY = process.env.MUSIXMATCH_API_KEY ?? "";
+const GENIUS_ACCESS_TOKEN = process.env.GENIUS_ACCESS_TOKEN ?? "";
 
 // maxRetries=8 mirrors regenerate-lyrics.mjs — gives the SDK enough budget to
 // recover from per-minute rate-limit windows. The SDK respects retry-after.
-const anthropic = new Anthropic({ maxRetries: 8 });
+let anthropic = null;
 const MODEL = "claude-haiku-4-5-20251001";
 
 const CHECKPOINT_PATH = path.resolve("scripts/expand-library.checkpoint.json");
@@ -95,6 +102,14 @@ const RESUME = getFlag("resume");
 const LIMIT = parseInt(getOpt("limit") ?? "0", 10);
 const GENRE_FILTER = getOpt("genres");
 const DECADE_FILTER = getOpt("decades");
+
+if (!DRY_RUN && !ANTHROPIC_API_KEY) {
+  console.error("Set ANTHROPIC_API_KEY in .env (or pass --dry-run)");
+  process.exit(1);
+}
+if (!DRY_RUN && ANTHROPIC_API_KEY) {
+  anthropic = new Anthropic({ maxRetries: 8 });
+}
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -314,6 +329,7 @@ async function processBucket(sql, genre, decadeLabel, cp) {
     range,
     suggested: 0,
     verified: 0,
+    lyricsCleared: 0,
     inserted: 0,
     rejections: [],
     insertedRows: [],
@@ -331,6 +347,17 @@ async function processBucket(sql, genre, decadeLabel, cp) {
     title: r.title,
     artist: r.artistName,
   }));
+
+  // Phase 4: under --dry-run, no external calls (Anthropic, MusicBrainz, or
+  // lyrics-source). The dry-run is a plan preview only — and we deliberately
+  // do NOT write to the checkpoint here, so a subsequent --resume run still
+  // picks the bucket up.
+  if (DRY_RUN) {
+    console.log(
+      `[bucket] ${genre} / ${decadeLabel}: existing=${existing.length} (DRY RUN — skipped Claude / MB / lyrics fetches)`,
+    );
+    return bucketResult;
+  }
 
   // 2. Claude suggestions
   let suggestions;
@@ -398,9 +425,37 @@ async function processBucket(sql, genre, decadeLabel, cp) {
   }
   bucketResult.verified = verifiedList.length;
 
-  // 4. Insert
-  if (!DRY_RUN && verifiedList.length > 0) {
+  // 4. Phase 4 lyrics-source gate. For every MB-verified suggestion, fetch
+  // canonical lyrics. Only suggestions with an available source (LRClib,
+  // Musixmatch, or Genius) proceed to INSERT. This prevents adding songs
+  // we'll never be able to verify downstream.
+  // Skipped under --dry-run to keep cost shape predictable for previews.
+  const lyricsClearedList = [];
+  if (!DRY_RUN) {
     for (const v of verifiedList) {
+      const fetched = await fetchCanonicalLyrics({
+        title: v.title,
+        artist: v.artist,
+        musixmatchKey: MUSIXMATCH_API_KEY,
+        geniusToken: GENIUS_ACCESS_TOKEN,
+      });
+      if (fetched.source === "none" || !fetched.lyrics) {
+        bucketResult.rejections.push({
+          title: v.title,
+          artist: v.artist,
+          reason: "no canonical lyrics source available; not added to catalog",
+          missReasons: fetched.reasons ?? null,
+        });
+        continue;
+      }
+      lyricsClearedList.push({ ...v, lyricsSource: fetched.source });
+    }
+    bucketResult.lyricsCleared = lyricsClearedList.length;
+  }
+
+  // 5. Insert
+  if (!DRY_RUN && lyricsClearedList.length > 0) {
+    for (const v of lyricsClearedList) {
       try {
         const inserted = await sql`
           INSERT INTO songs (
@@ -422,6 +477,7 @@ async function processBucket(sql, genre, decadeLabel, cp) {
             title: v.title,
             artist: v.artist,
             year: v.year,
+            lyricsSource: v.lyricsSource,
           });
         } else {
           bucketResult.rejections.push({
@@ -438,21 +494,15 @@ async function processBucket(sql, genre, decadeLabel, cp) {
         });
       }
     }
-  } else if (DRY_RUN) {
-    // Record what we WOULD have inserted, for the plan summary.
-    bucketResult.insertedRows = verifiedList.map((v) => ({
-      title: v.title,
-      artist: v.artist,
-      year: v.year,
-      _dryRun: true,
-    }));
   }
+  // Note: DRY_RUN short-circuits much earlier (right after fetching existing
+  // bucket songs) so we don't reach this branch in dry-run mode.
 
   cp.buckets[key] = bucketResult;
   saveCheckpoint(cp);
 
   console.log(
-    `[bucket] ${genre} / ${decadeLabel}: suggested=${bucketResult.suggested} verified=${bucketResult.verified} inserted=${bucketResult.inserted}${DRY_RUN ? " (DRY RUN)" : ""}`,
+    `[bucket] ${genre} / ${decadeLabel}: suggested=${bucketResult.suggested} mb-verified=${bucketResult.verified} lyrics-cleared=${bucketResult.lyricsCleared} inserted=${bucketResult.inserted}${DRY_RUN ? " (DRY RUN — lyrics gate skipped)" : ""}`,
   );
 
   return bucketResult;
@@ -501,15 +551,23 @@ async function main() {
   const claudeCalls = pending.length;
   const mbCalls = pending.length * 10;
   const mbMinutes = Math.ceil((mbCalls * MB_GAP_MS) / 1000 / 60);
+  // Phase 4 lyrics-source gate. Worst-case = 1 fetch per MB-verified suggestion.
+  // We don't know the MB pass rate ahead of time, so estimate against the upper
+  // bound (10/bucket) — actual fetches will be ≤ this.
+  const lyricsCallsMax = pending.length * 10;
   console.log("─".repeat(60));
   console.log(`expand-library — Phase 2b`);
-  console.log(`  mode:       ${DRY_RUN ? "DRY RUN (no DB writes)" : "LIVE"}`);
-  console.log(`  buckets:    ${pending.length} pending (${allBuckets.length} total, ${skipped.length} skipped via --resume)`);
-  console.log(`  genres:     ${genres.join(", ")}`);
-  console.log(`  decades:    ${decades.join(", ")}`);
-  console.log(`  claude:     ~${claudeCalls} calls (Haiku) ≈ $${(claudeCalls * 0.006).toFixed(2)}`);
+  console.log(`  mode:        ${DRY_RUN ? "DRY RUN (no DB writes, no lyrics fetches)" : "LIVE"}`);
+  console.log(`  buckets:     ${pending.length} pending (${allBuckets.length} total, ${skipped.length} skipped via --resume)`);
+  console.log(`  genres:      ${genres.join(", ")}`);
+  console.log(`  decades:     ${decades.join(", ")}`);
+  console.log(`  anthropic:   ${ANTHROPIC_API_KEY ? "set" : "unset"}`);
+  console.log(`  musixmatch:  ${MUSIXMATCH_API_KEY ? "set" : "unset"}`);
+  console.log(`  genius:      ${GENIUS_ACCESS_TOKEN ? "set" : "unset"}`);
+  console.log(`  claude:      ~${claudeCalls} calls (Haiku) ≈ $${(claudeCalls * 0.006).toFixed(2)}`);
   console.log(`  musicbrainz: ${mbCalls} calls @ ${MB_GAP_MS}ms = ~${mbMinutes} min minimum`);
-  console.log(`  checkpoint: ${CHECKPOINT_PATH}`);
+  console.log(`  lyrics gate: up to ${lyricsCallsMax} fetches (free for LRClib; counts against MM/Genius quotas)`);
+  console.log(`  checkpoint:  ${CHECKPOINT_PATH}`);
   console.log("─".repeat(60));
 
   if (pending.length === 0) {
@@ -531,6 +589,10 @@ async function main() {
   // Final report.
   const totalSuggested = results.reduce((a, r) => a + r.suggested, 0);
   const totalVerified = results.reduce((a, r) => a + r.verified, 0);
+  const totalLyricsCleared = results.reduce(
+    (a, r) => a + (r.lyricsCleared ?? 0),
+    0,
+  );
   const totalInserted = results.reduce((a, r) => a + r.inserted, 0);
   const allRejections = results.flatMap((r) => r.rejections);
   const reasonCounts = {};
@@ -543,11 +605,12 @@ async function main() {
   console.log("═".repeat(60));
   console.log("FINAL REPORT");
   console.log("═".repeat(60));
-  console.log(`buckets processed: ${results.length}`);
-  console.log(`total suggested:   ${totalSuggested}`);
-  console.log(`total verified:    ${totalVerified}`);
-  console.log(`total inserted:    ${totalInserted}${DRY_RUN ? " (DRY RUN — no writes)" : ""}`);
-  console.log(`total rejected:    ${allRejections.length}`);
+  console.log(`buckets processed:    ${results.length}`);
+  console.log(`total suggested:      ${totalSuggested}`);
+  console.log(`total mb-verified:    ${totalVerified}`);
+  console.log(`total lyrics-cleared: ${totalLyricsCleared}${DRY_RUN ? " (skipped in dry-run)" : ""}`);
+  console.log(`total inserted:       ${totalInserted}${DRY_RUN ? " (DRY RUN — no writes)" : ""}`);
+  console.log(`total rejected:       ${allRejections.length}`);
   console.log("rejection reasons:");
   for (const [reason, n] of Object.entries(reasonCounts).sort(
     (a, b) => b[1] - a[1],
