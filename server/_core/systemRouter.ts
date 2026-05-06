@@ -1,6 +1,8 @@
 import { z } from "zod";
 import { and, eq, sql } from "drizzle-orm";
+import { TRPCError } from "@trpc/server";
 import { notifyOwner } from "./notification";
+import { sendFeedbackEmail } from "./sendFeedbackEmail";
 import { adminProcedure, publicProcedure, router } from "./trpc";
 import { getDb } from "../db";
 import { songs } from "../../drizzle/schema";
@@ -53,13 +55,16 @@ export const systemRouter = router({
       })
     )
     .mutation(async ({ input }) => {
-      const feedbackContent = `[${input.type.toUpperCase()}]\nFrom: ${input.name} <${input.email}>\n\n${input.message}`;
-      const delivered = await notifyOwner({
-        title: `LyricPro Feedback: ${input.type}`,
-        content: feedbackContent,
-      });
-      return {
-        success: delivered,
-      } as const;
+      try {
+        await sendFeedbackEmail(input);
+      } catch (err) {
+        console.error("[submitFeedback] send failed:", err);
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message:
+            "We couldn't send your feedback right now. Please try again in a minute.",
+        });
+      }
+      return { success: true } as const;
     }),
 });
