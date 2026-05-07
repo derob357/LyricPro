@@ -23,7 +23,13 @@ export default function GameSetup() {
   const params = new URLSearchParams(search);
   const { isAuthenticated, logout, user } = useAuth();
 
-  const [mode, setMode] = useState<GameMode>((params.get("mode") as GameMode) || "solo");
+  // Multiplayer + Team modes are temporarily disabled (see modeOptions
+  // below). Force any URL ?mode=multiplayer/team back to solo so a stale
+  // shared link doesn't land in a now-greyed-out mode.
+  const [mode, setMode] = useState<GameMode>(() => {
+    const fromUrl = params.get("mode") as GameMode | null;
+    return fromUrl === "multiplayer" || fromUrl === "team" ? "solo" : (fromUrl || "solo");
+  });
   const [selectedGenres, setSelectedGenres] = useState<string[]>([]);
   const [selectedDecades, setSelectedDecades] = useState<string[]>([]);
   const [difficulty, setDifficulty] = useState<Difficulty>("medium");
@@ -139,10 +145,12 @@ export default function GameSetup() {
     });
   };
 
+  // Multiplayer + Team modes are paused while we focus on Solo polish.
+  // To re-enable: flip `disabled: false` on the relevant entries.
   const modeOptions = [
-    { value: "solo", icon: User, label: "Solo", desc: "Play alone" },
-    { value: "multiplayer", icon: Users, label: "Multiplayer", desc: "Turn-based" },
-    { value: "team", icon: UsersRound, label: "Team Mode", desc: "Team vs team" },
+    { value: "solo", icon: User, label: "Solo", desc: "Play alone", disabled: false },
+    { value: "multiplayer", icon: Users, label: "Multiplayer", desc: "Coming soon", disabled: true },
+    { value: "team", icon: UsersRound, label: "Team Mode", desc: "Coming soon", disabled: true },
   ];
 
   const difficultyOptions = [
@@ -229,18 +237,22 @@ export default function GameSetup() {
               <h2 className="font-display font-semibold text-lg text-foreground">Game Mode</h2>
             </div>
             <div className="grid grid-cols-3 gap-3">
-              {modeOptions.map(({ value, icon: Icon, label, desc }) => (
+              {modeOptions.map(({ value, icon: Icon, label, desc, disabled }) => (
                 <button
                   key={value}
-                  onClick={() => setMode(value as GameMode)}
+                  onClick={() => { if (!disabled) setMode(value as GameMode); }}
+                  disabled={disabled}
+                  aria-disabled={disabled ? "true" : "false"}
                   className={`glass rounded-xl p-4 text-center transition-all duration-200 border ${
-                    mode === value
+                    disabled
+                      ? "border-border/30 opacity-40 cursor-not-allowed"
+                      : mode === value
                       ? "border-primary/60 bg-primary/10 glow-purple"
                       : "border-border/40 hover:border-primary/30"
                   }`}
                 >
-                  <Icon className={`w-6 h-6 mx-auto mb-2 ${mode === value ? "text-primary" : "text-muted-foreground"}`} />
-                  <div className={`font-semibold text-sm ${mode === value ? "text-primary" : "text-foreground"}`}>{label}</div>
+                  <Icon className={`w-6 h-6 mx-auto mb-2 ${disabled ? "text-muted-foreground" : mode === value ? "text-primary" : "text-muted-foreground"}`} />
+                  <div className={`font-semibold text-sm ${disabled ? "text-muted-foreground" : mode === value ? "text-primary" : "text-foreground"}`}>{label}</div>
                   <div className="text-xs text-muted-foreground mt-0.5">{desc}</div>
                 </button>
               ))}
