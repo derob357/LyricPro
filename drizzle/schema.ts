@@ -8,6 +8,7 @@ import {
   pgTable,
   primaryKey,
   serial,
+  smallint,
   text,
   timestamp,
   uniqueIndex,
@@ -111,6 +112,56 @@ export const avatarAcquiredViaEnum = pgEnum("avatar_acquired_via", [
   "starter",
   "purchase",
   "admin_grant",
+]);
+
+// ─── Three-layer content schema enums (Phase 5b) ─────────────────────────────
+// licensing_status — gates whether actual lyric text may be displayed in
+// production. The Song Master row can exist as "pending" / "internal_only"
+// while licensing is negotiated; gameplay items derived from it are hidden
+// until the parent song flips to "cleared".
+export const licensingStatusEnum = pgEnum("licensing_status", [
+  "pending",
+  "in_review",
+  "cleared",
+  "internal_only",
+  "rejected",
+]);
+
+// candidate_use_case — what gameplay surface the moment is curated for.
+// A moment can target multiple surfaces; this enum tags the PRIMARY surface
+// while the four surface-fit boolean columns capture multi-surface fit.
+export const candidateUseCaseEnum = pgEnum("candidate_use_case", [
+  "song_id",
+  "artist_id",
+  "year_id",
+  "finish_the_lyric",
+  "multi_surface",
+]);
+
+// question_type / prompt_format — describe the gameplay item.
+// question_type is the WHAT (song id, artist id, year id, finish-the-lyric).
+// prompt_format is the HOW (multiple_choice / typed / voice).
+export const questionTypeEnum = pgEnum("question_type", [
+  "song_identification",
+  "artist_identification",
+  "year_identification",
+  "finish_the_lyric",
+]);
+export const promptFormatEnum = pgEnum("prompt_format", [
+  "multiple_choice",
+  "typed",
+  "voice",
+]);
+
+// qa_status — last-mile sanity check on the gameplay item itself
+// (distractor uniqueness, year-tolerance sanity, prompt typo check).
+// Distinct from approval_status, which gates curatorial sign-off on the
+// parent moment.
+export const qaStatusEnum = pgEnum("qa_status", [
+  "pending",
+  "passed",
+  "needs_fix",
+  "blocked",
 ]);
 
 // Shared helper: all tables with an `updatedAt` use Drizzle's $onUpdate to
@@ -234,6 +285,23 @@ export const songs = pgTable("songs", {
     .default("approved")
     .notNull(),
   isActive: boolean("isActive").default(true).notNull(),
+  // ── Phase 5b additions (three-layer content schema, song-master fields) ──
+  // featured_artist: nullable; primary artist stays in artistName.
+  featuredArtist: varchar("featured_artist", { length: 256 }),
+  // licensing_status: defaults to internal_only so legacy rows are safe.
+  // Curator flips to cleared once licensing is in place.
+  licensingStatus: licensingStatusEnum("licensing_status")
+    .default("internal_only")
+    .notNull(),
+  // approved_for_game: curatorial publish flag separate from approvalStatus
+  // (which is the content-review state) and isActive (operational kill switch).
+  // A song appears in gameplay only when isActive AND approvalStatus='approved'
+  // AND approvedForGame.
+  approvedForGame: boolean("approved_for_game").default(true).notNull(),
+  // in_curated_bank: marks the 400-song bank-A set + future curated tiers.
+  inCuratedBank: boolean("in_curated_bank").default(false).notNull(),
+  // curator_notes: free-text song-level notes from the curator.
+  curatorNotes: text("curator_notes"),
   // Aggregate counters seeded by scripts/backfill-song-displays.mjs and
   // updated transactionally by getNextSong. Used to power the global
   // over-show penalty in selection + the admin usage report. song_displays
@@ -726,3 +794,143 @@ export const userInsights = pgTable("user_insights", {
 });
 
 export type UserInsights = typeof userInsights.$inferSelect;
+
+// ─── Layer 2: Lyric Moments (Phase 5b) ───────────────────────────────────────
+// One row per CANDIDATE lyric moment. A song typically has 3-10 candidates;
+// only a subset reach gameplay_items. Scoring fields are 1-5 smallint with
+// CHECK constraints applied via DDL (see
+// scripts/migrations/applied/2026-05-06-three-layer-schema.sql).
+//
+// The four `*_fit` boolean columns flag which gameplay surfaces the moment can
+// support; the three difficulty `*_fit` booleans flag which difficulty tiers
+// it suits.
+//
+// `overall_playability_score` is a Postgres GENERATED column computed from the
+// eight 1-5 scores using the brief's weights. drizzle-orm doesn't model
+// GENERATED columns natively — declared here as a regular smallint for type
+// inference; the migration SQL adds GENERATED ALWAYS. Do NOT INSERT/UPDATE
+// this column from app code.
+export const lyricMoments = pgTable(
+  "lyric_moments",
+  {
+    id: serial("id").primaryKey(),
+    songId: integer("song_id").notNull(), // FK -> songs.id ON DELETE CASCADE
+    sectionType: varchar("section_type", { length: 32 }).notNull(),
+    sectionOrder: smallint("section_order"),
+    candidateUseCase: candidateUseCaseEnum("candidate_use_case").notNull(),
+
+    lyricText: text("lyric_text").notNull(),
+    lyricBefore: text("lyric_before"),
+    lyricAfter: text("lyric_after"),
+
+    // Difficulty-tier fit flags (independent — a moment can suit multiple).
+    lowFit: boolean("low_fit").default(false).notNull(),
+    mediumFit: boolean("medium_fit").default(false).notNull(),
+    hardFit: boolean("hard_fit").default(false).notNull(),
+
+    // Surface-fit flags
+    songRecognitionFit: boolean("song_recognition_fit").default(false).notNull(),
+    artistRecognitionFit: boolean("artist_recognition_fit")
+      .default(false)
+      .notNull(),
+    yearFit: boolean("year_fit").default(false).notNull(),
+    finishTheLyricFit: boolean("finish_the_lyric_fit").default(false).notNull(),
+
+    // Scoring rubric (1-5 each). NULL until scored.
+    // CHECK (col BETWEEN 1 AND 5) added in migration SQL.
+    cueObviousnessScore: smallint("cue_obviousness_score"),
+    lyricVividnessScore: smallint("lyric_vividness_score"),
+    artistFingerprintScore: smallint("artist_fingerprint_score"),
+    sayabilityScore: smallint("sayability_score"),
+    socialRecognitionScore: smallint("social_recognition_score"),
+    eraSignalScore: smallint("era_signal_score"),
+    questionVarietyScore: smallint("question_variety_score"),
+    ambiguityRiskScore: smallint("ambiguity_risk_score"),
+
+    // GENERATED ALWAYS column — see migration SQL for the formula.
+    overallPlayabilityScore: smallint("overall_playability_score"),
+
+    reviewerNotes: text("reviewer_notes"),
+    approvalStatus: varchar("approval_status", { length: 16 })
+      .default("pending")
+      .notNull(),
+    approvedBy: integer("approved_by"), // FK -> users.id (ON DELETE SET NULL)
+    approvedAt: timestamp("approved_at", { withTimezone: true }),
+
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .defaultNow()
+      .notNull()
+      .$onUpdate(() => new Date()),
+  },
+  (t) => ({
+    songIdIdx: index("lyric_moments_song_id_idx").on(t.songId),
+    approvalStatusIdx: index("lyric_moments_approval_status_idx").on(
+      t.approvalStatus,
+    ),
+    songScoreIdx: index("lyric_moments_song_score_idx").on(
+      t.songId,
+      t.overallPlayabilityScore,
+    ),
+    songLyricUnique: uniqueIndex("lyric_moments_song_lyric_unique").on(
+      t.songId,
+      t.lyricText,
+    ),
+  }),
+);
+
+export type LyricMoment = typeof lyricMoments.$inferSelect;
+export type InsertLyricMoment = typeof lyricMoments.$inferInsert;
+
+// ─── Layer 3: Gameplay Items (Phase 5b) ──────────────────────────────────────
+// One row per APPROVED gameplay prompt. This is what the game runtime reads
+// (Phase 5c repoints reads here). A single lyric_moment can spawn multiple
+// gameplay_items at different difficulties / question types.
+//
+// difficulty here is EXPLICIT — not inferred from text length the way the
+// legacy playableVariantIndicesOf() helper does.
+export const gameplayItems = pgTable(
+  "gameplay_items",
+  {
+    id: serial("id").primaryKey(),
+    lyricMomentId: integer("lyric_moment_id").notNull(), // FK -> lyric_moments.id (RESTRICT)
+    songId: integer("song_id").notNull(), // FK -> songs.id (CASCADE)
+    difficulty: varchar("difficulty", { length: 8 }).notNull(),
+    questionType: questionTypeEnum("question_type").notNull(),
+    promptFormat: promptFormatEnum("prompt_format")
+      .default("multiple_choice")
+      .notNull(),
+    promptText: text("prompt_text").notNull(),
+    correctAnswer: text("correct_answer").notNull(),
+    distractor1: text("distractor_1"),
+    distractor2: text("distractor_2"),
+    distractor3: text("distractor_3"),
+    yearTolerance: smallint("year_tolerance"),
+    qaStatus: qaStatusEnum("qa_status").default("pending").notNull(),
+    qaNotes: text("qa_notes"),
+    isActive: boolean("is_active").default(true).notNull(),
+    timesShown: integer("times_shown").default(0).notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .defaultNow()
+      .notNull()
+      .$onUpdate(() => new Date()),
+  },
+  (t) => ({
+    momentIdIdx: index("gameplay_items_moment_id_idx").on(t.lyricMomentId),
+    songIdIdx: index("gameplay_items_song_id_idx").on(t.songId),
+    songDiffTypeIdx: index("gameplay_items_song_diff_type_idx").on(
+      t.songId,
+      t.difficulty,
+      t.questionType,
+    ),
+    activeIdx: index("gameplay_items_active_idx").on(t.isActive, t.qaStatus),
+  }),
+);
+
+export type GameplayItem = typeof gameplayItems.$inferSelect;
+export type InsertGameplayItem = typeof gameplayItems.$inferInsert;
