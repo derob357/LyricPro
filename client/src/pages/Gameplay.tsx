@@ -284,10 +284,6 @@ export default function Gameplay() {
     }
   };
 
-  const handlePass = () => {
-    submitAnswers({ lyric: "", title: "", artist: "", year: "" }, true);
-  };
-
   const timerPct = ((timeLeft / (room?.timerSeconds ?? 30)) * 100);
   const isUrgent = timeLeft <= 5;
 
@@ -314,12 +310,12 @@ export default function Gameplay() {
     }
     if (stage === "title") {
       return {
-        title: "Name That Song!",
+        title: "What's the Song Title?",
         tag: "Title",
         value: ptLabels.title,
         options: currentSong?.titleOptions ?? [],
         prompt: <>"{currentSong?.lyricPrompt} {currentSong?.lyricAnswer}"</>,
-        sub: "Which song is this?",
+        sub: "",
       };
     }
     if (stage === "artist") {
@@ -638,15 +634,6 @@ export default function Gameplay() {
                 Hint (1 GN)
               </Button>
             )}
-          </div>
-        )}
-
-        {/* Pass button */}
-        {!hasSubmitted && (isSolo || buzzedPlayerIndex === myIndex) && (
-          <div className="relative z-10 text-center mb-6">
-            <Button variant="ghost" size="sm" onClick={handlePass} className="text-muted-foreground hover:text-foreground">
-              Pass this round
-            </Button>
           </div>
         )}
 

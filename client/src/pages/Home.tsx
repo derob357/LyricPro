@@ -123,15 +123,13 @@ export default function Home() {
 
             <motion.h1 variants={fadeUp}
               className="font-display text-5xl sm:text-6xl md:text-7xl font-black leading-tight mb-6">
-              <span className="text-gradient">Finish the Lyric.</span>
-              <br />
-              <span className="text-foreground">Rule the Room.</span>
+              <span className="text-gradient">Lyric Pro</span>
             </motion.h1>
 
             <motion.p variants={fadeUp}
               className="text-muted-foreground text-lg sm:text-xl max-w-2xl mx-auto mb-8 leading-relaxed">
-              The premium social lyric challenge game. Complete song lyrics, name the artist, guess the year.
-              Play solo or battle your friends across every genre and decade.
+              Name the song title, name the artist, guess the year or finish the lyric.
+              Play solo or battle friends across every genre and decade.
             </motion.p>
 
             <motion.div variants={fadeUp} className="flex flex-col sm:flex-row gap-4 justify-center items-center">
@@ -204,7 +202,7 @@ export default function Home() {
               {
                 step: "02",
                 icon: Mic,
-                title: "Complete the Lyric",
+                title: "Read the Lyric",
                 desc: "On Low/Medium: see the full lyric and name the song, artist, and year. On High: complete the missing lyric plus name the artist and year.",
                 color: "text-accent",
                 glow: "glow-cyan",
