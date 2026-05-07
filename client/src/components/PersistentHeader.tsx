@@ -1,6 +1,7 @@
 import { Link } from "wouter";
 import { Music, Music2, ShoppingCart } from "lucide-react";
 import { trpc } from "@/lib/trpc";
+import { supabase } from "@/lib/supabase";
 import { Button } from "@/components/ui/button";
 import { getLoginUrl } from "@/const";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
@@ -15,7 +16,14 @@ export function PersistentHeader() {
   });
 
   const handleLogout = async () => {
-    await logoutMutation.mutateAsync();
+    // Sign out from BOTH places. The Supabase JWT (in localStorage) is
+    // what actually authenticates trpc.auth.me — without clearing it,
+    // a hard reload immediately re-authenticates the user and the
+    // logout looks like a no-op. The server-side tRPC mutation also
+    // clears the legacy session cookie. Settle both even if one fails
+    // so the reload always lands on a logged-out home.
+    try { await supabase.auth.signOut(); } catch {}
+    try { await logoutMutation.mutateAsync(); } catch {}
     window.location.href = "/";
   };
 
