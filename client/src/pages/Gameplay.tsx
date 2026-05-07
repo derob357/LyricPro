@@ -308,13 +308,16 @@ export default function Gameplay() {
         sub: "Pick the missing line",
       };
     }
+    // Follow-up stages: short, plain question text in the same big white
+    // font as the lyric quote. The lyric was already shown during the
+    // lyric stage, so we don't repeat it here.
     if (stage === "title") {
       return {
         title: "What's the Song Title?",
         tag: "Title",
         value: ptLabels.title,
         options: currentSong?.titleOptions ?? [],
-        prompt: <>"{currentSong?.lyricPrompt} {currentSong?.lyricAnswer}"</>,
+        prompt: <>What&rsquo;s the song title?</>,
         sub: "",
       };
     }
@@ -324,7 +327,7 @@ export default function Gameplay() {
         tag: "Artist",
         value: ptLabels.artist,
         options: currentSong?.artistOptions ?? [],
-        prompt: <>"{currentSong?.lyricPrompt} {currentSong?.lyricAnswer}" — who performed it?</>,
+        prompt: <>Who&rsquo;s the artist?</>,
         sub: `Worth ${ptLabels.artist} pts`,
       };
     }
@@ -334,7 +337,7 @@ export default function Gameplay() {
       tag: "Year",
       value: ptLabels.year,
       options: currentSong?.yearOptions ?? [],
-      prompt: <>What year was "{currentSong?.title}" released?</>,
+      prompt: <>What year was it released?</>,
       sub: `Worth ${ptLabels.year} pts`,
     };
   })();
