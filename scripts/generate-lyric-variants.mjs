@@ -35,6 +35,7 @@ import Anthropic from "@anthropic-ai/sdk";
 
 import { fetchCanonicalLyrics } from "./_lib/lyrics-sources.mjs";
 import { verifyVariant } from "./_lib/verify-variant.mjs";
+import { syncSongVariants } from "./_lib/dual-write-variants.mjs";
 
 dotenv.config();
 
@@ -335,15 +336,12 @@ async function processSong(sql, song, cp, anthrCallCounter, lyricsFetchCounter) 
 
   // 4. All good — compose and write.
   const composed = [seed, ...r.additional];
-  // postgres-js double-encodes when given a JSON.stringify'd array bound
-  // to a jsonb column (the string gets stored as a jsonb string instead
-  // of a jsonb array). Use the sql.json() helper, which is the documented
-  // way to pass a value that should land as proper jsonb.
-  await sql`
-    UPDATE songs
-    SET "lyricVariants" = ${sql.json(composed)}
-    WHERE id = ${song.id}
-  `;
+  // Phase 5d dual-write: write to BOTH the legacy jsonb column AND the
+  // layer-3 lyric_moments + gameplay_items tables in a single transaction.
+  // The helper preserves the postgres-js sql.json() pattern for the legacy
+  // jsonb update (the previous bare UPDATE here had a comment about that
+  // double-encoding gotcha — same handling lives inside the helper now).
+  await syncSongVariants(sql, song.id, composed);
   cp.results[song.id] = {
     id: song.id,
     title: song.title,

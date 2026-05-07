@@ -33,6 +33,10 @@ import Anthropic from "@anthropic-ai/sdk";
 
 import { fetchCanonicalLyrics } from "./_lib/lyrics-sources.mjs";
 import { verifyVariant } from "./_lib/verify-variant.mjs";
+import {
+  syncSongVariants,
+  clearSongLayer3,
+} from "./_lib/dual-write-variants.mjs";
 
 dotenv.config();
 
@@ -552,12 +556,11 @@ async function processOneSong({ song, sql, cp, bk, anthrCallCounter }) {
     };
   }
 
-  await sql`
-    UPDATE songs
-    SET "lyricVariants" = ${sql.json(newVariants)},
-        "updatedAt" = NOW()
-    WHERE id = ${songId}
-  `;
+  // Phase 5d dual-write: keep songs.lyricVariants jsonb (legacy) AND
+  // lyric_moments + gameplay_items (layer-3) in sync atomically. The helper
+  // wraps both in a single transaction; if either side fails, the whole song
+  // rolls back and we don't leak partial state.
+  await syncSongVariants(sql, songId, newVariants);
 
   return {
     songId,
@@ -792,6 +795,25 @@ async function main() {
       `;
       deactivatedIds = updated.map((r) => r.id);
       alreadyInactiveCount = deactivationIds.length - deactivatedIds.length;
+
+      // Phase 5d dual-write: deactivated songs must also vanish from
+      // layer-3. The layer-3 reader filters by gameplay_items.is_active +
+      // lyric_moments.approval_status, NOT by songs.isActive — leaving the
+      // rows in place would mean a flag-flipped read path could still serve
+      // a deactivated song. Clear them now. We sweep the full deactivation
+      // set (not just freshly-flipped rows) so stale layer-3 rows from
+      // earlier runs are mopped up too — it's idempotent.
+      for (const songId of deactivationIds) {
+        try {
+          await clearSongLayer3(sql, songId);
+        } catch (err) {
+          // Don't abort the run — log and keep going. The legacy isActive
+          // flag is the primary safety net; layer-3 cleanup is belt + braces.
+          console.warn(
+            `  WARN: clearSongLayer3 failed for song ${songId}: ${String(err?.message ?? err)}`,
+          );
+        }
+      }
     }
 
     // ─── Final summary ──────────────────────────────────────────────────────

@@ -10,7 +10,13 @@
 // Eliminates the variantsOf() fallback path for any seeded song.
 //
 // Idempotent: only updates rows where lyricVariants IS NULL OR length = 0.
-// Single transaction. No LLM cost.
+// No LLM cost.
+//
+// Phase 5d dual-write: when seeding lyricVariants we ALSO rebuild the
+// layer-3 store (lyric_moments + gameplay_items) for the same song so the
+// flag-flipped reader sees a single approved gameplay_item per seeded
+// song. Per-song atomic via syncSongVariants — if either store fails to
+// write, the song rolls back.
 //
 // Usage:
 //   node scripts/seed-lyric-variants.mjs --dry-run
@@ -18,6 +24,8 @@
 
 import postgres from "postgres";
 import dotenv from "dotenv";
+
+import { syncSongVariants } from "./_lib/dual-write-variants.mjs";
 
 dotenv.config();
 
@@ -77,25 +85,44 @@ try {
     process.exit(0);
   }
 
-  await sql.begin(async (tx) => {
-    // Build the single-element JSONB array per row from the legacy columns.
-    // distractors is already jsonb (string[] | null) — coalesce null to '[]'.
-    const result = await tx`
-      UPDATE songs
-      SET "lyricVariants" = jsonb_build_array(
-        jsonb_build_object(
-          'prompt', "lyricPrompt",
-          'answer', "lyricAnswer",
-          'distractors', COALESCE(distractors, '[]'::jsonb),
-          'sectionType', "lyricSectionType"
-        )
-      )
-      WHERE "isActive" = true
-        AND "approvalStatus" = 'approved'
-        AND ("lyricVariants" IS NULL OR jsonb_array_length("lyricVariants") = 0)
-    `;
-    console.log(`Seeded ${result.count} rows.`);
-  });
+  // Phase 5d dual-write: pull each candidate row, build its 1-element
+  // variants array from the legacy columns, then call the dual-write helper
+  // so legacy AND layer-3 land together. We keep this serial (no
+  // concurrency) — the workload is small (only songs with NULL/empty
+  // lyricVariants) and the helper opens its own per-song transaction, so
+  // contention isn't an issue.
+  const candidates = await sql`
+    SELECT id, "lyricPrompt" AS prompt, "lyricAnswer" AS answer,
+           COALESCE(distractors, '[]'::jsonb) AS distractors,
+           "lyricSectionType" AS section_type
+    FROM songs
+    WHERE "isActive" = true
+      AND "approvalStatus" = 'approved'
+      AND ("lyricVariants" IS NULL OR jsonb_array_length("lyricVariants") = 0)
+    ORDER BY id ASC
+  `;
+  let seeded = 0;
+  let failed = 0;
+  for (const row of candidates) {
+    const variants = [
+      {
+        prompt: row.prompt ?? "",
+        answer: row.answer ?? "",
+        distractors: Array.isArray(row.distractors) ? row.distractors : [],
+        sectionType: row.section_type ?? "verse",
+      },
+    ];
+    try {
+      await syncSongVariants(sql, row.id, variants);
+      seeded++;
+    } catch (err) {
+      failed++;
+      console.warn(
+        `  WARN: dual-write failed for song ${row.id}: ${String(err?.message ?? err)}`,
+      );
+    }
+  }
+  console.log(`Seeded ${seeded} rows (failed ${failed}).`);
 
   console.log("Seeding complete.");
 } catch (err) {

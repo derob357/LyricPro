@@ -457,15 +457,31 @@ async function processBucket(sql, genre, decadeLabel, cp) {
   if (!DRY_RUN && lyricsClearedList.length > 0) {
     for (const v of lyricsClearedList) {
       try {
+        // Phase 5d: explicitly set the three-layer schema columns so new
+        // expansions land with the same defaults the backfill assumed:
+        //   licensing_status   = 'internal_only' (curator flips to 'cleared'
+        //                        once licensing is in place)
+        //   approved_for_game  = true (publish flag — separate from
+        //                        approvalStatus / isActive)
+        //   in_curated_bank    = false (catalog-audit script flips this
+        //                        later when the song is matched to a bank)
+        //   featured_artist    = NULL (primary artist already in artistName)
+        //   curator_notes      = NULL
+        // No layer-3 dual-write here: the song is born with no variants;
+        // the dual-write fires when generate-lyric-variants writes them.
         const inserted = await sql`
           INSERT INTO songs (
             title, "artistName", genre, "releaseYear", "decadeRange",
             "lyricPrompt", "lyricAnswer", distractors, "lyricSectionType",
-            difficulty, "explicitFlag", "approvalStatus", "isActive"
+            difficulty, "explicitFlag", "approvalStatus", "isActive",
+            licensing_status, approved_for_game, in_curated_bank,
+            featured_artist, curator_notes
           ) VALUES (
             ${v.title}, ${v.artist}, ${genre}, ${v.year}, ${decadeLabel},
             ${""}, ${""}, ${sql.json([])}, ${"chorus"},
-            ${"medium"}, ${false}, ${"approved"}, ${true}
+            ${"medium"}, ${false}, ${"approved"}, ${true},
+            ${"internal_only"}, ${true}, ${false},
+            ${null}, ${null}
           )
           ON CONFLICT (title, "artistName") DO NOTHING
           RETURNING id

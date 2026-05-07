@@ -5,6 +5,13 @@
 //   - Generate 3 distractors that rhyme with the answer and fit the meter/genre.
 // Writes results to scripts/regenerate-lyrics.checkpoint.json. DB is NOT touched.
 //
+// Phase 5d note: this script writes to a checkpoint only. The DB write
+// (and the layer-3 invalidation that goes with it) happens in
+// scripts/apply-lyrics-checkpoint.mjs. After that apply step, re-run
+// scripts/seed-lyric-variants.mjs and scripts/generate-lyric-variants.mjs
+// so the new seed lands in songs.lyricVariants AND the layer-3 tables get
+// rebuilt via the dual-write helper.
+//
 // Phase 4 verification gate: BEFORE writing any rewrite to the checkpoint, the
 // script fetches the song's canonical lyrics (LRClib → Musixmatch → Genius) and
 // verifies the generated `prompt + " " + answer` against those lyrics. If
