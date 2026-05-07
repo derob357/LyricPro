@@ -628,7 +628,7 @@ export default function Gameplay() {
                     {displayName}
                   </div>
                   <div className="text-yellow-400 font-bold text-sm neon-gold-sm">
-                    ${p.currentScore ?? 0}
+                    {p.currentScore ?? 0}
                   </div>
                   {p.currentStreak >= 2 && (
                     <Flame className="w-3 h-3 text-orange-400 absolute bottom-1 left-1.5" />
