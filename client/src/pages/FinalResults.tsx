@@ -9,7 +9,7 @@ import { useAuth } from "@/_core/hooks/useAuth";
 import { getLoginUrl } from "@/const";
 import SocialShareButtons from "@/components/SocialShareButtons";
 import { getScoreShareContent } from "@/lib/shareUtils";
-import { Trophy, Crown, Medal, Star, RotateCcw, Home, User, Music, Share2 } from "lucide-react";
+import { Trophy, Crown, Medal, Star, RotateCcw, Home, User, Music, Share2, ListOrdered } from "lucide-react";
 import { getRankTier } from "@/lib/scoring";
 import { useState } from "react";
 
@@ -180,11 +180,19 @@ export default function FinalResults() {
                       </div>
                     </motion.div>
                     {isMe && (
-                      <div className="mt-2 pl-4">
+                      <div className="mt-2 pl-4 space-y-2">
                         <SocialShareButtons
                           content={getScoreShareContent(name, player.currentScore, room.difficulty, room.roundsTotal, window.location.href)}
                           compact
                         />
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => navigate("/leaderboards?focus=me")}
+                          className="border-primary/40 text-primary hover:bg-primary/10 hover:border-primary/60"
+                        >
+                          <ListOrdered className="w-4 h-4 mr-2" /> View Leaderboard
+                        </Button>
                       </div>
                     )}
                   </div>

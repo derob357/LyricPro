@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useLocation } from "wouter";
 import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
@@ -30,8 +30,30 @@ export default function Leaderboards() {
     genre: selectedGenre,
     decade: selectedDecade,
     timeframe,
-    limit: 50,
+    limit: 200,
   });
+
+  // After data loads, if the URL has ?focus=me and the user appears in the
+  // returned slice, scroll their row to viewport center. browser physics
+  // handles the edge case where the row is near the top of the page (it
+  // simply stays at the top — can't scroll above page 0). Fired once per
+  // (entries, user) pair via a ref guard so re-filters don't re-scroll.
+  const myRowRef = useRef<HTMLDivElement | null>(null);
+  const focusedRef = useRef(false);
+  useEffect(() => {
+    if (focusedRef.current) return;
+    if (!entries || !user) return;
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("focus") !== "me") return;
+    if (!entries.some((e) => e.userId === user.id)) return;
+    // Wait for layout — motion.div uses a stagger that completes within
+    // ~500ms but scrollIntoView works on the first frame too.
+    const id = window.setTimeout(() => {
+      myRowRef.current?.scrollIntoView({ block: "center", behavior: "smooth" });
+      focusedRef.current = true;
+    }, 50);
+    return () => window.clearTimeout(id);
+  }, [entries, user]);
 
   const normalizedSearch = searchQuery.trim().toLowerCase();
   const filteredEntries = normalizedSearch
@@ -241,6 +263,7 @@ export default function Leaderboards() {
                   return (
                     <motion.div
                       key={entry.id}
+                      ref={isMe ? myRowRef : undefined}
                       initial={{ opacity: 0 }}
                       animate={{ opacity: 1 }}
                       transition={{ delay: Math.min(idx * 0.03, 0.5) }}

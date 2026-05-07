@@ -1314,7 +1314,10 @@ export const gameRouter = router({
       genre: z.string().optional(),
       decade: z.string().optional(),
       timeframe: z.enum(["weekly", "monthly", "all_time"]).default("all_time"),
-      limit: z.number().int().min(1).max(100).default(20),
+      // Max raised from 100 → 500 so the leaderboard page can fetch deep
+      // enough to show users beyond the top-100 (needed for the FinalResults
+      // "View Leaderboard" CTA's center-on-self UX).
+      limit: z.number().int().min(1).max(500).default(20),
     }))
     .query(async ({ input }) => {
       const db = await getDb();
