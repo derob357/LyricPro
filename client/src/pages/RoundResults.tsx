@@ -267,6 +267,30 @@ export default function RoundResults() {
             </div>
           </div>
 
+          {/* Artist Gallery — embedded music video + streaming/social links */}
+          <div className="glass rounded-2xl p-5">
+            <h3 className="font-display font-semibold mb-1 text-foreground flex items-center gap-2">
+              <Music className="w-4 h-4 text-accent" /> Artist Gallery
+            </h3>
+            <p className="text-muted-foreground text-xs mb-3">{result.correctArtist} — {result.song.title}</p>
+            <MusicVideoEmbed artist={result.correctArtist} title={result.song.title} />
+            <div className="flex flex-wrap gap-2 mt-4">
+              {artistLinks.slice(1).map(({ icon: Icon, label, url, color }) => (
+                <a
+                  key={label}
+                  href={url!}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full glass border border-border/40 text-sm hover:border-primary/40 transition-colors ${color}`}
+                >
+                  {Icon && <Icon className="w-3.5 h-3.5" />}
+                  {label}
+                  <ExternalLink className="w-2.5 h-2.5 opacity-60" />
+                </a>
+              ))}
+            </div>
+          </div>
+
           {/* Score breakdown */}
           <div className="glass rounded-2xl p-5">
             <h3 className="font-display font-semibold mb-4 text-foreground">Score Breakdown</h3>
@@ -358,49 +382,51 @@ export default function RoundResults() {
             </div>
           </div>
 
-          {/* Artist Discovery Links — always shown */}
-          <div className="glass rounded-2xl p-5">
-            <h3 className="font-display font-semibold mb-1 text-foreground flex items-center gap-2">
-              <ExternalLink className="w-4 h-4 text-accent" /> Check out {result.correctArtist}
-            </h3>
-            <p className="text-muted-foreground text-xs mb-3">Explore the artist and watch the official music video</p>
-            {/* Music Video — featured link */}
-            <a
-              href={`https://www.youtube.com/results?search_query=${videoQ}`}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="flex items-center gap-3 w-full px-4 py-3 mb-3 rounded-xl bg-green-500/10 border border-green-500/30 hover:border-green-500/60 hover:bg-green-500/20 transition-all group"
-            >
-              <div className="w-8 h-8 rounded-full bg-green-500/20 flex items-center justify-center flex-shrink-0">
-                <Play className="w-4 h-4 text-green-400" />
-              </div>
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-semibold text-green-400">Watch Official Music Video</p>
-                <p className="text-xs text-muted-foreground truncate">{result.correctArtist} — {result.song.title}</p>
-              </div>
-              <ExternalLink className="w-4 h-4 text-green-400/60 group-hover:text-green-400 transition-colors flex-shrink-0" />
-            </a>
-            {/* Social / streaming links */}
-            <div className="flex flex-wrap gap-2">
-              {artistLinks.slice(1).map(({ icon: Icon, label, url, color }) => (
-                <a
-                  key={label}
-                  href={url!}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full glass border border-border/40 text-sm hover:border-primary/40 transition-colors ${color}`}
-                >
-                  {Icon && <Icon className="w-3.5 h-3.5" />}
-                  {label}
-                  <ExternalLink className="w-2.5 h-2.5 opacity-60" />
-                </a>
-              ))}
-            </div>
-          </div>
-
         </motion.div>
       </div>
     </div>
+  );
+}
+
+// Renders a clickable thumbnail that swaps to an autoplay-on-load YouTube
+// iframe. Uses YouTube's `listType=search` embed mode so the top hit for
+// "<artist> <title> official music video" plays without us needing to know
+// the actual video ID. Two-state pattern keeps the iframe out of the DOM
+// until the user actually clicks play (avoids cookie/tracking calls and
+// keeps the page light on first render).
+function MusicVideoEmbed({ artist, title }: { artist: string; title: string }) {
+  const [playing, setPlaying] = useState(false);
+  const query = encodeURIComponent(`${artist} ${title} official music video`);
+
+  if (playing) {
+    return (
+      <iframe
+        src={`https://www.youtube.com/embed?listType=search&list=${query}&autoplay=1`}
+        className="w-full aspect-video rounded-xl border border-border/40"
+        title={`${artist} — ${title} music video`}
+        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+        allowFullScreen
+      />
+    );
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={() => setPlaying(true)}
+      className="relative w-full aspect-video rounded-xl bg-gradient-to-br from-red-900/40 via-pink-900/30 to-purple-900/40 border border-red-500/30 hover:border-red-500/60 transition-all group overflow-hidden"
+      aria-label={`Play ${title} by ${artist}`}
+    >
+      <div className="absolute inset-0 flex items-center justify-center">
+        <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-full bg-red-600/90 flex items-center justify-center group-hover:scale-110 group-hover:bg-red-600 transition-all shadow-2xl shadow-red-900/50">
+          <Play className="w-7 h-7 sm:w-9 sm:h-9 text-white fill-white ml-1" />
+        </div>
+      </div>
+      <div className="absolute bottom-0 left-0 right-0 p-3 sm:p-4 bg-gradient-to-t from-black/85 via-black/40 to-transparent text-left">
+        <p className="text-white font-semibold text-sm sm:text-base truncate">{title}</p>
+        <p className="text-white/70 text-xs truncate">{artist}</p>
+      </div>
+    </button>
   );
 }
 
