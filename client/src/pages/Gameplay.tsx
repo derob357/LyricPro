@@ -204,7 +204,19 @@ export default function Gameplay() {
           return 0;
         }
         if (prev <= 10 && prev > 1 && !muted) {
-          playCountdownTick(audioCtxRef, prev - 1);
+          const secondsLeft = prev - 1;
+          // Tick density ramps up to build tension. Same 1-second-per-tick
+          // wall clock (no fairness change), but the ear hears more events:
+          //   10-6s left: 1 tick/sec  (pitch ~600 Hz)
+          //   5-4s left:  2 ticks/sec (mid + half-second)
+          //   3-2s left:  3 ticks/sec (mid + 1/3 + 2/3)
+          playCountdownTick(audioCtxRef, secondsLeft);
+          if (prev <= 3) {
+            window.setTimeout(() => playCountdownTick(audioCtxRef, secondsLeft), 333);
+            window.setTimeout(() => playCountdownTick(audioCtxRef, secondsLeft), 666);
+          } else if (prev <= 5) {
+            window.setTimeout(() => playCountdownTick(audioCtxRef, secondsLeft), 500);
+          }
         }
         return prev - 1;
       });
@@ -503,10 +515,10 @@ export default function Gameplay() {
             exit={{ opacity: 0, y: -8 }}
             className="relative z-10 mb-6"
           >
-            <p className="font-display text-xl sm:text-2xl font-bold text-foreground leading-relaxed text-center max-w-3xl mx-auto">
+            <p className="font-display text-3xl sm:text-5xl md:text-6xl font-black text-foreground leading-tight text-center max-w-4xl mx-auto tracking-tight">
               {stageInfo.prompt}
             </p>
-            <p className="text-muted-foreground text-sm text-center mt-2">{stageInfo.sub}</p>
+            <p className="text-muted-foreground text-sm sm:text-base text-center mt-3">{stageInfo.sub}</p>
           </motion.div>
         </AnimatePresence>
 
