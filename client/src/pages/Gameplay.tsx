@@ -463,7 +463,9 @@ export default function Gameplay() {
               {roundNumberPadded}
             </div>
             <div>
-              <h2 className="font-display text-2xl sm:text-3xl font-black text-gradient leading-tight">
+              <h2 className={`font-display text-2xl sm:text-3xl font-black leading-tight ${
+                stage === "title" ? "text-white" : "text-gradient"
+              }`}>
                 {stageInfo.title}
               </h2>
               <div className="flex items-center gap-2 mt-1">
@@ -544,7 +546,15 @@ export default function Gameplay() {
             className="relative z-10 mb-6 [perspective:1400px] [transform-style:preserve-3d] origin-bottom"
           >
             <p
-              className="font-display text-3xl sm:text-5xl md:text-6xl font-black text-foreground leading-tight text-center max-w-4xl mx-auto tracking-tight drop-shadow-[0_4px_12px_rgba(168,85,247,0.25)] [text-shadow:0_2px_0_rgba(0,0,0,0.4),0_8px_24px_rgba(168,85,247,0.18)]"
+              className={
+                stage === "title"
+                  // Title stage: lyric quote is supporting context, not the
+                  // main question — use the older smaller size and dim it
+                  // 30% so the new white "What's the Song Title?" header
+                  // pops as the primary instruction.
+                  ? "font-display text-xl sm:text-2xl font-bold text-foreground/70 leading-relaxed text-center max-w-3xl mx-auto"
+                  : "font-display text-3xl sm:text-5xl md:text-6xl font-black text-foreground leading-tight text-center max-w-4xl mx-auto tracking-tight drop-shadow-[0_4px_12px_rgba(168,85,247,0.25)] [text-shadow:0_2px_0_rgba(0,0,0,0.4),0_8px_24px_rgba(168,85,247,0.18)]"
+              }
             >
               {stageInfo.prompt}
             </p>
