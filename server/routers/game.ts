@@ -12,6 +12,11 @@ import {
   lyricSectionTypeEnum,
 } from "../../drizzle/schema";
 import { nanoid } from "nanoid";
+import {
+  variantsForSong,
+  loadVariantsForSongs,
+  type Variant,
+} from "../_core/variantReader";
 
 const STREAK_INSURANCE_PRICE_GN = 3;
 const HINT_PRICE_GN = 1;
@@ -132,27 +137,21 @@ function scoreYear(userYear: number | null, correctYear: number): number {
 }
 
 // Variant accessor for getNextSong's per-song lyric rotation.
-// Returns the song's stored lyricVariants array if non-empty, otherwise
-// synthesizes a single variant from the legacy columns so songs that
-// haven't been seeded yet still play. Once seed-lyric-variants.mjs has
-// run against production, the fallback path is no longer hit for live data.
-type SongVariant = {
-  prompt: string;
-  answer: string;
-  distractors: string[];
-  sectionType: string;
-};
-function variantsOf(song: typeof songs.$inferSelect): SongVariant[] {
-  if (Array.isArray(song.lyricVariants) && song.lyricVariants.length > 0) {
-    return song.lyricVariants as SongVariant[];
-  }
-  return [{
-    prompt: song.lyricPrompt,
-    answer: song.lyricAnswer,
-    distractors: Array.isArray(song.distractors) ? song.distractors : [],
-    sectionType: song.lyricSectionType,
-  }];
-}
+//
+// Phase 5c (read-path repoint behind a feature flag): the variant array
+// no longer comes directly from `song.lyricVariants` — it's resolved via
+// `variantsForSong(db, song)` / `loadVariantsForSongs(db, songs[])`,
+// which dispatch on `LYRIC_PRO_READ_FROM_LAYER3`:
+//   - OFF (default): legacy jsonb path, identical to the pre-5c helper.
+//   - ON: JOIN against gameplay_items + lyric_moments, ordered by
+//     gameplay_items.id ASC. The backfill (Phase 5b) inserted items in
+//     legacy variant order, so id ASC preserves the original index used
+//     by song_displays.variantIndex. Verified 2026-05-05 against all 2,035
+//     active+approved songs / 6,030 positions: 0 drift on prompt + answer
+//     + distractors. (sectionType has 80 benign drifts caused by the
+//     ON CONFLICT (song_id, lyric_text) collapse during backfill, but
+//     sectionType is not consumed at runtime.)
+type SongVariant = Variant;
 
 // A variant is playable iff:
 //   - prompt is non-empty after trim (else the player sees a hollow "...")
@@ -173,18 +172,17 @@ function isVariantPlayable(v: SongVariant, difficulty: Difficulty): boolean {
   return lineWords >= 6;
 }
 
-// Returns the ORIGINAL indices (within variantsOf(song)) of variants that
+// Returns the ORIGINAL indices (within the resolved variants array) that
 // pass isVariantPlayable for the given difficulty. Original indices matter
 // because song_displays stores variantIndex, and submitAnswer / useHint
-// resolve scoring by that index back into variantsOf(song)[i].
-function playableVariantIndicesOf(
-  song: typeof songs.$inferSelect,
+// resolve scoring by that index back into the same variants array.
+function playableVariantIndicesFrom(
+  variants: SongVariant[],
   difficulty: Difficulty,
 ): number[] {
-  const all = variantsOf(song);
   const out: number[] = [];
-  for (let i = 0; i < all.length; i++) {
-    if (isVariantPlayable(all[i], difficulty)) out.push(i);
+  for (let i = 0; i < variants.length; i++) {
+    if (isVariantPlayable(variants[i], difficulty)) out.push(i);
   }
   return out;
 }
@@ -438,6 +436,12 @@ export const gameRouter = router({
 
       let song: typeof songs.$inferSelect;
       let candidateSongs: (typeof songs.$inferSelect)[];
+      // Pre-resolved variants for the standard-branch candidate pool. Built
+      // once via `loadVariantsForSongs` so the playability filter, the
+      // dedup pick, and the per-song variant pick all use the same array.
+      // Empty by default — the standard branch populates it; the
+      // custom-pack branch resolves variants ad hoc per picked song.
+      let stdCandidateVariantMap: Map<number, Variant[]> = new Map();
 
       const customPackSongIds = Array.isArray(room.customPackSongIds) && room.customPackSongIds.length > 0
         ? room.customPackSongIds as number[]
@@ -588,9 +592,18 @@ export const gameRouter = router({
         // or a too-short snippet. If filtering empties the pool, the
         // selected genre/decade slice has no songs ready for this
         // difficulty — surface that explicitly.
+        //
+        // Phase 5c: variants resolve via the feature-flagged reader. With
+        // the flag OFF, this is in-memory jsonb (zero extra DB hits). With
+        // the flag ON, it's a single `gameplay_items IN (...)` query for
+        // the whole pool, then the filter stays sync.
         const diffForFilter = room.difficulty as Difficulty;
+        stdCandidateVariantMap = await loadVariantsForSongs(db, stdCandidateSongs);
         stdCandidateSongs = stdCandidateSongs.filter(
-          s => playableVariantIndicesOf(s, diffForFilter).length > 0,
+          s => playableVariantIndicesFrom(
+            stdCandidateVariantMap.get(s.id) ?? [],
+            diffForFilter,
+          ).length > 0,
         );
         if (stdCandidateSongs.length === 0) {
           throw new Error(
@@ -686,13 +699,17 @@ export const gameRouter = router({
       // variantIndex 0 (preserves the song-level dedup behavior — the song
       // selection step decided this song is fair game; we just don't have
       // a fresh variant to offer).
-      const allVariants = variantsOf(song);
+      // Phase 5c: prefer the pre-resolved variant map from the standard
+      // branch (avoids a second DB round-trip when the flag is ON). The
+      // custom-pack branch never populates the map, so resolve ad hoc.
+      const allVariants =
+        stdCandidateVariantMap.get(song.id) ?? (await variantsForSong(db, song));
       // Only consider variants that pass the playability rules at this
       // room's difficulty. Indices are the ORIGINAL indices in allVariants
       // so song_displays stays scoring-compatible. For customPack songs
       // that slipped past the standard candidate filter, fall back to [0]
       // as a last resort.
-      const playableIndices = playableVariantIndicesOf(song, room.difficulty as Difficulty);
+      const playableIndices = playableVariantIndicesFrom(allVariants, room.difficulty as Difficulty);
       const candidateIndices = playableIndices.length > 0 ? playableIndices : [0];
       const dedupCutoff = new Date(Date.now() - 10 * 24 * 60 * 60 * 1000);
       let seenVariantIndices = new Set<number>();
@@ -907,7 +924,10 @@ export const gameRouter = router({
         .where(and(...displayConditions))
         .orderBy(sql`${songDisplays.shownAt} DESC`)
         .limit(1);
-      const allVariants = variantsOf(song);
+      // Phase 5c: same dual-path resolver as getNextSong. The variantIndex
+      // stored in song_displays must map to the same variant the player
+      // saw — verified symmetric across all live data on 2026-05-05.
+      const allVariants = await variantsForSong(db, song);
       const playedVariant =
         allVariants[latestDisplay?.variantIndex ?? 0] ?? allVariants[0];
 
@@ -1185,7 +1205,9 @@ export const gameRouter = router({
           )
           .orderBy(sql`${songDisplays.shownAt} DESC`)
           .limit(1);
-        const variants = variantsOf(song);
+        // Phase 5c: dual-path lookup so the hint shows the answer for the
+        // EXACT variant the player saw at getNextSong time.
+        const variants = await variantsForSong(db, song);
         lyricAnswerForHint =
           variants[latestDisplay?.variantIndex ?? 0]?.answer ?? song.lyricAnswer;
       }
