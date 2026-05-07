@@ -3,12 +3,17 @@
 // and /auth/reset-password (post-recovery-link reset flow).
 //
 // Policy:
-//   - 12 chars min, 128 max
+//   - 6 chars min, 128 max
 //   - Must contain at least one of: uppercase letter, digit, symbol
 //   - Rejected if HIBP reports it in a known breach (k-anonymity, fail-open)
 //
 // Server-side is enforced by Supabase's password policy + the auth flow's
 // own checks. Client validation here is for fast UX feedback only.
+//
+// IMPORTANT: Supabase Dashboard → Authentication → Policies → Password
+// length must also be set to 6 (or lower) for this minimum to apply
+// end-to-end. If Supabase still enforces 8+ chars, users with valid 6-7
+// char passwords will pass client validation but be rejected on submit.
 
 export type PasswordIssue =
   | "too_short"
@@ -18,7 +23,7 @@ export type PasswordIssue =
   | "no_symbol"
   | "pwned";
 
-export const PASSWORD_MIN = 12;
+export const PASSWORD_MIN = 6;
 export const PASSWORD_MAX = 128;
 
 export function checkPasswordRules(password: string): PasswordIssue[] {
