@@ -8,8 +8,9 @@ interface TierOption {
   name: string;
   price: number;
   period: string;
-  dailyGames: string;
-  maxEntryFee: string;
+  // Single headline value — daily-games allotment for Free, monthly credit
+  // balance for paid tiers. Replaces the old dailyGames + maxEntryFee pair.
+  headline: string;
   features: string[];
   recommended?: boolean;
 }
@@ -20,61 +21,42 @@ const TIERS: TierOption[] = [
     name: "Free",
     price: 0,
     period: "Forever",
-    dailyGames: "2 trial games",
-    maxEntryFee: "None",
+    headline: "2 free games per day",
     features: [
-      "2 trial games total",
-      "Basic gameplay",
-      "No prizes",
       "No leaderboards",
     ],
   },
   {
     tier: "player",
     name: "Player",
-    price: 6.99,
+    price: 4.99,
     period: "/month",
-    dailyGames: "1 game every 2 days",
-    maxEntryFee: "$25",
+    headline: "4,000 credits",
     features: [
-      "1 game every 2 days",
-      "$0.99 add-on games",
-      "Daily challenges",
-      "Leaderboards",
-      "Stats & themes",
+      "Global Leaderboard",
     ],
   },
   {
     tier: "pro",
     name: "Pro",
-    price: 9.99,
+    price: 8.99,
     period: "/month",
-    dailyGames: "1 game per day",
-    maxEntryFee: "$100",
+    headline: "10,000 credits",
     features: [
-      "1 game per day",
-      "$0.99 add-on games",
-      "Entry fees up to $100",
-      "Competitive leaderboards",
-      "Team play access",
-      "Tournaments",
+      "Global Leaderboard",
+      "Private Leaderboard",
     ],
     recommended: true,
   },
   {
     tier: "elite",
     name: "Elite",
-    price: 19.99,
+    price: 11.99,
     period: "/month",
-    dailyGames: "1 game per day",
-    maxEntryFee: "$1,000",
+    headline: "15,000 credits",
     features: [
-      "1 game per day",
-      "$0.99 add-on games",
-      "Entry fees up to $1,000",
-      "VIP tournaments",
-      "Monthly $50 bonus",
-      "Priority support",
+      "Global Leaderboard",
+      "Private Leaderboard",
     ],
   },
 ];
@@ -125,11 +107,8 @@ export function SubscriptionTierSelector({
             </div>
 
             <div className="space-y-3 mb-6 flex-1">
-              <div className="text-sm">
-                <span className="font-semibold">Daily Games:</span> {tier.dailyGames}
-              </div>
-              <div className="text-sm">
-                <span className="font-semibold">Max Entry Fee:</span> {tier.maxEntryFee}
+              <div className="text-sm font-semibold text-foreground">
+                {tier.headline}
               </div>
             </div>
 
@@ -155,9 +134,9 @@ export function SubscriptionTierSelector({
       </div>
 
       <div className="mt-12 p-6 bg-muted rounded-lg">
-        <h3 className="font-semibold mb-2">Need more games?</h3>
+        <h3 className="font-semibold mb-2">Need more credits?</h3>
         <p className="text-sm text-muted-foreground mb-3">
-          Purchase additional games anytime for $0.99 each, or upgrade to a higher tier for unlimited daily games.
+          Buy Golden Notes anytime in the Shop, or upgrade to a higher tier for a larger monthly credit allowance.
         </p>
       </div>
     </div>
