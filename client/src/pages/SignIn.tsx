@@ -93,12 +93,15 @@ export default function SignIn() {
     sendPasswordResetMutation.mutate({ email });
   };
 
-  // Sign in with the 6-digit code from the email — the corporate-scanner /
-  // in-app-browser / cross-device fallback for the magic link.
+  // Sign in with the OTP code from the email — the corporate-scanner /
+  // in-app-browser / cross-device fallback for the magic link. Supabase's
+  // OTP length is project-configurable (Auth Settings → OTP Length, can be
+  // 6-10 digits). We don't hard-code a length here; let the user paste
+  // whatever was in the email and let verifyOtp validate it server-side.
   const verifyOtp = async (e: React.FormEvent) => {
     e.preventDefault();
     const token = otpCode.trim();
-    if (!email || token.length !== 6) return;
+    if (!email || token.length < 6) return;
     setOtpVerifying(true);
     try {
       const { error } = await supabase.auth.verifyOtp({
@@ -170,7 +173,7 @@ export default function SignIn() {
               <form onSubmit={verifyOtp} className="mt-6 text-left">
                 <div className="border-t border-border/50 pt-5">
                   <Label htmlFor="otp" className="text-foreground text-sm">
-                    Or enter the 6-digit code from the email
+                    Or enter the code from the email
                   </Label>
                   <p className="text-muted-foreground text-xs mt-1 mb-3">
                     Useful if your email provider blocks or pre-clicks the link before you do.
@@ -179,18 +182,18 @@ export default function SignIn() {
                     id="otp"
                     type="text"
                     inputMode="numeric"
-                    pattern="[0-9]{6}"
-                    maxLength={6}
+                    pattern="[0-9]{6,10}"
+                    maxLength={10}
                     autoComplete="one-time-code"
-                    placeholder="123456"
+                    placeholder="Enter the digits"
                     value={otpCode}
-                    onChange={(e) => setOtpCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
-                    className="bg-input border-border/50 font-mono text-lg tracking-[0.4em] text-center"
+                    onChange={(e) => setOtpCode(e.target.value.replace(/\D/g, "").slice(0, 10))}
+                    className="bg-input border-border/50 font-mono text-lg tracking-[0.3em] text-center"
                     disabled={otpVerifying}
                   />
                   <Button
                     type="submit"
-                    disabled={otpVerifying || otpCode.length !== 6}
+                    disabled={otpVerifying || otpCode.length < 6}
                     className="w-full mt-3 bg-primary text-primary-foreground hover:bg-primary/90"
                   >
                     {otpVerifying ? "Verifying…" : "Sign in with code"}
