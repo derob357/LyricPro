@@ -147,15 +147,14 @@ export default function Home() {
 
             {/* Social share buttons moved to top nav */}
 
-            {/* Genre pills */}
-            <motion.div variants={fadeUp} className="mt-10 flex flex-wrap gap-2 justify-center">
+            {/* Genre list — plain text, not pill-shaped */}
+            <motion.div variants={fadeUp} className="mt-10 flex flex-wrap gap-x-4 gap-y-1 justify-center">
               {GENRES.map((g) => (
-                <span key={g}
-                  className="px-3 py-1 rounded-full text-sm glass text-muted-foreground border-border/40">
+                <span key={g} className="text-sm text-muted-foreground">
                   {g}
                 </span>
               ))}
-              <span className="px-3 py-1 rounded-full text-sm glass text-muted-foreground border-border/40">
+              <span className="text-sm text-muted-foreground">
                 + More
               </span>
             </motion.div>
