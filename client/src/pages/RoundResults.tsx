@@ -388,34 +388,23 @@ export default function RoundResults() {
   );
 }
 
-// Renders a clickable thumbnail that swaps to an autoplay-on-load YouTube
-// iframe. Uses YouTube's `listType=search` embed mode so the top hit for
-// "<artist> <title> official music video" plays without us needing to know
-// the actual video ID. Two-state pattern keeps the iframe out of the DOM
-// until the user actually clicks play (avoids cookie/tracking calls and
-// keeps the page light on first render).
+// Click-to-play music video thumbnail. Opens YouTube's search results in a
+// new tab on click. Does NOT use the deprecated listType=search embed
+// (which throws YouTube error 153). A future enhancement could call the
+// YouTube Data API server-side to resolve a real video ID per song and
+// then in-place-embed via youtube.com/embed/<id>?autoplay=1, but that
+// needs a YOUTUBE_API_KEY + a tRPC endpoint to cache the lookup.
 function MusicVideoEmbed({ artist, title }: { artist: string; title: string }) {
-  const [playing, setPlaying] = useState(false);
   const query = encodeURIComponent(`${artist} ${title} official music video`);
-
-  if (playing) {
-    return (
-      <iframe
-        src={`https://www.youtube.com/embed?listType=search&list=${query}&autoplay=1`}
-        className="w-full aspect-video rounded-xl border border-border/40"
-        title={`${artist} — ${title} music video`}
-        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-        allowFullScreen
-      />
-    );
-  }
+  const url = `https://www.youtube.com/results?search_query=${query}`;
 
   return (
-    <button
-      type="button"
-      onClick={() => setPlaying(true)}
-      className="relative w-full aspect-video rounded-xl bg-gradient-to-br from-red-900/40 via-pink-900/30 to-purple-900/40 border border-red-500/30 hover:border-red-500/60 transition-all group overflow-hidden"
-      aria-label={`Play ${title} by ${artist}`}
+    <a
+      href={url}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="relative block w-full aspect-video rounded-xl bg-gradient-to-br from-red-900/40 via-pink-900/30 to-purple-900/40 border border-red-500/30 hover:border-red-500/60 transition-all group overflow-hidden"
+      aria-label={`Watch ${title} by ${artist} on YouTube`}
     >
       <div className="absolute inset-0 flex items-center justify-center">
         <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-full bg-red-600/90 flex items-center justify-center group-hover:scale-110 group-hover:bg-red-600 transition-all shadow-2xl shadow-red-900/50">
@@ -424,9 +413,9 @@ function MusicVideoEmbed({ artist, title }: { artist: string; title: string }) {
       </div>
       <div className="absolute bottom-0 left-0 right-0 p-3 sm:p-4 bg-gradient-to-t from-black/85 via-black/40 to-transparent text-left">
         <p className="text-white font-semibold text-sm sm:text-base truncate">{title}</p>
-        <p className="text-white/70 text-xs truncate">{artist}</p>
+        <p className="text-white/70 text-xs truncate">{artist} — opens YouTube</p>
       </div>
-    </button>
+    </a>
   );
 }
 
