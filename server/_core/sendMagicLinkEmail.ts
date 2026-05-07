@@ -13,12 +13,21 @@
 
 import { Resend } from "resend";
 
-const FROM_ADDRESS = "LyricPro <noreply@playlyricpro.com>";
-const SUBJECT = "Sign in to LyricPro Ai";
+// Default falls back to the current verified sender. Override via env once
+// the dedicated auth subdomain (e.g. login@auth.playlyricpro.com) is verified
+// in the Resend dashboard — keeps marketing/transactional reputations
+// isolated and lets us drop the noreply@ pattern Resend recommends against.
+const FROM_ADDRESS =
+  process.env.MAGIC_LINK_FROM_ADDRESS ?? "LyricPro <noreply@playlyricpro.com>";
 
 export async function sendMagicLinkEmail(params: {
   to: string;
   magicLinkUrl: string;
+  // Optional 6-digit one-time code (Supabase generateLink returns it as
+  // properties.email_otp). Rendered in the email next to the link as a
+  // fallback for corporate URL scanners (Outlook Safe Links, Defender,
+  // Mimecast, Proofpoint) that pre-fetch and consume the link's token.
+  otp?: string;
 }): Promise<void> {
   const apiKey = process.env.RESEND_API_KEY;
   if (!apiKey) {
@@ -28,13 +37,20 @@ export async function sendMagicLinkEmail(params: {
     );
   }
 
+  // Subject includes the OTP when present so Gmail's threading doesn't bury
+  // each new request under the prior expired one. Each request gets its
+  // own conversation.
+  const subject = params.otp
+    ? `Sign in to LyricPro Ai — code ${params.otp}`
+    : "Sign in to LyricPro Ai";
+
   const resend = new Resend(apiKey);
   const { data, error } = await resend.emails.send({
     from: FROM_ADDRESS,
     to: params.to,
-    subject: SUBJECT,
-    html: htmlBody(params.magicLinkUrl),
-    text: textBody(params.magicLinkUrl),
+    subject,
+    html: htmlBody(params.magicLinkUrl, params.otp),
+    text: textBody(params.magicLinkUrl, params.otp),
   });
 
   // Successful sends ALSO get logged so a "never got it" support ticket can
@@ -70,7 +86,23 @@ export async function sendMagicLinkEmail(params: {
   }
 }
 
-function htmlBody(url: string): string {
+function htmlBody(url: string, otp?: string): string {
+  // The OTP block, when present, sits between the link button and the raw
+  // URL fallback. It's the resilience path: corporate URL scanners that
+  // pre-fetch the link can't pre-consume a code the user has to type.
+  const otpBlock = otp
+    ? `
+            <tr>
+              <td style="padding-bottom:24px;">
+                <div style="background:#1c1c28;border:1px solid #2a2a3a;border-radius:10px;padding:18px;text-align:center;">
+                  <div style="font-size:11px;text-transform:uppercase;letter-spacing:0.08em;color:#9999b0;margin-bottom:8px;">Or enter this code</div>
+                  <div style="font-family:'SF Mono',Menlo,Consolas,monospace;font-size:30px;font-weight:700;letter-spacing:0.4em;color:#a855f7;">${otp}</div>
+                  <div style="font-size:11px;color:#6b6b80;margin-top:10px;line-height:1.4;">Useful if the link doesn't open in your usual browser, or if your email provider expires it before you click.</div>
+                </div>
+              </td>
+            </tr>`
+    : "";
+
   // Inline styles only — most mail clients strip <style> blocks. Keep the
   // markup short and let mail clients fall back to text/plain when they
   // can't render HTML at all.
@@ -100,7 +132,7 @@ function htmlBody(url: string): string {
               <td style="padding-bottom:24px;">
                 <a href="${url}" style="display:inline-block;background:#a855f7;color:#ffffff;padding:14px 28px;border-radius:10px;text-decoration:none;font-weight:600;font-size:15px;">Sign in to LyricPro Ai</a>
               </td>
-            </tr>
+            </tr>${otpBlock}
             <tr>
               <td style="padding-bottom:8px;color:#6b6b80;font-size:12px;">
                 If the button doesn't work, paste this URL into your browser:
@@ -124,14 +156,20 @@ function htmlBody(url: string): string {
 </html>`;
 }
 
-function textBody(url: string): string {
-  return [
+function textBody(url: string, otp?: string): string {
+  const lines = [
     "Sign in to LyricPro Ai",
     "",
     "Click the link below to sign in. This link will expire in one hour and can only be used once.",
     "",
     url,
+  ];
+  if (otp) {
+    lines.push("", `Or enter this code on the sign-in page: ${otp}`);
+  }
+  lines.push(
     "",
     "If you didn't request this email, you can safely ignore it. No account changes will be made.",
-  ].join("\n");
+  );
+  return lines.join("\n");
 }

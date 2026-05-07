@@ -138,8 +138,19 @@ export const appRouter = router({
           return { ok: true } as const;
         }
 
+        // Supabase returns a 6-digit OTP next to the action_link. We
+        // surface it in the email so users on networks where corporate
+        // URL scanners pre-consume the link (Safe Links, Defender,
+        // Mimecast, Proofpoint) have a path scanners can't burn.
+        const otp = (data.properties as { email_otp?: string } | null | undefined)
+          ?.email_otp;
+
         try {
-          await sendMagicLinkEmail({ to: input.email, magicLinkUrl: actionLink });
+          await sendMagicLinkEmail({
+            to: input.email,
+            magicLinkUrl: actionLink,
+            otp,
+          });
         } catch (err) {
           // Log the full error object (sender already JSON-logged the
           // structured Resend fields at source) and surface failure to

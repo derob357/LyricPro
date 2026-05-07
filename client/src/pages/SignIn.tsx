@@ -28,6 +28,8 @@ export default function SignIn() {
   const [magicSent, setMagicSent] = useState(false);
   const [resetSent, setResetSent] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [otpCode, setOtpCode] = useState("");
+  const [otpVerifying, setOtpVerifying] = useState(false);
   const [devLink, setDevLink] = useState<string | null>(null);
 
   // Dev-only: skip the email round-trip entirely.
@@ -91,6 +93,29 @@ export default function SignIn() {
     sendPasswordResetMutation.mutate({ email });
   };
 
+  // Sign in with the 6-digit code from the email — the corporate-scanner /
+  // in-app-browser / cross-device fallback for the magic link.
+  const verifyOtp = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const token = otpCode.trim();
+    if (!email || token.length !== 6) return;
+    setOtpVerifying(true);
+    try {
+      const { error } = await supabase.auth.verifyOtp({
+        type: "email",
+        email,
+        token,
+      });
+      if (error) {
+        toast.error("That code didn't work. Double-check the digits or request a fresh email.");
+        return;
+      }
+      navigate("/");
+    } finally {
+      setOtpVerifying(false);
+    }
+  };
+
   const signInWith = async (provider: "google" | "apple") => {
     setLoading(true);
     try {
@@ -140,13 +165,48 @@ export default function SignIn() {
             <p className="text-muted-foreground text-xs mt-2 italic">
               (Don't forget to check your spam folder)
             </p>
+
+            {magicSent && (
+              <form onSubmit={verifyOtp} className="mt-6 text-left">
+                <div className="border-t border-border/50 pt-5">
+                  <Label htmlFor="otp" className="text-foreground text-sm">
+                    Or enter the 6-digit code from the email
+                  </Label>
+                  <p className="text-muted-foreground text-xs mt-1 mb-3">
+                    Useful if your email provider blocks or pre-clicks the link before you do.
+                  </p>
+                  <Input
+                    id="otp"
+                    type="text"
+                    inputMode="numeric"
+                    pattern="[0-9]{6}"
+                    maxLength={6}
+                    autoComplete="one-time-code"
+                    placeholder="123456"
+                    value={otpCode}
+                    onChange={(e) => setOtpCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                    className="bg-input border-border/50 font-mono text-lg tracking-[0.4em] text-center"
+                    disabled={otpVerifying}
+                  />
+                  <Button
+                    type="submit"
+                    disabled={otpVerifying || otpCode.length !== 6}
+                    className="w-full mt-3 bg-primary text-primary-foreground hover:bg-primary/90"
+                  >
+                    {otpVerifying ? "Verifying…" : "Sign in with code"}
+                  </Button>
+                </div>
+              </form>
+            )}
+
             <Button
               variant="ghost"
-              className="mt-6"
+              className="mt-4"
               onClick={() => {
                 setMagicSent(false);
                 setResetSent(false);
                 setEmail("");
+                setOtpCode("");
                 setMode("magic");
               }}
             >

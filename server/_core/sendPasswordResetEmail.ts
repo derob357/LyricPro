@@ -7,7 +7,13 @@
 
 import { Resend } from "resend";
 
-const FROM_ADDRESS = "LyricPro <noreply@playlyricpro.com>";
+// Mirrors sendMagicLinkEmail: env override (PASSWORD_RESET_FROM_ADDRESS, or
+// MAGIC_LINK_FROM_ADDRESS as a single source of truth) to swap to the auth
+// subdomain once verified, without a code redeploy.
+const FROM_ADDRESS =
+  process.env.PASSWORD_RESET_FROM_ADDRESS ??
+  process.env.MAGIC_LINK_FROM_ADDRESS ??
+  "LyricPro <noreply@playlyricpro.com>";
 const SUBJECT = "Reset your LyricPro Ai password";
 
 export async function sendPasswordResetEmail(params: {
