@@ -29,13 +29,25 @@ export async function sendMagicLinkEmail(params: {
   }
 
   const resend = new Resend(apiKey);
-  const { error } = await resend.emails.send({
+  const { data, error } = await resend.emails.send({
     from: FROM_ADDRESS,
     to: params.to,
     subject: SUBJECT,
     html: htmlBody(params.magicLinkUrl),
     text: textBody(params.magicLinkUrl),
   });
+
+  // Successful sends ALSO get logged so a "never got it" support ticket can
+  // be looked up by recipient email or Resend ID. Without this line we had
+  // no record of accepted-by-Resend sends — only failures — which made
+  // intermittent ISP-side delivery problems impossible to diagnose.
+  if (!error && data?.id) {
+    const domain = params.to.split("@")[1] ?? "unknown";
+    console.log(
+      "[sendMagicLinkEmail:resend:sent]",
+      JSON.stringify({ id: data.id, to: params.to, domain })
+    );
+  }
 
   if (error) {
     // Log the structured fields at source — Vercel's log table truncates

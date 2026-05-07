@@ -26,7 +26,7 @@ export async function sendFeedbackEmail(params: {
   }
 
   const resend = new Resend(apiKey);
-  const { error } = await resend.emails.send({
+  const { data, error } = await resend.emails.send({
     from: FROM_ADDRESS,
     to: TO_ADDRESS,
     replyTo: params.email,
@@ -34,6 +34,13 @@ export async function sendFeedbackEmail(params: {
     html: htmlBody(params),
     text: textBody(params),
   });
+
+  if (!error && data?.id) {
+    console.log(
+      "[sendFeedbackEmail:resend:sent]",
+      JSON.stringify({ id: data.id, type: params.type, fromUser: params.email })
+    );
+  }
 
   if (error) {
     console.error(

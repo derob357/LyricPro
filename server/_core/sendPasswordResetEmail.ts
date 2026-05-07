@@ -22,13 +22,21 @@ export async function sendPasswordResetEmail(params: {
   }
 
   const resend = new Resend(apiKey);
-  const { error } = await resend.emails.send({
+  const { data, error } = await resend.emails.send({
     from: FROM_ADDRESS,
     to: params.to,
     subject: SUBJECT,
     html: htmlBody(params.resetUrl),
     text: textBody(params.resetUrl),
   });
+
+  if (!error && data?.id) {
+    const domain = params.to.split("@")[1] ?? "unknown";
+    console.log(
+      "[sendPasswordResetEmail:resend:sent]",
+      JSON.stringify({ id: data.id, to: params.to, domain })
+    );
+  }
 
   if (error) {
     console.error(
