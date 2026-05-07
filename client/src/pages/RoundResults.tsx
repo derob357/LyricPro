@@ -8,8 +8,8 @@ import { useAuth } from "@/_core/hooks/useAuth";
 import { toast } from "sonner";
 import {
   Check, X, ChevronRight, ExternalLink, Music, Instagram,
-  Facebook, Youtube, Globe, Trophy, Flame, Zap, SkipForward, Home,
-  Play
+  Youtube, Globe, Trophy, Flame, Zap, SkipForward, Home,
+  MicVocal
 } from "lucide-react";
 import {
   AlertDialog,
@@ -116,16 +116,11 @@ export default function RoundResults() {
   const appleMusicQ = encodeURIComponent(result.correctArtist);
   const googleQ = encodeURIComponent(`${result.correctArtist} official website`);
 
-  // Use stored metadata URLs if available, otherwise fall back to search URLs
+  // Use stored metadata URLs if available, otherwise fall back to search URLs.
+  // The "Watch Official Music Video" link above this card is the dedicated
+  // YouTube-search entry; this list is for the streaming + social pills only.
   const meta = result.song.artistMetadata ?? {};
   const artistLinks = [
-    {
-      icon: Play,
-      label: "Music Video",
-      url: `https://www.youtube.com/results?search_query=${videoQ}`,
-      color: "text-red-400",
-      highlight: true,
-    },
     {
       icon: Youtube,
       label: "YouTube",
@@ -267,15 +262,29 @@ export default function RoundResults() {
             </div>
           </div>
 
-          {/* Artist Gallery — embedded music video + streaming/social links */}
+          {/* Artist Gallery — music-video link + streaming/social links */}
           <div className="glass rounded-2xl p-5">
             <h3 className="font-display font-semibold mb-1 text-foreground flex items-center gap-2">
               <Music className="w-4 h-4 text-accent" /> Artist Gallery
             </h3>
             <p className="text-muted-foreground text-xs mb-3">{result.correctArtist} — {result.song.title}</p>
-            <MusicVideoEmbed artist={result.correctArtist} title={result.song.title} />
-            <div className="flex flex-wrap gap-2 mt-4">
-              {artistLinks.slice(1).map(({ icon: Icon, label, url, color }) => (
+            <a
+              href={`https://www.youtube.com/results?search_query=${videoQ}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-3 w-full px-4 py-3 mb-3 rounded-xl bg-green-500/10 border border-green-500/30 hover:border-green-500/60 hover:bg-green-500/20 transition-all group"
+            >
+              <div className="w-8 h-8 rounded-full bg-green-500/20 flex items-center justify-center flex-shrink-0">
+                <MicVocal className="w-4 h-4 text-green-400" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-semibold text-green-400">Watch Official Music Video</p>
+                <p className="text-xs text-muted-foreground truncate">{result.correctArtist} — {result.song.title}</p>
+              </div>
+              <ExternalLink className="w-4 h-4 text-green-400/60 group-hover:text-green-400 transition-colors flex-shrink-0" />
+            </a>
+            <div className="flex flex-wrap gap-2">
+              {artistLinks.map(({ icon: Icon, label, url, color }) => (
                 <a
                   key={label}
                   href={url!}
@@ -385,37 +394,6 @@ export default function RoundResults() {
         </motion.div>
       </div>
     </div>
-  );
-}
-
-// Click-to-play music video thumbnail. Opens YouTube's search results in a
-// new tab on click. Does NOT use the deprecated listType=search embed
-// (which throws YouTube error 153). A future enhancement could call the
-// YouTube Data API server-side to resolve a real video ID per song and
-// then in-place-embed via youtube.com/embed/<id>?autoplay=1, but that
-// needs a YOUTUBE_API_KEY + a tRPC endpoint to cache the lookup.
-function MusicVideoEmbed({ artist, title }: { artist: string; title: string }) {
-  const query = encodeURIComponent(`${artist} ${title} official music video`);
-  const url = `https://www.youtube.com/results?search_query=${query}`;
-
-  return (
-    <a
-      href={url}
-      target="_blank"
-      rel="noopener noreferrer"
-      className="relative block w-full aspect-video rounded-xl bg-gradient-to-br from-red-900/40 via-pink-900/30 to-purple-900/40 border border-red-500/30 hover:border-red-500/60 transition-all group overflow-hidden"
-      aria-label={`Watch ${title} by ${artist} on YouTube`}
-    >
-      <div className="absolute inset-0 flex items-center justify-center">
-        <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-full bg-red-600/90 flex items-center justify-center group-hover:scale-110 group-hover:bg-red-600 transition-all shadow-2xl shadow-red-900/50">
-          <Play className="w-7 h-7 sm:w-9 sm:h-9 text-white fill-white ml-1" />
-        </div>
-      </div>
-      <div className="absolute bottom-0 left-0 right-0 p-3 sm:p-4 bg-gradient-to-t from-black/85 via-black/40 to-transparent text-left">
-        <p className="text-white font-semibold text-sm sm:text-base truncate">{title}</p>
-        <p className="text-white/70 text-xs truncate">{artist} — opens YouTube</p>
-      </div>
-    </a>
   );
 }
 
