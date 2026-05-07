@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import { Music2, Music, Gift, History, Check, Globe } from "lucide-react";
 import { CAN_PURCHASE } from "@/lib/platform";
+import { SubscriptionTierSelector } from "@/components/SubscriptionTierSelector";
 
 // The Shop page lets web users buy Golden Notes packs via Stripe Checkout.
 // Mobile (Capacitor) builds will render a slimmed "view balance only"
@@ -39,6 +40,30 @@ export default function Shop() {
     },
     onError: (err) => toast.error(err.message),
   });
+
+  // Recurring monthly subscription checkout. Server creates a Stripe
+  // session in mode='subscription' against the per-tier price IDs in env
+  // (STRIPE_PRICE_PLAYER / _PRO / _ELITE). Same-window redirect — keeps
+  // mobile webviews from spawning a useless second tab.
+  const subscriptionCheckoutMutation = trpc.monetization.createSubscriptionCheckout.useMutation({
+    onSuccess: (data) => {
+      if (data.checkoutUrl) {
+        window.location.href = data.checkoutUrl;
+      }
+    },
+    onError: (err) => toast.error(err.message || "Failed to start subscription checkout"),
+  });
+
+  const handleSelectTier = (tier: "free" | "player" | "pro" | "elite") => {
+    if (tier === "free") {
+      // Free is the default — there's nothing to checkout. Downgrades from
+      // a paid tier go through Stripe's customer portal (sent in the
+      // billing receipt email) — we don't expose a cancel button here yet.
+      toast.info("Free is the default tier. Manage downgrades from your billing email.");
+      return;
+    }
+    subscriptionCheckoutMutation.mutate({ tier });
+  };
 
   // Handle post-Stripe return: URL like /shop?status=success&pack=pro.
   // The webhook has probably already credited the user by the time they
@@ -177,6 +202,25 @@ export default function Shop() {
                 </p>
               </div>
             </div>
+          </div>
+        )}
+
+        {/* Subscriptions — recurring monthly. Web-only per App Store / Play
+            policy on digital goods. */}
+        {CAN_PURCHASE && (
+          <div className="mb-12">
+            <h2 className="font-display font-bold text-lg text-foreground mb-2 flex items-center gap-2">
+              <Globe className="w-4 h-4 text-primary" />
+              Monthly subscription
+            </h2>
+            <p className="text-muted-foreground text-sm mb-2">
+              Recurring monthly. Cancel anytime from the receipt email or billing portal.
+            </p>
+            <SubscriptionTierSelector
+              currentTier={subscriptionTier as "free" | "player" | "pro" | "elite"}
+              onSelectTier={handleSelectTier}
+              loading={subscriptionCheckoutMutation.isPending}
+            />
           </div>
         )}
 
