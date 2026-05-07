@@ -70,7 +70,11 @@ export default function Gameplay() {
   const [buzzedPlayerIndex, setBuzzedPlayerIndex] = useState<number | null>(null);
   const [hintData, setHintData] = useState<Record<string, { firstLetter?: string; narrowedRange?: [number, number] } | null>>({});
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const tickSoundRef = useRef<HTMLAudioElement | null>(null);
+  // Web Audio context for the synthesized countdown tick. Lazy-init on the
+  // first tick (any user gesture by then; the player has hit "Start Round").
+  // Replaces the previous CDN-hosted "24"-show clock sample which was
+  // copyrighted (Fox / 20th Century Studios).
+  const audioCtxRef = useRef<AudioContext | null>(null);
   const paused = usePaused();
 
   const { data: room, refetch: refetchRoom } = trpc.game.getRoom.useQuery(
@@ -199,9 +203,8 @@ export default function Gameplay() {
           if (!hasSubmitted) submitAnswers(answers, false);
           return 0;
         }
-        if (prev <= 10 && prev > 1 && !muted && tickSoundRef.current) {
-          tickSoundRef.current.currentTime = 0;
-          tickSoundRef.current.play().catch(() => {});
+        if (prev <= 10 && prev > 1 && !muted) {
+          playCountdownTick(audioCtxRef, prev - 1);
         }
         return prev - 1;
       });
@@ -363,12 +366,8 @@ export default function Gameplay() {
       <div className="absolute top-0 left-1/4 w-[28rem] h-[28rem] rounded-full bg-primary/20 blur-3xl pointer-events-none" />
       <div className="absolute bottom-0 right-1/4 w-[22rem] h-[22rem] rounded-full bg-accent/15 blur-3xl pointer-events-none" />
 
-      {/* Hidden audio for ticking */}
-      <audio
-        ref={tickSoundRef}
-        src="https://d2xsxph8kpxj0f.cloudfront.net/310519663406910235/dvh3FomWkRxEgTdm5VV9Xk/24-ClockEffect_b13f166a.mp3"
-        preload="auto"
-      />
+      {/* Countdown tick is synthesized via Web Audio API — see
+          playCountdownTick. No audio element needed. */}
 
       {/* Celebration */}
       <Celebration
@@ -474,7 +473,7 @@ export default function Gameplay() {
         </div>
 
         {/* Timer bar */}
-        <div className="mb-6 h-1.5 bg-muted rounded-full overflow-hidden relative z-10">
+        <div className="mb-6 h-3 bg-muted rounded-full overflow-hidden relative z-10">
           <div
             className={`h-full transition-all duration-1000 ease-linear ${isUrgent ? "bg-red-500" : "bg-gradient-to-r from-primary to-accent"}`}
             style={{ width: `${timerPct}%` }}
@@ -641,4 +640,42 @@ export default function Gameplay() {
       </div>
     </div>
   );
+}
+
+// Synthesizes a short rising-pitch tick for the last 10 seconds of the
+// round timer. Replaces the previous CDN-hosted clock sample which used
+// the copyrighted "24" TV-show countdown effect. Pitch climbs from 600 Hz
+// at 10s remaining → ~1100 Hz at 1s, building urgency without changing
+// volume or duration. Lazy-creates the AudioContext on first call (the
+// player has already clicked "Start Round" so a user gesture exists).
+function playCountdownTick(
+  audioCtxRef: { current: AudioContext | null },
+  secondsLeft: number
+): void {
+  try {
+    if (!audioCtxRef.current) {
+      const Ctor =
+        window.AudioContext ||
+        (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+      if (!Ctor) return;
+      audioCtxRef.current = new Ctor();
+    }
+    const ctx = audioCtxRef.current;
+    if (ctx.state === "suspended") void ctx.resume();
+
+    const freq = 600 + (10 - secondsLeft) * 50;
+    const now = ctx.currentTime;
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = "sine";
+    osc.frequency.value = freq;
+    gain.gain.setValueAtTime(0, now);
+    gain.gain.linearRampToValueAtTime(0.18, now + 0.005);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.12);
+    osc.connect(gain).connect(ctx.destination);
+    osc.start(now);
+    osc.stop(now + 0.13);
+  } catch {
+    // Web Audio failures shouldn't break gameplay — silently skip the tick.
+  }
 }
