@@ -205,17 +205,26 @@ export default function Gameplay() {
         }
         if (prev <= 10 && prev > 1 && !muted) {
           const secondsLeft = prev - 1;
-          // Tick density ramps up to build tension. Same 1-second-per-tick
-          // wall clock (no fairness change), but the ear hears more events:
-          //   10-6s left: 1 tick/sec  (pitch ~600 Hz)
-          //   5-4s left:  2 ticks/sec (mid + half-second)
-          //   3-2s left:  3 ticks/sec (mid + 1/3 + 2/3)
+          // Tick density ramps up FAST to build tension. Same 1-second
+          // wall-clock per integer drop (no fairness change), but the ear
+          // hears progressively more events as urgency rises:
+          //   10-9s left: 2 ticks/sec (mid + 500ms)
+          //   8-6s left:  3 ticks/sec (mid + 333 + 666)
+          //   5-4s left:  4 ticks/sec (mid + 250 + 500 + 750)
+          //   3-2s left:  5 ticks/sec (mid + 200 + 400 + 600 + 800)
+          // Combined with the pitch climb in playCountdownTick (~50 Hz per
+          // second remaining) the last 3 seconds feel like a snare roll.
           playCountdownTick(audioCtxRef, secondsLeft);
+          const tick = (delay: number) =>
+            window.setTimeout(() => playCountdownTick(audioCtxRef, secondsLeft), delay);
           if (prev <= 3) {
-            window.setTimeout(() => playCountdownTick(audioCtxRef, secondsLeft), 333);
-            window.setTimeout(() => playCountdownTick(audioCtxRef, secondsLeft), 666);
+            tick(200); tick(400); tick(600); tick(800);
           } else if (prev <= 5) {
-            window.setTimeout(() => playCountdownTick(audioCtxRef, secondsLeft), 500);
+            tick(250); tick(500); tick(750);
+          } else if (prev <= 8) {
+            tick(333); tick(666);
+          } else {
+            tick(500);
           }
         }
         return prev - 1;
@@ -484,38 +493,63 @@ export default function Gameplay() {
           </div>
         </div>
 
-        {/* Timer bar */}
-        <div className="mb-6 h-3 bg-muted rounded-full overflow-hidden relative z-10">
-          <div
-            className={`h-full transition-all duration-1000 ease-linear ${isUrgent ? "bg-red-500" : "bg-gradient-to-r from-primary to-accent"}`}
-            style={{ width: `${timerPct}%` }}
+        {/* Timer bar — 3D depth shadow + urgent pulse when in the danger
+            zone. The motion.div pulses subtly under 10s to call the eye. */}
+        <motion.div
+          className={`mb-6 h-3 bg-muted rounded-full overflow-hidden relative z-10 [box-shadow:inset_0_1px_2px_rgba(0,0,0,0.4)] ${isUrgent ? "shadow-[0_0_24px_rgba(239,68,68,0.55)]" : ""}`}
+          animate={isUrgent ? { scale: [1, 1.02, 1] } : { scale: 1 }}
+          transition={isUrgent ? { duration: 0.5, repeat: Infinity, ease: "easeInOut" } : { duration: 0.2 }}
+        >
+          <motion.div
+            className={`h-full [box-shadow:inset_0_1px_0_rgba(255,255,255,0.25),inset_0_-2px_4px_rgba(0,0,0,0.2)] ${isUrgent ? "bg-gradient-to-r from-red-600 to-red-400" : "bg-gradient-to-r from-primary to-accent"}`}
+            animate={{ width: `${timerPct}%` }}
+            transition={{ duration: 1, ease: "linear" }}
           />
-        </div>
+        </motion.div>
 
-        {/* Score flash — flies up toward the top-bar trophy on exit */}
+        {/* Score flash — flies up toward the top-bar trophy on exit, with a
+            3D coin-flip entrance and a spin-out exit. Perspective on the
+            parent gives the rotation real depth instead of a flat rotate. */}
         <AnimatePresence>
           {showScoreFlash !== null && (
             <motion.div
-              initial={{ opacity: 0, scale: 0.5, y: -20 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.3, y: -64, x: "42vw", transition: { duration: 0.5, ease: "easeIn" } }}
-              className="fixed top-20 left-1/2 -translate-x-1/2 z-50 bg-primary text-primary-foreground px-6 py-3 rounded-2xl font-display font-black text-2xl glow-purple"
+              className="fixed top-20 left-1/2 -translate-x-1/2 z-50 [perspective:1200px] [transform-style:preserve-3d]"
             >
-              +{showScoreFlash} pts!
+              <motion.div
+                initial={{ opacity: 0, scale: 0.4, rotateY: -180, y: -32 }}
+                animate={{ opacity: 1, scale: 1, rotateY: 0, y: 0 }}
+                exit={{
+                  opacity: 0,
+                  scale: 0.3,
+                  y: -64,
+                  x: "42vw",
+                  rotateZ: 360,
+                  transition: { duration: 0.55, ease: "easeIn" },
+                }}
+                transition={{ type: "spring", stiffness: 200, damping: 14 }}
+                className="bg-primary text-primary-foreground px-6 py-3 rounded-2xl font-display font-black text-2xl glow-purple shadow-2xl shadow-primary/40"
+              >
+                +{showScoreFlash} pts!
+              </motion.div>
             </motion.div>
           )}
         </AnimatePresence>
 
-        {/* Prompt */}
+        {/* Prompt — 3D flip-in entrance with perspective. The wrapper sets
+            perspective + transform-style so the inner motion.div's rotateX
+            actually projects depth instead of looking flat. */}
         <AnimatePresence mode="wait">
           <motion.div
             key={`${currentSong.id}-${stage}`}
-            initial={{ opacity: 0, y: 16 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -8 }}
-            className="relative z-10 mb-6"
+            initial={{ opacity: 0, rotateX: -55, y: 36, scale: 0.92 }}
+            animate={{ opacity: 1, rotateX: 0, y: 0, scale: 1 }}
+            exit={{ opacity: 0, rotateX: 35, y: -12, scale: 0.96 }}
+            transition={{ type: "spring", stiffness: 180, damping: 22 }}
+            className="relative z-10 mb-6 [perspective:1400px] [transform-style:preserve-3d] origin-bottom"
           >
-            <p className="font-display text-3xl sm:text-5xl md:text-6xl font-black text-foreground leading-tight text-center max-w-4xl mx-auto tracking-tight">
+            <p
+              className="font-display text-3xl sm:text-5xl md:text-6xl font-black text-foreground leading-tight text-center max-w-4xl mx-auto tracking-tight drop-shadow-[0_4px_12px_rgba(168,85,247,0.25)] [text-shadow:0_2px_0_rgba(0,0,0,0.4),0_8px_24px_rgba(168,85,247,0.18)]"
+            >
               {stageInfo.prompt}
             </p>
             <p className="text-muted-foreground text-sm sm:text-base text-center mt-3">{stageInfo.sub}</p>
@@ -546,8 +580,10 @@ export default function Gameplay() {
           </div>
         )}
 
-        {/* MC options grid */}
-        <div className="relative z-10 grid grid-cols-1 sm:grid-cols-2 gap-3 max-w-3xl mx-auto mb-8">
+        {/* MC options grid — 3D hover lift + press depth. Per-button
+            perspective lets the rotateX from whileHover render with
+            depth instead of looking like a flat skew. */}
+        <div className="relative z-10 grid grid-cols-1 sm:grid-cols-2 gap-3 max-w-3xl mx-auto mb-8 [perspective:1200px]">
           {stageInfo.options.map((option, idx) => {
             const isChosen =
               (stage === "lyric" && answers.lyric === String(option)) ||
@@ -556,13 +592,16 @@ export default function Gameplay() {
               (stage === "year" && answers.year === String(option));
             const disabled = hasSubmitted || (!isSolo && buzzedPlayerIndex !== null && buzzedPlayerIndex !== myIndex);
             return (
-              <button
+              <motion.button
                 key={idx}
                 type="button"
                 onClick={() => pickOption(option)}
                 disabled={disabled}
-                className={`group glass rounded-xl p-4 text-left flex items-center gap-3 transition-all hover:border-primary/70 hover:bg-primary/10 hover:shadow-[0_0_20px_oklch(0.65_0.28_290/0.25)] disabled:opacity-50 disabled:cursor-not-allowed ${
-                  isChosen ? "border-accent bg-accent/15 ring-2 ring-accent" : "border-border/50"
+                whileHover={disabled ? undefined : { y: -4, rotateX: 4, scale: 1.02 }}
+                whileTap={disabled ? undefined : { y: 0, scale: 0.97, rotateX: 0 }}
+                transition={{ type: "spring", stiffness: 400, damping: 22 }}
+                className={`group glass rounded-xl p-4 text-left flex items-center gap-3 hover:border-primary/70 hover:bg-primary/10 hover:shadow-[0_8px_24px_oklch(0.65_0.28_290/0.35)] disabled:opacity-50 disabled:cursor-not-allowed [transform-style:preserve-3d] ${
+                  isChosen ? "border-accent bg-accent/15 ring-2 ring-accent shadow-[0_0_28px_oklch(0.78_0.18_215/0.4)]" : "border-border/50"
                 }`}
               >
                 <span className="w-8 h-8 rounded-full bg-primary/20 border border-primary/50 text-primary font-bold text-sm flex items-center justify-center shrink-0">
@@ -571,7 +610,7 @@ export default function Gameplay() {
                 <span className="font-display font-bold text-base sm:text-lg text-accent uppercase tracking-wide">
                   {option}
                 </span>
-              </button>
+              </motion.button>
             );
           })}
         </div>
