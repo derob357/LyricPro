@@ -4,6 +4,31 @@ const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || "", {
   apiVersion: "2026-03-25.dahlia",
 });
 
+// ─── Customer Dedup ───────────────────────────────────────────────────────────
+// Search for an existing Stripe customer by email before creating a checkout
+// session. Without this, every checkout for the same email creates a new cus_*,
+// producing ghost customers without payment methods attached.
+// Returns { customer: "cus_..." } if found so the caller can spread it into the
+// session create call; falls back to { customer_email: email } on no match or
+// search error (so checkout can still proceed).
+
+export async function resolveStripeCustomer(
+  email: string
+): Promise<{ customer: string } | { customer_email: string }> {
+  try {
+    const search = await stripe.customers.search({
+      query: `email:'${email.replace(/'/g, "\\'")}'`,
+      limit: 1,
+    });
+    if (search.data.length > 0) {
+      return { customer: search.data[0].id };
+    }
+  } catch {
+    // Fall through to email-only behavior — search failures must not block checkout.
+  }
+  return { customer_email: email };
+}
+
 // ─── Subscription Checkout ────────────────────────────────────────────────────
 
 export async function createSubscriptionCheckout(
@@ -18,10 +43,11 @@ export async function createSubscriptionCheckout(
     elite: process.env.STRIPE_PRICE_ELITE || "price_elite",
   };
 
+  const customerArg = await resolveStripeCustomer(userEmail);
   const session = await stripe.checkout.sessions.create({
     payment_method_types: ["card"],
     mode: "subscription",
-    customer_email: userEmail,
+    ...customerArg,
     line_items: [
       {
         price: prices[tier],
@@ -52,10 +78,11 @@ export async function createEntryFeeCheckout(
   gameType: "solo" | "team3" | "team5" | "team7",
   origin: string
 ) {
+  const customerArg = await resolveStripeCustomer(userEmail);
   const session = await stripe.checkout.sessions.create({
     payment_method_types: ["card"],
     mode: "payment",
-    customer_email: userEmail,
+    ...customerArg,
     line_items: [
       {
         price_data: {
@@ -95,10 +122,11 @@ export async function createAddOnGamesCheckout(
   const pricePerGame = 0.99;
   const totalAmount = quantity * pricePerGame;
 
+  const customerArg = await resolveStripeCustomer(userEmail);
   const session = await stripe.checkout.sessions.create({
     payment_method_types: ["card"],
     mode: "payment",
-    customer_email: userEmail,
+    ...customerArg,
     line_items: [
       {
         price_data: {

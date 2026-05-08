@@ -10,6 +10,9 @@ vi.mock("stripe", () => {
     checkout: { sessions: { create: sessionsCreate } },
     webhooks: { constructEvent: vi.fn() },
     subscriptions: { retrieve: vi.fn() },
+    // resolveStripeCustomer uses customers.search; return no match so tests
+    // stay in the customer_email fallback path (safe default for unit tests).
+    customers: { search: vi.fn().mockResolvedValue({ data: [] }) },
   }));
   return { default: Stripe };
 });

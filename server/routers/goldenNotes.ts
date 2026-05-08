@@ -4,6 +4,7 @@ import { TRPCError } from "@trpc/server";
 import { router, protectedProcedure } from "../_core/trpc";
 import { rateLimit } from "../_core/rateLimit";
 import { getDb } from "../db";
+import { resolveStripeCustomer } from "../stripe-integration";
 import {
   goldenNoteBalances,
   goldenNoteTransactions,
@@ -132,10 +133,11 @@ export const goldenNotesRouter = router({
           ? String(claimedOrigin)
           : "https://lyricpro-ai.vercel.app";
 
+      const customerArg = await resolveStripeCustomer(ctx.user.email ?? "");
       const session = await stripe.checkout.sessions.create({
         payment_method_types: ["card"],
         mode: "payment",
-        customer_email: ctx.user.email ?? undefined,
+        ...customerArg,
         line_items: [{
           price_data: {
             currency: "usd",
