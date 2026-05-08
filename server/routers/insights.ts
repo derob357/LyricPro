@@ -152,9 +152,7 @@ export const insightsRouter = router({
    * Returns null for unauthenticated callers.
    * Returns { eligible: false } when the user has fewer than 10 rounds played.
    */
-  getMyWeaknessDiagnosis: publicProcedure.query(async ({ ctx }) => {
-    if (!ctx.user?.id) return null;
-
+  getMyWeaknessDiagnosis: protectedProcedure.query(async ({ ctx }) => {
     const db = await getDb();
     if (!db) return null;
 
@@ -291,11 +289,7 @@ export const insightsRouter = router({
    *
    * Returns the new room code.
    */
-  playWeaknessPack: publicProcedure.mutation(async ({ ctx }) => {
-    if (!ctx.user?.id) {
-      throw new TRPCError({ code: "UNAUTHORIZED", message: "Sign in to play a Practice Pack." });
-    }
-
+  playWeaknessPack: protectedProcedure.mutation(async ({ ctx }) => {
     const db = await getDb();
     if (!db) {
       throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Database unavailable." });
