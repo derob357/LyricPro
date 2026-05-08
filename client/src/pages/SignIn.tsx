@@ -125,9 +125,15 @@ export default function SignIn() {
       const redirectTo = IS_NATIVE
         ? AUTH_CALLBACK_URL
         : `${window.location.origin}/auth/callback`;
+      const oauthOptions: { redirectTo: string; scopes?: string } = { redirectTo };
+      if (provider === "apple") {
+        // Apple ONLY returns the user's name on first authorization, and only
+        // if the 'name' scope is requested. Subsequent sign-ins omit name claims.
+        oauthOptions.scopes = "name email";
+      }
       const { error } = await supabase.auth.signInWithOAuth({
         provider,
-        options: { redirectTo },
+        options: oauthOptions,
       });
       if (error) throw error;
       // signInWithOAuth redirects the browser — no further code runs here.
