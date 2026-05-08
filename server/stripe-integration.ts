@@ -288,6 +288,23 @@ export async function getCheckoutSession(sessionId: string) {
   return await stripe.checkout.sessions.retrieve(sessionId);
 }
 
+// ─── Retrieve Invoice → Subscription ID ─────────────────────────────────────
+// Used by the charge.refunded webhook handler to resolve an invoice ID to the
+// subscription it belongs to, so we can flip the subscription row in our DB.
+
+export async function getInvoiceSubscriptionId(
+  invoiceId: string
+): Promise<string | null> {
+  try {
+    const invoice = await stripe.invoices.retrieve(invoiceId);
+    const sub = (invoice as unknown as { subscription?: string | { id: string } | null }).subscription;
+    if (!sub) return null;
+    return typeof sub === "string" ? sub : sub.id;
+  } catch {
+    return null;
+  }
+}
+
 // ─── Construct Webhook Event ────────────────────────────────────────────────
 
 export function constructWebhookEvent(
