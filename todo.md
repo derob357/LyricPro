@@ -319,3 +319,10 @@ These need your hands / accounts to proceed. I can't do them from here.
 
 - [ ] Switch CSP from reportOnly to enforcing after one production deploy with no violations observed in browser console / report endpoint.
 
+
+## Deferred from 2026-05-08 OAuth/Stripe go-live (Wave 4 follow-ups)
+
+- [ ] **CA-16 (HIGH):** Stripe webhook idempotency rollback can re-process partial successes — wrap each event-type handler in a `db.transaction` that includes the `processedWebhookEvents` insert, or change rollback policy to "leave marked, surface for replay." Affects [server/_core/stripeWebhook.ts:62-75, 259-275](server/_core/stripeWebhook.ts#L62-L75). Architectural; not safe as a mechanical fix.
+- [ ] **CA-05 (Medium):** Add `charge.dispute.created` / `charge.dispute.closed` handlers — pause access on dispute creation, restore on `won`, fully revoke on `lost`. Defer until first dispute or quarterly review.
+- [ ] **D17 / CA-11 (Medium):** Forward client IP to Supabase admin calls via `Sb-Forwarded-For` header so per-IP OAuth rate limits work behind Vercel/Express. Or enable hCaptcha/Turnstile in Supabase Dashboard as an alternative mitigation.
+- [ ] **CA-12 (Medium):** Account deletion / GDPR erasure flow — currently no path exists. Schedule for a dedicated initiative.
