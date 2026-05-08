@@ -45,12 +45,53 @@ async function startServer() {
   // ── Security headers ─────────────────────────────────────────────────────
   // Helmet sets 15+ hardening headers (X-Frame-Options, HSTS, X-Content-Type
   // -Options, Referrer-Policy, etc.). CSP is disabled in dev because Vite's
-  // HMR injects inline scripts; it's enabled with sensible defaults in prod.
+  // HMR injects inline scripts; it's enabled with an explicit allowlist in
+  // prod (reportOnly: true for the first deploy; switch to enforcing after
+  // verifying no violations in browser console / report endpoint).
   const isProd = process.env.NODE_ENV === "production";
+
+  // Supabase callback host derived from the project URL. Only used in CSP
+  // allowlist; falls back to a safe placeholder so CSP isn't accidentally empty.
+  const supabaseHost = (process.env.VITE_SUPABASE_PROJECT_URL ?? "")
+    .replace(/^https?:\/\//, "")
+    .replace(/\/$/, "");
+
+  const cspDirectives = isProd
+    ? {
+        useDefaults: true,
+        directives: {
+          "connect-src": [
+            "'self'",
+            ...(supabaseHost ? [`https://${supabaseHost}`] : []),
+            "https://api.stripe.com",
+          ],
+          "script-src": [
+            "'self'",
+            "https://js.stripe.com",
+          ],
+          "frame-src": [
+            "'self'",
+            "https://js.stripe.com",
+            "https://hooks.stripe.com",
+            "https://checkout.stripe.com",
+          ],
+          "img-src": [
+            "'self'",
+            "data:",
+            "https://*.stripe.com",
+          ],
+        },
+        reportOnly: true,
+      }
+    : false;
+
   app.use(
     helmet({
-      contentSecurityPolicy: isProd ? undefined : false,
+      contentSecurityPolicy: cspDirectives,
       crossOriginEmbedderPolicy: false,
+      // Default 'same-origin' blocks Google/Apple OAuth popup flows in some
+      // browsers (popups need window.opener postMessage access). Allow popups.
+      crossOriginOpenerPolicy: { policy: "same-origin-allow-popups" },
     })
   );
 

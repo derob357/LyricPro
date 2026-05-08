@@ -315,3 +315,7 @@ These need your hands / accounts to proceed. I can't do them from here.
 - [ ] **CI / pre-commit** — `pnpm check && pnpm test` on every push, optional but worth it before team grows.
 - [ ] **Monitoring / error tracking** — Vercel logs are fine for MVP; Sentry or similar when traffic grows.
 
+## Security follow-up (2026-05-08)
+
+- [ ] Switch CSP from reportOnly to enforcing after one production deploy with no violations observed in browser console / report endpoint.
+
