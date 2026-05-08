@@ -115,7 +115,7 @@ export const goldenNotesRouter = router({
           message: "Stripe not configured yet. Purchases will be available once real keys are set.",
         });
       }
-      const stripe = new Stripe(key);
+      const stripe = new Stripe(key, { apiVersion: "2026-03-25.dahlia" });
 
       // Stripe redirects the user to success_url / cancel_url after payment.
       // Those URLs MUST NOT be attacker-controllable — a spoofed Origin
