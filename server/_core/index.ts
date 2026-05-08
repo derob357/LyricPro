@@ -42,6 +42,12 @@ async function startServer() {
   const app = express();
   const server = createServer(app);
 
+  // Vercel terminates TLS and adds exactly one proxy hop. With trust proxy=1,
+  // req.ip resolves the real client IP from x-forwarded-for (Vercel-validated)
+  // instead of returning Vercel's internal peer address, which would defeat
+  // per-IP rate limits. Do not use `true` — that trusts all proxies.
+  app.set("trust proxy", 1);
+
   // ── Security headers ─────────────────────────────────────────────────────
   // Helmet sets 15+ hardening headers (X-Frame-Options, HSTS, X-Content-Type
   // -Options, Referrer-Policy, etc.). CSP is disabled in dev because Vite's
