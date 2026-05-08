@@ -199,6 +199,32 @@ export async function handleCustomerSubscriptionDeleted(
   };
 }
 
+export async function handleCustomerSubscriptionUpdated(
+  subscription: Stripe.Subscription
+) {
+  const meta = subscription.metadata ?? {};
+  return {
+    type: "subscription_updated" as const,
+    subscriptionId: subscription.id,
+    status: subscription.status,
+    currentPeriodEnd: (subscription as unknown as { current_period_end: number }).current_period_end,
+    userId: meta.userId ? parseInt(meta.userId) : undefined,
+    tier: meta.tier,
+  };
+}
+
+export async function handleInvoicePaymentFailed(invoice: Stripe.Invoice) {
+  const sub = (invoice as { subscription?: string | { id: string } | null }).subscription;
+  const subscriptionId =
+    typeof sub === "string" ? sub : sub?.id;
+  return {
+    type: "invoice_payment_failed" as const,
+    subscriptionId,
+    invoiceId: invoice.id,
+    amountDue: invoice.amount_due,
+  };
+}
+
 // ─── Payout via Stripe Connect ───────────────────────────────────────────────
 
 export async function createConnectAccount(

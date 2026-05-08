@@ -4,6 +4,8 @@ import {
   handleCheckoutSessionCompleted,
   handleInvoicePaid,
   handleCustomerSubscriptionDeleted,
+  handleCustomerSubscriptionUpdated,
+  handleInvoicePaymentFailed,
   constructWebhookEvent,
 } from "../stripe-integration";
 import { updateSubscription } from "../db-monetization";
@@ -187,6 +189,41 @@ export async function handleStripeWebhook(req: Request, res: Response) {
             `[Webhook] Renewed subscription ${redact(result.subscriptionId)} until ${newEnd.toISOString().slice(0, 10)}`
           );
         }
+        break;
+      }
+
+      case "invoice.payment_failed": {
+        const invoice = event.data.object;
+        const result = await handleInvoicePaymentFailed(invoice);
+        if (!result?.subscriptionId) break;
+        console.log(
+          `[Webhook] Invoice payment failed sub=${redact(result.subscriptionId)} due=${result.amountDue}`
+        );
+        // Mark past_due in our DB. Do NOT revoke access — Stripe Smart Retries
+        // (Settings > Billing > Subscriptions in the Dashboard) handles dunning.
+        // If retries exhaust, Stripe sends customer.subscription.deleted which
+        // is when we revoke. This intentional split is per spec §3.3 S2.
+        await db
+          .update(subscriptions)
+          .set({ status: "past_due" })
+          .where(eq(subscriptions.stripeSubscriptionId, result.subscriptionId));
+        break;
+      }
+
+      case "customer.subscription.updated": {
+        const subscription = event.data.object;
+        const result = await handleCustomerSubscriptionUpdated(subscription);
+        if (!result || !result.userId) break;
+        console.log(
+          `[Webhook] Subscription updated user=${result.userId} status=${result.status} sub=${redact(result.subscriptionId)}`
+        );
+        await updateSubscription(
+          result.userId,
+          result.tier as "free" | "player" | "pro" | "elite",
+          result.subscriptionId,
+          result.status as "active" | "canceled" | "past_due" | "unpaid" | "trialing" | "incomplete" | "incomplete_expired" | "paused" | "expired",
+          new Date(result.currentPeriodEnd * 1000)
+        );
         break;
       }
 
