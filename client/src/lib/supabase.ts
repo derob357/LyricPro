@@ -19,14 +19,18 @@ export const supabase = createClient(url ?? "", key ?? "", {
     persistSession: true,
     autoRefreshToken: true,
     detectSessionInUrl: true, // handles the magic-link / OAuth redirect
-    // "implicit" (not PKCE) is deliberate for a non-SSR SPA: PKCE stores
-    // a code verifier in localStorage that has to survive the email
-    // round-trip. If the user opens the magic link in a different
-    // browser or the email app's in-app browser, the verifier isn't
-    // there and the exchange fails with "code verifier not found".
-    // Implicit flow puts the session tokens directly in the URL fragment
-    // so the callback works regardless of which browser opens the link.
-    flowType: "implicit",
+    // PKCE binds the code-exchange to the originating browser via a
+    // code_verifier stored in localStorage. Mitigates code-interception
+    // attacks on the OAuth redirect. RFC 9700 deprecates implicit flow.
+    // supabase-js handles the exchange automatically via
+    // detectSessionInUrl: true; AuthCallback.tsx also calls
+    // exchangeCodeForSession() explicitly for the click-to-confirm UX
+    // that defends against corporate email scanner link prefetching.
+    // Note: magic links opened in a *different* browser lose the verifier,
+    // but Supabase OTP magic-links are single-use server-side codes — the
+    // verifier concern applies to OAuth provider flows, not OTP. Surfaced
+    // by Wave 0 baseline scan finding CA-13.
+    flowType: "pkce",
   },
 });
 
