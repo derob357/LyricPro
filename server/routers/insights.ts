@@ -1,7 +1,7 @@
 import { TRPCError } from "@trpc/server";
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, gte, sql } from "drizzle-orm";
 import Anthropic from "@anthropic-ai/sdk";
-import { router, publicProcedure } from "../_core/trpc";
+import { router, publicProcedure, protectedProcedure } from "../_core/trpc";
 import { getDb } from "../db";
 import {
   roundResults,
@@ -317,38 +317,48 @@ export const insightsRouter = router({
       });
     }
 
-    // Check GN balance.
-    const [bal] = await db
-      .select()
-      .from(goldenNoteBalances)
-      .where(eq(goldenNoteBalances.userId, userId))
-      .limit(1);
+    // Atomically debit GN. The WHERE clause on gte(balance, cost) means the
+    // UPDATE returns 0 rows if the balance is insufficient — preventing the
+    // TOCTOU race where two concurrent requests both pass a read-then-check
+    // and both proceed to debit (Wave 0 finding SE-02).
+    const packReason = `Weakness pack: ${insight.weakestGenre ?? ""} ${insight.weakestDecade ?? ""} ${insight.weakestCategory ?? ""}`.trim();
 
-    if (!bal || bal.balance < PACK_PRICE_GN) {
-      throw new TRPCError({
-        code: "PAYMENT_REQUIRED",
-        message: `Need ${PACK_PRICE_GN} Golden Notes. You have ${bal?.balance ?? 0}.`,
+    await db.transaction(async (tx) => {
+      const updated = await tx
+        .update(goldenNoteBalances)
+        .set({
+          balance: sql`${goldenNoteBalances.balance} - ${PACK_PRICE_GN}`,
+          lifetimeSpent: sql`${goldenNoteBalances.lifetimeSpent} + ${PACK_PRICE_GN}`,
+          updatedAt: new Date(),
+        })
+        .where(
+          and(
+            eq(goldenNoteBalances.userId, userId),
+            gte(goldenNoteBalances.balance, PACK_PRICE_GN),
+          )
+        )
+        .returning({ newBalance: goldenNoteBalances.balance });
+
+      if (updated.length === 0) {
+        const [cur] = await tx
+          .select({ balance: goldenNoteBalances.balance })
+          .from(goldenNoteBalances)
+          .where(eq(goldenNoteBalances.userId, userId));
+        throw new TRPCError({
+          code: "PAYMENT_REQUIRED",
+          message: `Need ${PACK_PRICE_GN} Golden Notes. You have ${cur?.balance ?? 0}.`,
+        });
+      }
+
+      await tx.insert(goldenNoteTransactions).values({
+        userId,
+        amount: -PACK_PRICE_GN,
+        kind: "spend_advanced_mode",
+        reason: packReason,
+        balanceAfter: updated[0].newBalance,
       });
-    }
 
-    const newBalance = bal.balance - PACK_PRICE_GN;
-
-    // Debit GN and record transaction.
-    await db
-      .update(goldenNoteBalances)
-      .set({
-        balance: newBalance,
-        lifetimeSpent: bal.lifetimeSpent + PACK_PRICE_GN,
-        updatedAt: new Date(),
-      })
-      .where(eq(goldenNoteBalances.userId, userId));
-
-    await db.insert(goldenNoteTransactions).values({
-      userId,
-      amount: -PACK_PRICE_GN,
-      kind: "spend_advanced_mode",
-      reason: `Weakness pack: ${insight.weakestGenre ?? ""} ${insight.weakestDecade ?? ""} ${insight.weakestCategory ?? ""}`.trim(),
-      balanceAfter: newBalance,
+      return updated[0].newBalance;
     });
 
     // Create the custom-pack room.
