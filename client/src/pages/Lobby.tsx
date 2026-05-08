@@ -48,7 +48,7 @@ export default function Lobby() {
     if (!isAuthenticated && user !== undefined) {
       // Store the lobby URL so we can return after sign in
       sessionStorage.setItem("lyricpro_return_to", window.location.pathname);
-      window.location.href = `${import.meta.env.VITE_OAUTH_PORTAL_URL}/app-auth?appId=${import.meta.env.VITE_APP_ID}&redirectUri=${encodeURIComponent(window.location.origin + "/api/oauth/callback")}&state=${btoa(window.location.origin + "/api/oauth/callback")}&type=signIn`;
+      window.location.href = "/signin";
     }
   }, [isAuthenticated, user]);
 
