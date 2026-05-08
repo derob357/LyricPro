@@ -113,6 +113,15 @@ export async function authenticateRequest(
       role: meta.role === "admin" ? "admin" : "user",
     });
     appUser = await getUserByOpenId(authUser.id);
+  } else {
+    // Supabase auto-links a new OAuth identity to an existing auth.users row
+    // when emails match. Refresh loginMethod if the current sign-in provider
+    // is known and differs from what we stored (CA-10).
+    const currentProvider = authUser.app_metadata?.provider;
+    if (currentProvider && appUser.loginMethod !== currentProvider) {
+      await upsertUser({ openId: authUser.id, loginMethod: currentProvider });
+      appUser = { ...appUser, loginMethod: currentProvider };
+    }
   }
   return appUser ?? null;
 }

@@ -113,4 +113,33 @@ describe("authenticateRequest first-sign-in user-row creation", () => {
 
     expect(upsertUser).not.toHaveBeenCalled();
   });
+
+  it("refreshes loginMethod when an existing user signs in with a new provider", async () => {
+    getUser.mockResolvedValue({
+      data: {
+        user: {
+          id: "supabase-uuid-999",
+          email: "linked@example.com",
+          user_metadata: {},
+          app_metadata: { provider: "google" },
+        },
+      },
+      error: null,
+    });
+    // First call returns existing row with old loginMethod
+    getUserByOpenId.mockResolvedValue({ id: 77, email: "linked@example.com", loginMethod: "email" });
+    upsertUser.mockResolvedValue(undefined);
+
+    const { authenticateRequest } = await import("./_core/supabase-auth");
+    const req = {
+      headers: { authorization: "Bearer fake-jwt-linked" },
+    } as never;
+
+    const user = await authenticateRequest(req);
+
+    expect(upsertUser).toHaveBeenCalledWith(
+      expect.objectContaining({ openId: "supabase-uuid-999", loginMethod: "google" })
+    );
+    expect(user?.loginMethod).toBe("google");
+  });
 });
