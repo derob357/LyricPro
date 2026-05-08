@@ -28,6 +28,20 @@ import { getDb } from "../db";
 import { gameRooms } from "../../drizzle/schema";
 import { eq } from "drizzle-orm";
 
+// ── Origin allowlist for Stripe redirect URLs ────────────────────────────────
+// Stripe success_url / cancel_url must not be attacker-controllable. A spoofed
+// Origin header would otherwise redirect paid-up users to a phishing clone.
+// Only honor request Origin values present in ALLOWED_ORIGINS; anything else
+// falls back to the canonical production host — same pattern as goldenNotes.ts.
+function safeOrigin(claimedOrigin: string | undefined): string {
+  const allowlist = (process.env.ALLOWED_ORIGINS ?? "")
+    .split(",")
+    .map(s => s.trim())
+    .filter(Boolean);
+  if (claimedOrigin && allowlist.includes(claimedOrigin)) return claimedOrigin;
+  return allowlist[0] ?? "https://lyricpro-ai.vercel.app";
+}
+
 // ── Simple per-user token-bucket rate limiter for checkout-create ────────────
 // Prevents a malicious client from spamming Stripe (which costs money in API
 // volume and pollutes the dashboard). 10 checkout creates per 10 minutes per
@@ -266,7 +280,7 @@ export const monetizationRouter = router({
         ctx.user.id,
         ctx.user.email || ctx.user.name || "user@example.com",
         input.tier,
-        ctx.req.headers.origin || "http://localhost:3000"
+        safeOrigin(ctx.req.headers.origin as string | undefined)
       );
 
       return {
@@ -291,7 +305,7 @@ export const monetizationRouter = router({
         input.entryFeeGameId,
         input.entryFeeAmount,
         input.gameType,
-        ctx.req.headers.origin || "http://localhost:3000"
+        safeOrigin(ctx.req.headers.origin as string | undefined)
       );
 
       return {
@@ -312,7 +326,7 @@ export const monetizationRouter = router({
         ctx.user.id,
         ctx.user.email || ctx.user.name || "user@example.com",
         input.quantity,
-        ctx.req.headers.origin || "http://localhost:3000"
+        safeOrigin(ctx.req.headers.origin as string | undefined)
       );
 
       return {
