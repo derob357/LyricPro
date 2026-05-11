@@ -104,35 +104,50 @@ You'll come back here to create the OAuth Client ID — that's a separate step d
 
 ### A.3. Supabase Dashboard — enable Google provider
 
-9. Go to [Supabase Dashboard](https://supabase.com/dashboard) → your project → **Authentication → Providers → Google**.
-10. Toggle **Enable Sign in with Google** on.
-11. Paste the **Client ID** and **Client Secret** from A.2.
-12. Click **Save**.
+> **UI label note (Supabase as of 2026-05):** The left nav under **Authentication** lists **Sign In / Providers** (under the "CONFIGURATION" subheader), NOT "Providers" alone. Do NOT click "OAuth Apps" or "OAuth Server (BETA)" — those are unrelated features. **OAuth Server makes Supabase act AS an OAuth provider** (Supabase as IDP for other apps), which is the opposite of what we want.
+
+9. Go to [Supabase Dashboard](https://supabase.com/dashboard) → your **lyricpro** project → left nav → **Authentication** → **Sign In / Providers**.
+10. Scroll to the **Auth Providers** section → find **Google** in the alphabetical list → click it to expand.
+11. Toggle **Enable Sign in with Google** to ON.
+12. Paste:
+    - **Client IDs (for OAuth):** the `xxxxxxxxxxxx.apps.googleusercontent.com` string from Google Cloud Console (A.2 step 8).
+    - **Client Secret (for OAuth):** the `GOCSPX-...` string from the same step.
+    - Leave **Skip nonce check** OFF and **Authorized Client IDs** empty (those are for native iOS, out of scope here).
+13. Click **Save** at the bottom of the panel.
+14. **Verify the save persisted:** reload the page, re-open the Google provider row, and confirm the toggle is still ON and the Client ID field shows your value. Sometimes the page shows "enabled" but the save silently failed — usually because Client ID format was wrong. If it flipped back off, re-paste and Save again.
+
+> **Common error if you skip A.3:** Clicking "Continue with Google" in the app returns `{"code":400,"error_code":"validation_failed","msg":"Unsupported provider: provider is not enabled"}`. That's Supabase telling you the toggle in step 11 above didn't get saved.
 
 ### A.4. Supabase Dashboard — URL Configuration
 
-13. In the same project, go to **Authentication → URL Configuration**.
-14. **Site URL:** set to `https://playlyricpro.com`.
-15. **Redirect URLs** — add all three (use `**` not `*`; the double-star matches path separators):
+15. In the same project, left nav → **Authentication** → **URL Configuration**.
+16. **Site URL:** set to `https://playlyricpro.com`.
+17. **Redirect URLs** — add all four (use `**` not `*`; the double-star matches path separators):
     - `https://playlyricpro.com/**`
     - `http://localhost:5173/**`
-    - Vercel preview wildcard: `https://lyricpro-ai-*-[YOUR_VERCEL_TEAM_SLUG].vercel.app/**`
-      - Find your team slug: Vercel Dashboard → top-left team selector → Settings → your team URL slug (e.g. `deric-team`). The pattern becomes `https://lyricpro-ai-*-deric-team.vercel.app/**`.
-16. Click **Save**.
+    - **Vercel per-deployment preview wildcard:** `https://lyricpro-*-deric-robinsons-projects.vercel.app/**`
+    - **Vercel branch-alias wildcard:** `https://lyricpro-ai-git-*-deric-robinsons-projects.vercel.app/**`
+    - (Both Vercel wildcards are needed because Vercel uses two URL formats: per-deployment hashed URLs use the truncated `lyricpro-` prefix, branch aliases use the full `lyricpro-ai-git-{branch}-` prefix.)
+18. Click **Save**.
 
 ### A.5. Green-light test
 
-**What to do:** Open an incognito window and go to `https://playlyricpro.com`. Click **Continue with Google**.
+**What to do:** Open an incognito window and go to `https://playlyricpro.com/signin`. Click **Continue with Google**.
 
 **What you'll see if it works:**
-- Google consent screen appears.
+- Google account chooser appears.
+- After choosing an account, Google's consent screen appears.
 - After authorizing, you're redirected to `/auth/callback`, then to `/` (or `/dashboard`).
-- In Supabase → Authentication → Users: a new row with the Google email, provider `google`, and a creation timestamp within the last minute.
-- In your database → `public.users`: a matching row created by the server-side `authenticateRequest` call.
+- In Supabase → Authentication → **Users** (left nav, under "MANAGE"): a new row with the Google email and a creation timestamp within the last minute. The "Display name" column shows the user's Google name.
+- In your database → `public.users`: a matching row created by the server-side `authenticateRequest` call (auto-provisioned on first JWT validation).
+
+**If you see `Unsupported provider: provider is not enabled`:** A.3 step 11 toggle didn't save. Re-do A.3 and verify in A.3 step 14.
 
 **If you see "redirect_uri_mismatch":** The URL in step A.2.6 doesn't exactly match what Supabase uses. Check for trailing slashes, `http` vs `https`, and the project ref. The exact URL is: `https://lkjxhpcowfzwbvtpnevz.supabase.co/auth/v1/callback`
 
-**If you see "Access blocked: This app's request is invalid":** The OAuth consent screen wasn't Published (step A.1.3). Go back and verify status is "In production."
+**If you see "Access blocked: This app's request is invalid":** The OAuth consent screen wasn't Published (step A.1.2). Go back to OAuth consent screen → Audience tab → confirm status is "In production."
+
+**If sign-in succeeds in Google but you land on a blank page or get a Supabase "Redirect URL not allowed" error:** A.4 step 17 wildcards didn't match. Check your actual deployment URL in the browser address bar after the redirect; it should match one of the four patterns. If not, add the missing pattern.
 
 ---
 
