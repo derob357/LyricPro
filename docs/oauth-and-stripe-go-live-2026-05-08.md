@@ -297,7 +297,7 @@ You'll come back here to create the OAuth Client ID — that's a separate step d
 ### C.3. Register the webhook endpoint
 
 5. Stripe Dashboard (Live mode) → **Developers → Webhooks → + Add endpoint**.
-6. **Endpoint URL:** `https://playlyricpro.com/api/stripe/webhook`
+6. **Endpoint URL:** `https://www.playlyricpro.com/api/stripe/webhook`
    - Note: no trailing slash, exact URL. Stripe does not follow redirects — if your app returns 308 from this URL, events will fail silently.
 7. **Events to subscribe** (select all six — all are wired in the Wave 1 handler):
    - `checkout.session.completed`

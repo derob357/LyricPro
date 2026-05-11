@@ -326,3 +326,9 @@ These need your hands / accounts to proceed. I can't do them from here.
 - [ ] **CA-05 (Medium):** Add `charge.dispute.created` / `charge.dispute.closed` handlers — pause access on dispute creation, restore on `won`, fully revoke on `lost`. Defer until first dispute or quarterly review.
 - [ ] **D17 / CA-11 (Medium):** Forward client IP to Supabase admin calls via `Sb-Forwarded-For` header so per-IP OAuth rate limits work behind Vercel/Express. Or enable hCaptcha/Turnstile in Supabase Dashboard as an alternative mitigation.
 - [ ] **CA-12 (Medium):** Account deletion / GDPR erasure flow — currently no path exists. Schedule for a dedicated initiative.
+
+## Wave 4 delta-scan carryovers (2026-05-11)
+
+- [ ] **SE-D04 (Medium):** Ownership checks still needed on remaining game-room mutations — `server/routers/game.ts:383 setReady`, `:423 getNextSong`, `:888 submitAnswer`, `:1384 assignTeam`. Wave 1 Task 19B addressed `startGame`, `nextRound`, `createTeams`; these four remain. Pattern: validate caller identity (`ctx.user.id` for authed, `input.guestToken` for guests) against the room's player roster before mutating room state.
+- [ ] **SE-D01 (Medium):** `resolveStripeCustomer` uses `customers.search({ query: \`email:'\${email}'\` })` with only single-quote escaping. Prefer `customers.list({ email, limit: 1 })` for exact-match dedup — simpler and avoids any potential query-injection edge case. `server/stripe-integration.ts:19-22`.
+- [ ] **SE-D03 (Info):** CSP shipped as `reportOnly: true` without a `report-uri` / `report-to` directive — operators have no signal when violations occur during the bake-in period. Add a report endpoint OR set a calendar reminder to flip CSP to enforcing after 7 days of zero browser-console violations.

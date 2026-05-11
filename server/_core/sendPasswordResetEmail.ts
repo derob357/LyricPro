@@ -7,6 +7,16 @@
 
 import { Resend } from "resend";
 
+// Redact email addresses before writing to logs to avoid accumulating PII in
+// production log storage. Same shape as sendMagicLinkEmail.redactEmail.
+function redactEmail(email: string): string {
+  const [user, domain] = email.split("@");
+  if (!user || !domain) return "***";
+  const visible =
+    user.length <= 2 ? "*" : `${user[0]}***${user[user.length - 1]}`;
+  return `${visible}@${domain}`;
+}
+
 // Mirrors sendMagicLinkEmail: env override (PASSWORD_RESET_FROM_ADDRESS, or
 // MAGIC_LINK_FROM_ADDRESS as a single source of truth) to swap to the auth
 // subdomain once verified, without a code redeploy.
@@ -40,7 +50,7 @@ export async function sendPasswordResetEmail(params: {
     const domain = params.to.split("@")[1] ?? "unknown";
     console.log(
       "[sendPasswordResetEmail:resend:sent]",
-      JSON.stringify({ id: data.id, to: params.to, domain })
+      JSON.stringify({ id: data.id, to: redactEmail(params.to), domain })
     );
   }
 

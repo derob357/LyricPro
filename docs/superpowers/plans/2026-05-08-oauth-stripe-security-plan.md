@@ -1677,7 +1677,7 @@ Use the structure from spec §4 ([docs/superpowers/specs/2026-05-08-oauth-stripe
 
 - `[YOUR_SUPABASE_REF]` → actual project ref from Step 1
 - Service ID convention: `ai.intentionai.lyricpro.web` (already in spec)
-- Webhook URL: `https://playlyricpro.com/api/stripe/webhook` (confirm from `vercel.json` rewrites + `api-src/stripe/webhook.ts` location)
+- Webhook URL: `https://www.playlyricpro.com/api/stripe/webhook` (confirm from `vercel.json` rewrites + `api-src/stripe/webhook.ts` location)
 - Redirect URLs allow-list: pre-fill prod + localhost + Vercel preview wildcard
 
 Include the secrets-handling reminder at the top of the runbook.

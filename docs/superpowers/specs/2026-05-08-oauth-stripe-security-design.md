@@ -236,7 +236,7 @@ Deliverable: `docs/oauth-and-stripe-go-live-2026-05-08.md`. Combines + updates e
    - "LyricPro Pro" with one monthly recurring price at $8.99
    - "LyricPro Elite" with one monthly recurring price at $11.99
    Capture the three live `price_*` IDs.
-4. Live mode → Webhooks → add endpoint at `https://playlyricpro.com/api/stripe/webhook` (or whatever the prod path is — Wave 0 confirms from route registration). Select events:
+4. Live mode → Webhooks → add endpoint at `https://www.playlyricpro.com/api/stripe/webhook` (or whatever the prod path is — Wave 0 confirms from route registration). Select events:
    - `checkout.session.completed`
    - `invoice.paid`
    - `invoice.payment_failed` *(new in Wave 1)*
