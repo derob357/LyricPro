@@ -14,14 +14,19 @@ import {
   type PasswordIssue,
 } from "@/lib/passwordValidation";
 
-// Landing page after a user clicks the password-reset link in their email.
-// The link carries a PKCE ?code= we must exchange ourselves — the supabase
-// client has detectSessionInUrl: false to avoid races on /auth/callback,
-// so no auto-exchange happens here either. Once exchanged, the recovery
-// session is active and updateUser({ password }) can run.
+// Landing page after the user clicks the recovery link in their email.
+// The link is produced by admin.auth.admin.generateLink({ type: "recovery" })
+// on the server — which can redirect with any of three URL shapes:
+//   - ?code=<pkce>                       (client-initiated recovery, rare here)
+//   - ?token_hash=<x>&type=recovery      (admin-generated, current default)
+//   - #access_token=<jwt>&refresh_token  (legacy implicit, older Supabase)
+// detectSessionInUrl is off, so we exchange explicitly. Once a session is
+// established, updateUser({ password }) finalizes the reset.
 //
-// If the user lands here without a code or with an expired/invalid one,
-// we surface an error and bounce them to /signin.
+// If the user lands here without any of those, or with an expired/used
+// link, we surface an error and bounce them to /signin.
+
+const RECOVERY_OTP_TYPES = new Set(["recovery", "email"]);
 
 export default function PasswordReset() {
   const [, navigate] = useLocation();
@@ -37,15 +42,41 @@ export default function PasswordReset() {
       try {
         const url = new URL(window.location.href);
         const code = url.searchParams.get("code");
+        const tokenHash = url.searchParams.get("token_hash");
+        const otpType = url.searchParams.get("type");
+        const hashStr = window.location.hash.startsWith("#")
+          ? window.location.hash.slice(1)
+          : window.location.hash;
+        const hashParams = hashStr ? new URLSearchParams(hashStr) : null;
+        const accessToken = hashParams?.get("access_token") ?? null;
+        const refreshToken = hashParams?.get("refresh_token") ?? null;
+
+        let exchanged = false;
         if (code) {
           const { error } = await supabase.auth.exchangeCodeForSession(code);
-          if (cancelled) return;
-          if (!error) {
-            // Strip the code from the URL bar so a refresh doesn't retry.
-            url.searchParams.delete("code");
-            window.history.replaceState(null, "", url.pathname + url.search);
-          }
+          exchanged = !error;
+        } else if (tokenHash && otpType && RECOVERY_OTP_TYPES.has(otpType)) {
+          const { error } = await supabase.auth.verifyOtp({
+            token_hash: tokenHash,
+            type: otpType as "recovery" | "email",
+          });
+          exchanged = !error;
+        } else if (accessToken && refreshToken) {
+          const { error } = await supabase.auth.setSession({
+            access_token: accessToken,
+            refresh_token: refreshToken,
+          });
+          exchanged = !error;
         }
+
+        if (cancelled) return;
+
+        if (exchanged) {
+          // Scrub credentials from URL bar / history so refresh doesn't
+          // retry an already-consumed token.
+          window.history.replaceState(null, "", url.pathname);
+        }
+
         const { data } = await supabase.auth.getSession();
         if (cancelled) return;
         setHasSession(!!data.session);

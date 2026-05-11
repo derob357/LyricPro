@@ -4,42 +4,67 @@ import { supabase } from "@/lib/supabase";
 import { Button } from "@/components/ui/button";
 import { Music, ShieldCheck } from "lucide-react";
 
-// Sign-in callback. Handles two return-trip shapes:
+// Sign-in callback. Handles every URL shape Supabase can land on
+// /auth/callback with:
 //
-// 1) OAuth (Google / Apple): user just clicked a button on /signin moments
-//    ago, sessionStorage carries `lp-oauth-in-flight=1`. Exchange the code
-//    immediately and redirect home — no interstitial, no scanner concern
-//    (this URL was never sent through email).
+//   A. ?code=<pkce>                          — OAuth (Google/Apple) + any
+//                                              client-initiated PKCE flow.
+//                                              Exchange with
+//                                              exchangeCodeForSession.
 //
-// 2) Magic link (?code= or #access_token=...): the link is in an email
-//    that may pass through corporate URL scanners (Outlook Safe Links,
-//    Microsoft Defender, Mimecast, Proofpoint, Barracuda) which pre-fetch
-//    links before the human clicks. Defense: GET only PARSES the URL.
-//    The actual exchange runs only inside a real user-gesture button
-//    click. Headless scanners that GET the page don't click "Continue",
-//    so the token survives until the human arrives. Same change also
-//    addresses the in-app webview class of bug — the user can see the
-//    "Continue" page and choose to open it in their real browser before
-//    the token is consumed.
+//   B. ?token_hash=<x>&type=<magiclink|...>  — admin.generateLink output
+//                                              (the URL we email via Resend
+//                                              for magic links). NOT a PKCE
+//                                              code — has no verifier.
+//                                              Exchange with verifyOtp.
 //
-// Note on PKCE: the supabase client is configured with
-// detectSessionInUrl: false in lib/supabase.ts; we are the sole exchanger
-// of the code on this page.
+//   C. #access_token=<jwt>&refresh_token=…   — legacy implicit-flow
+//                                              fragment, still emitted by
+//                                              some Supabase configurations.
+//                                              Exchange with setSession.
+//
+// Format B is the magic-link path in this app because the server uses
+// admin.auth.admin.generateLink({ type: "magiclink" }). That admin endpoint
+// does NOT mint a PKCE verifier pair — it produces a server-verify URL,
+// and we must call verifyOtp({ token_hash, type }) on the client.
+// (auth-js#767, Supabase passwordless docs.)
+//
+// Two entry behaviors:
+//   - OAuth (sessionStorage flag "lp-oauth-in-flight"): auto-exchange and
+//     redirect home. No interstitial — the URL was never emailed.
+//   - Everything else (came from an email): show click-to-confirm so
+//     corporate URL scanners (Outlook Safe Links, Defender, Mimecast,
+//     Proofpoint, Barracuda) that GET the page can't burn the single-use
+//     token before the human clicks.
+
+type Pending =
+  | { kind: "code"; code: string }
+  | { kind: "otp"; tokenHash: string; type: string }
+  | { kind: "fragment"; accessToken: string; refreshToken: string }
+  | null;
+
+// Valid `type` values for verifyOtp's token_hash form. We accept what
+// Supabase emits today (magiclink/signup/recovery/invite/email_change/email)
+// rather than constraining server-side.
+const OTP_TYPES = new Set([
+  "magiclink",
+  "signup",
+  "recovery",
+  "invite",
+  "email_change",
+  "email",
+]);
 
 export default function AuthCallback() {
   const [, navigate] = useLocation();
-  const [authCode, setAuthCode] = useState<string | null>(null);
-  const [hasFragment, setHasFragment] = useState(false);
+  const [pending, setPending] = useState<Pending>(null);
   const [phase, setPhase] = useState<"ready" | "exchanging" | "error">("ready");
   const [errorMsg, setErrorMsg] = useState<string>("");
 
-  // ── Mount: parse the URL; for OAuth, exchange immediately. ──────────────
   useEffect(() => {
     let cancelled = false;
     const url = new URL(window.location.href);
 
-    // Supabase sends error info as query params on failure. Surface
-    // immediately — there's nothing to confirm.
     const err = url.searchParams.get("error");
     const errDesc = url.searchParams.get("error_description");
     if (err) {
@@ -48,76 +73,74 @@ export default function AuthCallback() {
       return;
     }
 
+    // Detect URL shape (A, B, or C above).
     const code = url.searchParams.get("code");
-    const hasHash = !!(window.location.hash && window.location.hash.length > 1);
+    const tokenHash = url.searchParams.get("token_hash");
+    const otpType = url.searchParams.get("type");
+    const hashStr = window.location.hash.startsWith("#")
+      ? window.location.hash.slice(1)
+      : window.location.hash;
+    const hashParams = hashStr ? new URLSearchParams(hashStr) : null;
+    const accessToken = hashParams?.get("access_token") ?? null;
+    const refreshToken = hashParams?.get("refresh_token") ?? null;
 
-    // Was this return-trip initiated by an OAuth button click in this
-    // tab? If so, skip the click-to-confirm interstitial — the URL was
-    // never emailed, so scanner-prefetch isn't a concern.
+    let detected: Pending = null;
+    if (code) {
+      detected = { kind: "code", code };
+    } else if (tokenHash && otpType && OTP_TYPES.has(otpType)) {
+      detected = { kind: "otp", tokenHash, type: otpType };
+    } else if (accessToken && refreshToken) {
+      detected = { kind: "fragment", accessToken, refreshToken };
+    }
+
+    if (!detected) {
+      setErrorMsg(
+        "This page is reached after clicking a sign-in link. If you got here some other way, head back to sign in."
+      );
+      setPhase("error");
+      return;
+    }
+
+    // Was this an OAuth round-trip initiated by a button click in this
+    // tab? If so, auto-complete with no interstitial.
     let oauthInFlight = false;
     try {
       oauthInFlight = sessionStorage.getItem("lp-oauth-in-flight") === "1";
       if (oauthInFlight) sessionStorage.removeItem("lp-oauth-in-flight");
     } catch {
-      // Private mode etc. — fall through to click-to-confirm path.
+      // private mode etc. — fall through to click-to-confirm.
     }
 
-    if (oauthInFlight && code) {
+    if (oauthInFlight && detected.kind === "code") {
       (async () => {
         setPhase("exchanging");
-        try {
-          const { error } = await supabase.auth.exchangeCodeForSession(code);
-          if (error) throw error;
-          if (cancelled) return;
-          window.history.replaceState(null, "", "/");
-          navigate("/");
-        } catch (e) {
-          if (cancelled) return;
-          const msg = e instanceof Error ? e.message : "Unknown error";
-          console.error("[AuthCallback:oauth]", msg, e);
-          setErrorMsg(msg);
+        const { error } = await complete(detected);
+        if (cancelled) return;
+        if (error) {
+          console.error("[AuthCallback:oauth]", error.message, error);
+          setErrorMsg(error.message);
           setPhase("error");
+          return;
         }
+        window.history.replaceState(null, "", "/");
+        navigate("/");
       })();
-      return () => {
-        cancelled = true;
-      };
+    } else {
+      // Magic-link / recovery / OAuth-without-flag — show click-to-confirm.
+      setPending(detected);
     }
 
-    // PKCE path (magic link) — capture the code but DO NOT exchange yet.
-    if (code) {
-      setAuthCode(code);
-      return;
-    }
-
-    // Implicit-flow path — Supabase puts the token in the URL fragment.
-    // Fragments don't get sent to corporate scanners (they're client-side
-    // only), so the prefetch problem doesn't apply here. We still gate
-    // session creation behind the click for consistency.
-    if (hasHash) {
-      setHasFragment(true);
-      return;
-    }
-
-    // No code, no fragment, no error — user landed here directly.
-    setErrorMsg("This page is reached after clicking a sign-in link. If you got here some other way, head back to sign in.");
-    setPhase("error");
+    return () => {
+      cancelled = true;
+    };
   }, [navigate]);
 
-  // ── Click handler: NOW exchange the code for a session. ─────────────────
   const handleConfirm = async () => {
+    if (!pending) return;
     setPhase("exchanging");
     try {
-      if (authCode) {
-        const { error } = await supabase.auth.exchangeCodeForSession(authCode);
-        if (error) throw error;
-      }
-      // Implicit-fragment path is effectively dead under PKCE (flowType:
-      // "pkce" in lib/supabase.ts means Supabase doesn't issue implicit
-      // tokens). If we got here via a legacy emailed fragment URL,
-      // getSession() will return null and the "no session created" branch
-      // below handles it gracefully — user is bounced back to /signin.
-
+      const { error } = await complete(pending);
+      if (error) throw error;
       const { data, error: sessErr } = await supabase.auth.getSession();
       if (sessErr) throw sessErr;
       if (!data.session) {
@@ -126,8 +149,6 @@ export default function AuthCallback() {
             "If this keeps happening, the link may have already been used or expired — request a fresh one."
         );
       }
-
-      // Strip the ?code / #access_token from the URL bar before navigating.
       window.history.replaceState(null, "", "/");
       navigate("/");
     } catch (e) {
@@ -163,7 +184,6 @@ export default function AuthCallback() {
     );
   }
 
-  // phase === "ready" — show the click-to-confirm screen.
   return (
     <div className="min-h-screen flex items-center justify-center px-4">
       <div className="max-w-md w-full glass rounded-2xl p-8 border border-border/50">
@@ -183,7 +203,7 @@ export default function AuthCallback() {
         <Button
           onClick={handleConfirm}
           className="w-full bg-primary text-primary-foreground hover:bg-primary/90 glow-purple"
-          disabled={!authCode && !hasFragment}
+          disabled={!pending}
         >
           Continue to LyricPro
         </Button>
@@ -193,4 +213,37 @@ export default function AuthCallback() {
       </div>
     </div>
   );
+}
+
+// Dispatch to the right supabase method based on which URL shape we got.
+// Returns the supabase-style { error } object (null on success).
+async function complete(
+  p: Exclude<Pending, null>
+): Promise<{ error: { message: string } | null }> {
+  if (p.kind === "code") {
+    const { error } = await supabase.auth.exchangeCodeForSession(p.code);
+    return { error };
+  }
+  if (p.kind === "otp") {
+    // EmailOtpType in auth-js is the string union below. We've already
+    // gated p.type through OTP_TYPES, so this cast is safe.
+    const type = p.type as
+      | "magiclink"
+      | "signup"
+      | "recovery"
+      | "invite"
+      | "email_change"
+      | "email";
+    const { error } = await supabase.auth.verifyOtp({
+      token_hash: p.tokenHash,
+      type,
+    });
+    return { error };
+  }
+  // fragment
+  const { error } = await supabase.auth.setSession({
+    access_token: p.accessToken,
+    refresh_token: p.refreshToken,
+  });
+  return { error };
 }
