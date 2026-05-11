@@ -21,6 +21,8 @@
   ],
 
   "rewrites": [
-    { "source": "/((?!api/).*)", "destination": "/index.html" }
+    { "source": "/privacy", "destination": "/privacy.html" },
+    { "source": "/termsofservice", "destination": "/terms.html" },
+    { "source": "/((?!api/|privacy$|termsofservice$).*)", "destination": "/index.html" }
   ]
 }
