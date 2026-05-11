@@ -202,9 +202,20 @@ You'll come back here to create the OAuth Client ID — that's a separate step d
 
 ### B.5. Verify Supabase Auth version
 
-24. In Supabase Dashboard → your project → **Settings → General**. Look for the Supabase Auth (GoTrue) version number.
-    - **Required:** ≥ v2.176.1 (handles the new `account.apple.com` issuer that Apple rolled out in 2026).
-    - Cloud projects auto-update; if you're on an older version, file a Supabase support ticket before proceeding.
+24. Supabase Cloud does NOT expose the GoTrue/Auth version in the Dashboard UI — it's auto-managed and intentionally hidden. Query the public health endpoint instead. From your terminal:
+
+    ```bash
+    KEY=$(awk -F= '/^VITE_SUPABASE_PUBLISHABLE_KEY=/{sub(/^VITE_SUPABASE_PUBLISHABLE_KEY=/, ""); print}' .env | tr -d '\r\n"' | xargs)
+    curl -s -H "apikey: $KEY" https://lkjxhpcowfzwbvtpnevz.supabase.co/auth/v1/health
+    ```
+
+    Returns: `{"version":"v2.189.0","name":"GoTrue","description":"..."}`
+
+    - **Required:** ≥ v2.176.1 (handles the new `account.apple.com` issuer Apple rolled out in 2025).
+    - As of 2026-05-11 this project is on **v2.189.0** — well clear of the minimum.
+    - Cloud projects auto-update; if a future check shows you below the minimum, file a Supabase support ticket before proceeding.
+
+    Bonus: the same endpoint with path `/auth/v1/settings` returns the enabled-provider matrix (`google`, `apple`, `email`, etc.) — useful for confirming provider toggles persisted.
 
 ### B.6. Green-light test
 
