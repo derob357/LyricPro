@@ -9,7 +9,9 @@
     "start": "NODE_ENV=production node dist/index.js",
     "check": "tsc --noEmit",
     "format": "prettier --write .",
-    "test": "vitest run",
+    "test": "pnpm test:server && pnpm test:client",
+    "test:server": "vitest run --config vitest.config.ts",
+    "test:client": "vitest run --config vitest.client.config.ts",
     "db:push": "drizzle-kit generate && drizzle-kit migrate"
   },
   "dependencies": {
