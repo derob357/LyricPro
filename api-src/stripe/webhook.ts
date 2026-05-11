@@ -11,6 +11,10 @@ export const config = {
     bodyParser: false,
   },
   runtime: "nodejs",
+  // Stripe retries after ~20s without 2xx. Cold-start + raw-body parse +
+  // signature verify + DB writes can approach the default lambda timeout.
+  // 30s gives headroom while staying well under Stripe's retry threshold.
+  maxDuration: 30,
 };
 
 // Collect the incoming request's raw bytes into a Buffer. Stripe's

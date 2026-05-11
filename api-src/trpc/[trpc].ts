@@ -57,7 +57,13 @@ async function buildContext(req: Request, res: VercelResponse): Promise<TrpcCont
   // Procedures read ctx.req.ip (rate limiter) and ctx.res (cookie ops).
   // Synthesize an Express-like shape from the Fetch Request.
   const shimExpressReq = {
-    ip: req.headers.get("x-forwarded-for")?.split(",")[0].trim() ?? "0.0.0.0",
+    // x-vercel-forwarded-for is set by Vercel and stripped from client input.
+    // x-forwarded-for is client-controllable on Vercel and can be spoofed to
+    // bypass per-IP rate limits. Fall back to remoteAddress in local dev.
+    ip:
+      req.headers.get("x-vercel-forwarded-for")?.split(",")[0]?.trim() ??
+      req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ??
+      "0.0.0.0",
     headers: Object.fromEntries(req.headers.entries()),
   } as unknown as TrpcContext["req"];
   return { req: shimExpressReq, res: res as unknown as TrpcContext["res"], user };

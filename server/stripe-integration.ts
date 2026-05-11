@@ -1,6 +1,33 @@
 import Stripe from "stripe";
 
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || "");
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || "", {
+  apiVersion: "2026-03-25.dahlia",
+});
+
+// ─── Customer Dedup ───────────────────────────────────────────────────────────
+// Search for an existing Stripe customer by email before creating a checkout
+// session. Without this, every checkout for the same email creates a new cus_*,
+// producing ghost customers without payment methods attached.
+// Returns { customer: "cus_..." } if found so the caller can spread it into the
+// session create call; falls back to { customer_email: email } on no match or
+// search error (so checkout can still proceed).
+
+export async function resolveStripeCustomer(
+  email: string
+): Promise<{ customer: string } | { customer_email: string }> {
+  try {
+    const search = await stripe.customers.search({
+      query: `email:'${email.replace(/'/g, "\\'")}'`,
+      limit: 1,
+    });
+    if (search.data.length > 0) {
+      return { customer: search.data[0].id };
+    }
+  } catch {
+    // Fall through to email-only behavior — search failures must not block checkout.
+  }
+  return { customer_email: email };
+}
 
 // ─── Subscription Checkout ────────────────────────────────────────────────────
 
@@ -16,10 +43,11 @@ export async function createSubscriptionCheckout(
     elite: process.env.STRIPE_PRICE_ELITE || "price_elite",
   };
 
+  const customerArg = await resolveStripeCustomer(userEmail);
   const session = await stripe.checkout.sessions.create({
     payment_method_types: ["card"],
     mode: "subscription",
-    customer_email: userEmail,
+    ...customerArg,
     line_items: [
       {
         price: prices[tier],
@@ -50,10 +78,11 @@ export async function createEntryFeeCheckout(
   gameType: "solo" | "team3" | "team5" | "team7",
   origin: string
 ) {
+  const customerArg = await resolveStripeCustomer(userEmail);
   const session = await stripe.checkout.sessions.create({
     payment_method_types: ["card"],
     mode: "payment",
-    customer_email: userEmail,
+    ...customerArg,
     line_items: [
       {
         price_data: {
@@ -93,10 +122,11 @@ export async function createAddOnGamesCheckout(
   const pricePerGame = 0.99;
   const totalAmount = quantity * pricePerGame;
 
+  const customerArg = await resolveStripeCustomer(userEmail);
   const session = await stripe.checkout.sessions.create({
     payment_method_types: ["card"],
     mode: "payment",
-    customer_email: userEmail,
+    ...customerArg,
     line_items: [
       {
         price_data: {
@@ -197,6 +227,32 @@ export async function handleCustomerSubscriptionDeleted(
   };
 }
 
+export async function handleCustomerSubscriptionUpdated(
+  subscription: Stripe.Subscription
+) {
+  const meta = subscription.metadata ?? {};
+  return {
+    type: "subscription_updated" as const,
+    subscriptionId: subscription.id,
+    status: subscription.status,
+    currentPeriodEnd: (subscription as unknown as { current_period_end: number }).current_period_end,
+    userId: meta.userId ? parseInt(meta.userId) : undefined,
+    tier: meta.tier,
+  };
+}
+
+export async function handleInvoicePaymentFailed(invoice: Stripe.Invoice) {
+  const sub = (invoice as { subscription?: string | { id: string } | null }).subscription;
+  const subscriptionId =
+    typeof sub === "string" ? sub : sub?.id;
+  return {
+    type: "invoice_payment_failed" as const,
+    subscriptionId,
+    invoiceId: invoice.id,
+    amountDue: invoice.amount_due,
+  };
+}
+
 // ─── Payout via Stripe Connect ───────────────────────────────────────────────
 
 export async function createConnectAccount(
@@ -258,6 +314,23 @@ export async function createPayout(
 
 export async function getCheckoutSession(sessionId: string) {
   return await stripe.checkout.sessions.retrieve(sessionId);
+}
+
+// ─── Retrieve Invoice → Subscription ID ─────────────────────────────────────
+// Used by the charge.refunded webhook handler to resolve an invoice ID to the
+// subscription it belongs to, so we can flip the subscription row in our DB.
+
+export async function getInvoiceSubscriptionId(
+  invoiceId: string
+): Promise<string | null> {
+  try {
+    const invoice = await stripe.invoices.retrieve(invoiceId);
+    const sub = (invoice as unknown as { subscription?: string | { id: string } | null }).subscription;
+    if (!sub) return null;
+    return typeof sub === "string" ? sub : sub.id;
+  } catch {
+    return null;
+  }
 }
 
 // ─── Construct Webhook Event ────────────────────────────────────────────────

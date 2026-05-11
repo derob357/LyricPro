@@ -59,17 +59,16 @@ export function registerDeepLinkHandlers() {
     }
 
     try {
-      if (accessToken && refreshToken) {
-        // Implicit flow: tokens arrive in the fragment, set directly.
+      if (code) {
+        // PKCE flow (current default): exchange the code for a session.
+        await supabase.auth.exchangeCodeForSession(code);
+      } else if (accessToken && refreshToken) {
+        // Implicit flow fallback: tokens arrive in the fragment. Kept for
+        // forward-compatibility but should not fire now that flowType="pkce".
         await supabase.auth.setSession({
           access_token: accessToken,
           refresh_token: refreshToken,
         });
-      } else if (code) {
-        // PKCE flow (not currently used — we're on implicit — but keep
-        // this branch so switching modes doesn't require touching the
-        // native deep-link handler).
-        await supabase.auth.exchangeCodeForSession(code);
       }
     } catch (e) {
       console.error(

@@ -403,7 +403,18 @@ export const gameRouter = router({
       const db = await getDb();
       if (!db) throw new Error("Database not available");
       const [room] = await db.select().from(gameRooms).where(eq(gameRooms.roomCode, input.roomCode)).limit(1);
-      if (!room) throw new Error("Room not found");
+      if (!room) throw new TRPCError({ code: "NOT_FOUND", message: "Room not found" });
+
+      // Verify the caller is the host (authed user OR guest with matching host token).
+      const callerId = ctx.user?.id ?? null;
+      const callerToken = input.guestToken ?? null;
+      const isHost =
+        (callerId !== null && room.hostUserId === callerId) ||
+        (callerToken !== null && room.hostGuestToken === callerToken);
+      if (!isHost) {
+        throw new TRPCError({ code: "FORBIDDEN", message: "Only the host can start the game." });
+      }
+
       await db.update(gameRooms).set({ status: "active", currentRound: 1 }).where(eq(gameRooms.id, room.id));
       return { success: true };
     }),
@@ -1228,12 +1239,28 @@ export const gameRouter = router({
 
   // Advance to next round
   nextRound: publicProcedure
-    .input(z.object({ roomCode: z.string() }))
-    .mutation(async ({ input }) => {
+    .input(z.object({ roomCode: z.string(), guestToken: z.string().optional() }))
+    .mutation(async ({ input, ctx }) => {
       const db = await getDb();
       if (!db) throw new Error("Database not available");
       const [room] = await db.select().from(gameRooms).where(eq(gameRooms.roomCode, input.roomCode)).limit(1);
-      if (!room) throw new Error("Room not found");
+      if (!room) throw new TRPCError({ code: "NOT_FOUND", message: "Room not found" });
+
+      // Verify the caller is an active player in this room.
+      const callerId = ctx.user?.id ?? null;
+      const callerToken = input.guestToken ?? null;
+      const playerCondition = callerId !== null
+        ? and(eq(roomPlayers.roomId, room.id), eq(roomPlayers.userId, callerId), eq(roomPlayers.isActive, true))
+        : callerToken !== null
+          ? and(eq(roomPlayers.roomId, room.id), eq(roomPlayers.guestToken, callerToken), eq(roomPlayers.isActive, true))
+          : null;
+      if (!playerCondition) {
+        throw new TRPCError({ code: "UNAUTHORIZED", message: "Sign in or provide a guest token to advance the round." });
+      }
+      const [callerPlayer] = await db.select({ id: roomPlayers.id }).from(roomPlayers).where(playerCondition).limit(1);
+      if (!callerPlayer) {
+        throw new TRPCError({ code: "FORBIDDEN", message: "You are not an active player in this room." });
+      }
 
       const players = await db.select().from(roomPlayers).where(and(eq(roomPlayers.roomId, room.id), eq(roomPlayers.isActive, true)));
       const nextPlayerIndex = (room.currentPlayerIndex + 1) % players.length;
@@ -1386,7 +1413,17 @@ export const gameRouter = router({
       const db = await getDb();
       if (!db) throw new Error("Database not available");
       const [room] = await db.select().from(gameRooms).where(eq(gameRooms.roomCode, input.roomCode)).limit(1);
-      if (!room) throw new Error("Room not found");
+      if (!room) throw new TRPCError({ code: "NOT_FOUND", message: "Room not found" });
+
+      // Verify the caller is the host (destructive: deletes existing teams).
+      const callerId = ctx.user?.id ?? null;
+      const callerToken = input.guestToken ?? null;
+      const isHost =
+        (callerId !== null && room.hostUserId === callerId) ||
+        (callerToken !== null && room.hostGuestToken === callerToken);
+      if (!isHost) {
+        throw new TRPCError({ code: "FORBIDDEN", message: "Only the host can configure teams." });
+      }
 
       const TEAM_COLORS = ["#8B5CF6", "#06B6D4", "#F59E0B", "#10B981", "#EF4444", "#EC4899"];
       const TEAM_NAMES = ["Team Purple", "Team Cyan", "Team Gold", "Team Green", "Team Red", "Team Pink"];
@@ -1418,7 +1455,7 @@ export const gameRouter = router({
     }),
 
   // Save game preferences for the current user
-  saveGamePrefs: publicProcedure
+  saveGamePrefs: protectedProcedure
     .input(z.object({
       mode: z.enum(["solo", "multiplayer", "team"]),
       genres: z.array(z.string()).min(1),
@@ -1429,7 +1466,6 @@ export const gameRouter = router({
       explicitFilter: z.boolean(),
     }))
     .mutation(async ({ input, ctx }) => {
-      if (!ctx.user?.id) return { saved: false };
       const db = await getDb();
       if (!db) return { saved: false };
       await db.update(users).set({ gamePrefs: input }).where(eq(users.id, ctx.user.id));

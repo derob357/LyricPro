@@ -13,6 +13,17 @@
 
 import { Resend } from "resend";
 
+// Redact email addresses before writing to logs to avoid accumulating PII in
+// production log storage. Preserves the domain (safe — no PII) and shows
+// first/last character of the local-part for minimal debuggability.
+function redactEmail(email: string): string {
+  const [user, domain] = email.split("@");
+  if (!user || !domain) return "***";
+  const visible =
+    user.length <= 2 ? "*" : `${user[0]}***${user[user.length - 1]}`;
+  return `${visible}@${domain}`;
+}
+
 // Default falls back to the current verified sender. Override via env once
 // the dedicated auth subdomain (e.g. login@auth.playlyricpro.com) is verified
 // in the Resend dashboard — keeps marketing/transactional reputations
@@ -61,7 +72,7 @@ export async function sendMagicLinkEmail(params: {
     const domain = params.to.split("@")[1] ?? "unknown";
     console.log(
       "[sendMagicLinkEmail:resend:sent]",
-      JSON.stringify({ id: data.id, to: params.to, domain })
+      JSON.stringify({ id: data.id, to: redactEmail(params.to), domain })
     );
   }
 

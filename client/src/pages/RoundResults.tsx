@@ -87,7 +87,7 @@ export default function RoundResults() {
 
   const handleNext = () => {
     setIsAdvancing(true);
-    nextRoundMutation.mutate({ roomCode: roomCode ?? "" });
+    nextRoundMutation.mutate({ roomCode: roomCode ?? "", guestToken: guestToken ?? undefined });
   };
 
   if (!result) {

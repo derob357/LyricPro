@@ -4,7 +4,10 @@ import {
   handleCheckoutSessionCompleted,
   handleInvoicePaid,
   handleCustomerSubscriptionDeleted,
+  handleCustomerSubscriptionUpdated,
+  handleInvoicePaymentFailed,
   constructWebhookEvent,
+  getInvoiceSubscriptionId,
 } from "../stripe-integration";
 import { updateSubscription } from "../db-monetization";
 import {
@@ -190,6 +193,41 @@ export async function handleStripeWebhook(req: Request, res: Response) {
         break;
       }
 
+      case "invoice.payment_failed": {
+        const invoice = event.data.object;
+        const result = await handleInvoicePaymentFailed(invoice);
+        if (!result?.subscriptionId) break;
+        console.log(
+          `[Webhook] Invoice payment failed sub=${redact(result.subscriptionId)} due=${result.amountDue}`
+        );
+        // Mark past_due in our DB. Do NOT revoke access — Stripe Smart Retries
+        // (Settings > Billing > Subscriptions in the Dashboard) handles dunning.
+        // If retries exhaust, Stripe sends customer.subscription.deleted which
+        // is when we revoke. This intentional split is per spec §3.3 S2.
+        await db
+          .update(subscriptions)
+          .set({ status: "past_due" })
+          .where(eq(subscriptions.stripeSubscriptionId, result.subscriptionId));
+        break;
+      }
+
+      case "customer.subscription.updated": {
+        const subscription = event.data.object;
+        const result = await handleCustomerSubscriptionUpdated(subscription);
+        if (!result || !result.userId) break;
+        console.log(
+          `[Webhook] Subscription updated user=${result.userId} status=${result.status} sub=${redact(result.subscriptionId)}`
+        );
+        await updateSubscription(
+          result.userId,
+          result.tier as "free" | "player" | "pro" | "elite",
+          result.subscriptionId,
+          result.status as "active" | "canceled" | "past_due" | "unpaid" | "trialing" | "incomplete" | "incomplete_expired" | "paused" | "expired",
+          new Date(result.currentPeriodEnd * 1000)
+        );
+        break;
+      }
+
       case "customer.subscription.deleted": {
         const subscription = event.data.object;
         const result = await handleCustomerSubscriptionDeleted(subscription);
@@ -216,6 +254,7 @@ export async function handleStripeWebhook(req: Request, res: Response) {
           id: string;
           payment_intent?: string | null;
           invoice?: string | null;
+          amount: number;
           amount_refunded?: number;
         };
         console.log(
@@ -239,14 +278,38 @@ export async function handleStripeWebhook(req: Request, res: Response) {
         // Subscription refund: mark the subscription canceled so daily-game
         // gating reverts to free tier.
         if (charge.invoice) {
-          // Look up subscription via stripeSubscriptionId on the invoice.
+          // Resolve the invoice to its subscription so we can flip our DB row.
           // Note: fully reversing a partially-used subscription period would
           // need pro-rata handling — left for a follow-up if refunds become
-          // common. For now we revert to free so the user can't keep using
-          // paid features after a refund.
-          console.log(
-            `[Webhook] Refund linked to invoice ${redact(charge.invoice)}; flagging for review`
-          );
+          // common. For now we revert to free on full refund so the user
+          // can't keep using paid features after their money has been returned.
+          const invoiceId =
+            typeof charge.invoice === "string"
+              ? charge.invoice
+              : (charge.invoice as { id: string }).id;
+          if (charge.amount_refunded === charge.amount) {
+            // Full refund — cancel subscription immediately.
+            const stripeSubId = await getInvoiceSubscriptionId(invoiceId);
+            console.log(
+              `[Webhook] Full refund on subscription invoice=${redact(invoiceId)} sub=${redact(stripeSubId)} — marking canceled`
+            );
+            if (stripeSubId) {
+              await db
+                .update(subscriptions)
+                .set({
+                  status: "canceled",
+                  canceledAt: new Date(),
+                  tier: "free",
+                  updatedAt: new Date(),
+                })
+                .where(eq(subscriptions.stripeSubscriptionId, stripeSubId));
+            }
+          } else {
+            // Partial refund — log for manual review; no automatic state change.
+            console.log(
+              `[Webhook] Partial refund on subscription invoice=${redact(invoiceId)} amount_refunded=${charge.amount_refunded ?? 0} — manual review needed`
+            );
+          }
         }
         break;
       }

@@ -54,6 +54,7 @@ export async function updateSubscription(
   userId: number,
   tier: "free" | "player" | "pro" | "elite",
   stripeSubscriptionId?: string,
+  status?: "active" | "canceled" | "past_due" | "unpaid" | "trialing" | "incomplete" | "incomplete_expired" | "paused" | "expired",
   currentPeriodEnd?: Date
 ) {
   const db = await getDatabase();
@@ -63,7 +64,7 @@ export async function updateSubscription(
       tier,
       stripeSubscriptionId,
       currentPeriodEnd,
-      status: "active",
+      status: status ?? "active",
       updatedAt: new Date(),
     })
     .where(eq(subscriptions.userId, userId));

@@ -1,5 +1,3 @@
-import { COOKIE_NAME } from "@shared/const";
-import { getSessionCookieOptions } from "./_core/cookies";
 import { systemRouter } from "./_core/systemRouter";
 import { protectedProcedure, publicProcedure, router } from "./_core/trpc";
 import { rateLimit } from "./_core/rateLimit";
@@ -30,23 +28,7 @@ export const appRouter = router({
       rateLimit("auth.me", key, { max: 60, windowMs: 60_000 });
       return opts.ctx.user;
     }),
-    logout: publicProcedure.mutation(({ ctx }) => {
-      // Best-effort clear of the legacy Manus-OAuth session cookie.
-      //
-      // The actual sign-out for Supabase Auth happens client-side via
-      // supabase.auth.signOut(), which clears the JWT from localStorage.
-      // This server-side cookie clear is a holdover from the pre-Supabase
-      // auth path — harmless to leave, tidy when we can clear it.
-      //
-      // Vercel's serverless adapter shims the Fetch handler's response
-      // into ctx.res but doesn't expose Express's clearCookie() helper,
-      // so calling it directly threw 500 in production. Guard the call
-      // so dev (Express) still cleans up while prod (Vercel) no-ops.
-      const maybeClearCookie = (ctx.res as { clearCookie?: unknown })?.clearCookie;
-      if (typeof maybeClearCookie === "function") {
-        const cookieOptions = getSessionCookieOptions(ctx.req);
-        ctx.res.clearCookie(COOKIE_NAME, { ...cookieOptions, maxAge: -1 });
-      }
+    logout: publicProcedure.mutation(() => {
       return { success: true } as const;
     }),
     updateProfile: protectedProcedure

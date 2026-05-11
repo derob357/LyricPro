@@ -4,6 +4,7 @@ import { TRPCError } from "@trpc/server";
 import { router, protectedProcedure } from "../_core/trpc";
 import { rateLimit } from "../_core/rateLimit";
 import { getDb } from "../db";
+import { resolveStripeCustomer } from "../stripe-integration";
 import {
   goldenNoteBalances,
   goldenNoteTransactions,
@@ -108,19 +109,14 @@ export const goldenNotesRouter = router({
       const pack = GN_PACKS[input.packId];
 
       const { default: Stripe } = await import("stripe");
-      // Admins hit Stripe test mode so they can validate the checkout flow
-      // without spending real money. Everyone else hits live keys.
-      const useTestMode = ctx.user.role === "admin";
-      const key = useTestMode
-        ? (process.env.STRIPE_TEST2_KEY_STRIPE_SECRET_KEY ?? process.env.STRIPE_SECRET_KEY)
-        : process.env.STRIPE_SECRET_KEY;
+      const key = process.env.STRIPE_SECRET_KEY;
       if (!key || key === "sk_test_placeholder") {
         throw new TRPCError({
           code: "PRECONDITION_FAILED",
           message: "Stripe not configured yet. Purchases will be available once real keys are set.",
         });
       }
-      const stripe = new Stripe(key);
+      const stripe = new Stripe(key, { apiVersion: "2026-03-25.dahlia" });
 
       // Stripe redirects the user to success_url / cancel_url after payment.
       // Those URLs MUST NOT be attacker-controllable — a spoofed Origin
@@ -137,10 +133,11 @@ export const goldenNotesRouter = router({
           ? String(claimedOrigin)
           : "https://lyricpro-ai.vercel.app";
 
+      const customerArg = await resolveStripeCustomer(ctx.user.email ?? "");
       const session = await stripe.checkout.sessions.create({
         payment_method_types: ["card"],
         mode: "payment",
-        customer_email: ctx.user.email ?? undefined,
+        ...customerArg,
         line_items: [{
           price_data: {
             currency: "usd",

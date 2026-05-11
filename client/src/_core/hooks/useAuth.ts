@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { trpc } from "@/lib/trpc";
 import type { Session } from "@supabase/supabase-js";
+import { handleFirstSignInProfile } from "@/lib/auth-profile-capture";
 
 // useAuth is the single point of truth for client-side auth state.
 //   - Subscribes to Supabase's onAuthStateChange for the JWT/session.
@@ -28,11 +29,18 @@ export function useAuth(options?: UseAuthOptions) {
       setSession(data.session);
       setSessionReady(true);
     });
-    const { data: sub } = supabase.auth.onAuthStateChange((_event, s) => {
+    const { data: sub } = supabase.auth.onAuthStateChange((event, s) => {
       setSession(s);
       // Invalidate cached auth.me so it refetches with the new JWT (or
       // clears to null on sign-out).
       utils.auth.me.invalidate();
+      // On first Apple sign-in, capture the user's name (returned only once)
+      // and persist it to user_metadata. Fire-and-forget — never blocks auth flow.
+      if (event === "SIGNED_IN" && s) {
+        handleFirstSignInProfile(s, supabase).catch((err) =>
+          console.warn("[auth] profile capture failed:", err)
+        );
+      }
     });
     return () => sub.subscription.unsubscribe();
   }, [utils]);

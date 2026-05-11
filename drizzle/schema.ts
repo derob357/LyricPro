@@ -83,6 +83,11 @@ export const subscriptionStatusEnum = pgEnum("subscription_status", [
   "paused",
   "canceled",
   "expired",
+  "past_due",
+  "unpaid",
+  "trialing",
+  "incomplete",
+  "incomplete_expired",
 ]);
 export const entryFeeGameTypeEnum = pgEnum("entry_fee_game_type", [
   "solo",
