@@ -31,31 +31,76 @@ If something goes sideways, tell me which step + which error message; I can debu
 
 ## Section A — Google OAuth (~15 min)
 
-### A.1. Google Cloud Console — OAuth consent screen
+### A.0. Prerequisite — Privacy Policy and Terms of Service URLs
+
+Before Google will accept your OAuth consent screen, you need **public URLs** for your Privacy Policy and Terms of Service. The repo already has these at `client/public/privacy.html` and `client/public/terms.html`, and as of commit `3eb6098` Vercel rewrites expose them at the cleaner URLs Google expects:
+
+- **Privacy Policy URL:** `https://playlyricpro.com/privacy`
+- **Terms of Service URL:** `https://playlyricpro.com/termsofservice`
+
+**These URLs only resolve after the branch with the rewrites is deployed to production.** Two ways to handle that:
+
+- **(a) Deploy first:** push `feat/2026-05-08-oauth-stripe-go-live` to remote and let Vercel preview/prod deploy it. Verify the URLs resolve in a browser, then fill out the consent screen.
+- **(b) Trust the URLs and deploy before launch:** Google accepts the URLs at form-submit time even if they currently 404. You just need them resolving before real users click "Sign in with Google." If you choose this path, **don't forget to merge + deploy this branch** before turning OAuth on for non-test users.
+
+> **Note on existing content:** both `privacy.html` and `terms.html` open with a "DRAFT / TEMPLATE — not a substitute for legal review" callout. Google won't reject your consent screen for that, but get the pages reviewed by counsel and remove the draft warnings before public marketing launch.
+
+### A.1. Google Cloud Console — OAuth consent screen (the 4-tab walkthrough)
+
+Google's current Cloud Console (2024–2025 redesign) organizes the OAuth consent screen under **Google Auth Platform** with four tabs: **Branding → Audience → Clients → Data Access**. Fill them in this order.
 
 1. Go to [Google Cloud Console](https://console.cloud.google.com/).
-2. Select (or create) a project. Suggested name: `LyricPro Ai`.
-3. Navigate to **APIs & Services → OAuth consent screen**.
-   - User Type: **External**.
-   - App name: `LyricPro Ai`.
-   - User support email: `deric@intentionai.ai`.
-   - Developer contact email: `deric@intentionai.ai`.
-   - Scopes: **leave defaults** (`openid`, `email`, `profile`). Click through all screens with Save and Continue.
-   - Back on the summary screen, click **Publish App** to leave Testing mode. (No Google verification is required because we only use non-sensitive scopes — `email`/`profile`/`openid` auto-publish.)
-   - **What you'll see:** Status changes from "Testing" to "In production."
+2. Select (or create) a project. Suggested name: `LyricPro`.
+3. Open the hamburger menu (☰) → **APIs & Services → OAuth consent screen**. You'll land on the **Branding** tab (or be prompted to set User Type first — choose **External**, then continue).
+
+#### A.1.1. Branding tab
+
+- **App name:** `LyricPro Ai` (this is what users see on the consent page).
+- **User support email:** `deric@intentionai.ai`.
+- **App logo:** optional — skip for now. Uploading a logo triggers Google's verification process for *any* upload, even with non-sensitive scopes; not worth it.
+- **App domain section:**
+  - **Application home page:** `https://playlyricpro.com`
+  - **Application privacy policy link:** `https://playlyricpro.com/privacy`
+  - **Application terms of service link:** `https://playlyricpro.com/termsofservice`
+- **Authorized domains:** click **+ Add Domain** and add `playlyricpro.com`. This is the gatekeeper field — Google validates that any redirect URI you register later belongs to a domain listed here. (Supabase's `*.supabase.co` does NOT need to be added; the Authorized domains list governs the *home/privacy/terms URLs* you just entered, not the OAuth callback. Google trusts Supabase's callback because Supabase is the OAuth client owner from Google's perspective.)
+- **Developer contact information:** `deric@intentionai.ai` (this is what Google emails about app review or violation issues).
+- Click **Save**.
+
+#### A.1.2. Audience tab
+
+- **User type:** `External` (allows any Google account; `Internal` is only for Google Workspace orgs, which doesn't apply here).
+- **Publishing status:** flip from `Testing` to **Production** by clicking **PUBLISH APP**.
+  - **Testing mode quirks:** only test users you explicitly list can sign in; max 100 over the project's lifetime (not resettable).
+  - **Production mode:** anyone with a Google account can sign in. **No Google verification is required for us** because we only request the non-sensitive scopes `openid`, `email`, `profile`. The flip is one click.
+- **Test users:** ignore if you're going straight to Production.
+
+#### A.1.3. Data Access tab (the new home for "Scopes")
+
+- Click **Add or remove scopes**.
+- In the dialog, check these three (they're already in Google's default list — just check the boxes):
+  - `.../auth/userinfo.email`
+  - `.../auth/userinfo.profile`
+  - `openid`
+- **Do not add anything else.** Adding any other scope (Drive, Gmail, Calendar, Cloud Storage, etc.) flips your app into "sensitive scopes" territory and forces a multi-week Google verification process.
+- Click **Update**, then **Save**.
+
+#### A.1.4. Clients tab (covered in A.2 below)
+
+You'll come back here to create the OAuth Client ID — that's a separate step described in A.2.
 
 ### A.2. Google Cloud Console — OAuth 2.0 Client ID
 
-4. Navigate to **APIs & Services → Credentials → + Create Credentials → OAuth client ID**.
+4. Still in OAuth consent screen, click the **Clients** tab → **+ Create Client** (or use the left nav: **APIs & Services → Credentials → + Create Credentials → OAuth client ID**).
    - Application type: **Web application**.
-   - Name: `LyricPro Supabase Auth`.
-5. Under **Authorized JavaScript origins**, add:
+   - Name: `LyricPro Supabase Auth` (this name is just for your reference; users never see it).
+5. Under **Authorized JavaScript origins**, click **+ Add URI** for each:
    - `https://playlyricpro.com`
    - `http://localhost:5173`
-6. Under **Authorized redirect URIs**, add **exactly** (no trailing slash):
-   - `https://lkjxhpcowfzwbvtpnevz.supabase.co.supabase.co/auth/v1/callback`
+6. Under **Authorized redirect URIs**, click **+ Add URI** and add **exactly** (no trailing slash):
+   - `https://lkjxhpcowfzwbvtpnevz.supabase.co/auth/v1/callback`
 7. Click **Create**.
 8. **What you'll see:** A modal with Client ID and Client Secret. Copy both — you'll paste them into Supabase next. (Save them to your password manager; the Client Secret isn't shown again without navigating back.)
+   - **Don't paste them into chat with me.** Add the Client Secret directly into Supabase Dashboard in step A.3.
 
 ### A.3. Supabase Dashboard — enable Google provider
 
@@ -85,7 +130,7 @@ If something goes sideways, tell me which step + which error message; I can debu
 - In Supabase → Authentication → Users: a new row with the Google email, provider `google`, and a creation timestamp within the last minute.
 - In your database → `public.users`: a matching row created by the server-side `authenticateRequest` call.
 
-**If you see "redirect_uri_mismatch":** The URL in step A.2.6 doesn't exactly match what Supabase uses. Check for trailing slashes, `http` vs `https`, and the project ref. The exact URL is: `https://lkjxhpcowfzwbvtpnevz.supabase.co.supabase.co/auth/v1/callback`
+**If you see "redirect_uri_mismatch":** The URL in step A.2.6 doesn't exactly match what Supabase uses. Check for trailing slashes, `http` vs `https`, and the project ref. The exact URL is: `https://lkjxhpcowfzwbvtpnevz.supabase.co/auth/v1/callback`
 
 **If you see "Access blocked: This app's request is invalid":** The OAuth consent screen wasn't Published (step A.1.3). Go back and verify status is "In production."
 
@@ -113,8 +158,8 @@ If something goes sideways, tell me which step + which error message; I can debu
 10. Check the **Sign in with Apple** checkbox, then click **Configure** (the link that appears inline next to the checkbox).
 11. **Web Authentication Configuration** modal:
     - Primary App ID: pick `ai.intentionai.lyricpro` (the App ID from B.1).
-    - **Domains and Subdomains:** enter `lkjxhpcowfzwbvtpnevz.supabase.co.supabase.co` (no `https://`, no path).
-    - **Return URLs:** enter `https://lkjxhpcowfzwbvtpnevz.supabase.co.supabase.co/auth/v1/callback` (exact, no trailing slash).
+    - **Domains and Subdomains:** enter `lkjxhpcowfzwbvtpnevz.supabase.co` (no `https://`, no path).
+    - **Return URLs:** enter `https://lkjxhpcowfzwbvtpnevz.supabase.co/auth/v1/callback` (exact, no trailing slash).
 12. Click **Next → Done → Continue → Save**.
     - **What you'll see after Save:** the Services ID detail page with Sign in with Apple showing "Enabled."
 
