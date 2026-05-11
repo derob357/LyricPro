@@ -318,8 +318,8 @@ export default function Home() {
             {isAuthenticated && (
               <button onClick={() => navigate("/profile")} className="hover:text-foreground transition-colors">Profile</button>
             )}
-            <a href="/privacy.html" className="hover:text-foreground transition-colors">Privacy</a>
-            <a href="/terms.html" className="hover:text-foreground transition-colors">Terms</a>
+            <a href="/privacy" className="hover:text-foreground transition-colors">Privacy</a>
+            <a href="/termsofservice" className="hover:text-foreground transition-colors">Terms</a>
           </div>
         </div>
       </footer>
