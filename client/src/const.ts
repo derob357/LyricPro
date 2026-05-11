@@ -4,7 +4,10 @@ export { COOKIE_NAME, ONE_YEAR_MS } from "@shared/const";
 // actual auth handoff happens on that page. Kept as functions (vs constants)
 // for API compatibility with the old Manus OAuth helpers.
 export const getLoginUrl = (_returnPath?: string) => "/signin";
-export const getSignUpUrl = (_returnPath?: string) => "/signin";
+// Same page as sign-in (Supabase auto-creates users on first magic-link
+// or OAuth callback) — but ?mode=signup tells the page to render the
+// "Sign up" copy instead of "Sign in".
+export const getSignUpUrl = (_returnPath?: string) => "/signin?mode=signup";
 // Password-reset entry point. The /signin page handles the "request a reset
 // link" form when the user picks the Password tab and clicks "Forgot password?".
 // The reset-completion page lives at /auth/reset-password (linked from the

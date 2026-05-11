@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useLocation } from "wouter";
+import { useLocation, useSearch } from "wouter";
 import { supabase } from "@/lib/supabase";
 import { trpc } from "@/lib/trpc";
 import { IS_NATIVE } from "@/lib/platform";
@@ -22,6 +22,12 @@ type Mode = "magic" | "password" | "reset-request";
 
 export default function SignIn() {
   const [, navigate] = useLocation();
+  const search = useSearch();
+  // ?mode=signup carries intent from a "Sign Up" CTA (see getSignUpUrl in
+  // const.ts). The auth flow itself is identical — Supabase auto-creates
+  // the user on first magic-link or OAuth — but the copy needs to match
+  // what the user clicked to get here.
+  const isSignUp = new URLSearchParams(search).get("mode") === "signup";
   const [mode, setMode] = useState<Mode>("magic");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -169,7 +175,7 @@ export default function SignIn() {
             <Music className="w-4 h-4 text-primary" />
           </div>
           <h1 className="font-display font-bold text-xl text-gradient">
-            Sign in to LyricPro Ai
+            {isSignUp ? "Sign up for LyricPro Ai" : "Sign in to LyricPro Ai"}
           </h1>
         </div>
 
@@ -325,7 +331,9 @@ export default function SignIn() {
                   disabled={loading || !email || !password}
                   className="w-full bg-primary text-primary-foreground hover:bg-primary/90 glow-purple"
                 >
-                  {loading ? "Signing in…" : "Sign in"}
+                  {loading
+                    ? (isSignUp ? "Creating account…" : "Signing in…")
+                    : (isSignUp ? "Create account" : "Sign in")}
                 </Button>
                 <button
                   type="button"
