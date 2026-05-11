@@ -188,17 +188,42 @@ You'll come back here to create the OAuth Client ID — that's a separate step d
 18. Click **Download** to download the `.p8` file. **You cannot download this again.** Save it to your password manager / secure vault immediately.
 19. Note your **Team ID**: visible in the top-right of the Apple Developer portal, in your account profile. It's a 10-character alphanumeric string.
 
-### B.4. Supabase Dashboard — enable Apple provider
+### B.4. Generate the Apple client_secret JWT
 
-20. Supabase Dashboard → your project → **Authentication → Providers → Apple**.
-21. Toggle **Enable Sign in with Apple** on.
-22. Fill in:
-    - **Services ID (Client ID):** `ai.intentionai.lyricpro.web`
-    - **Team ID:** [YOUR_TEAM_ID from B.3.19]
-    - **Key ID:** [YOUR_KEY_ID from B.3.17]
-    - **Private Key:** the **entire contents** of the `.p8` file, including the `-----BEGIN PRIVATE KEY-----` and `-----END PRIVATE KEY-----` lines. **Use a plain text editor** (TextEdit, VS Code) to open the file and copy-paste — never Word or Pages, which corrupt line endings.
-    - Important: the `.p8 content` must have LF (Unix) line endings and a trailing newline. If your editor converts to CRLF, use `dos2unix` to fix it before pasting.
-23. Click **Save**.
+> **UI changed (Supabase 2026):** The Apple provider used to accept the raw `.p8` + Team ID + Key ID and generate the client_secret JWT internally. The current Supabase UI requires you to **pre-generate the JWT yourself** and paste it into the single field "Secret Key (for OAuth)". Apple's max client_secret JWT lifetime is 6 months — you'll re-run this script ~5 months out.
+
+20. From the repo root, run the helper script with your four values inline so they never sit in a separate file:
+
+    ```bash
+    APPLE_TEAM_ID=69P5CUC6XR \
+    APPLE_KEY_ID=XXXXXXXXXX \
+    APPLE_SERVICES_ID=ai.intentionai.lyricpro.web \
+    APPLE_P8_PATH=/path/to/AuthKey_XXXXXXXXXX.p8 \
+    node scripts/generate-apple-client-secret.mjs | pbcopy
+    ```
+
+    - Replace `APPLE_KEY_ID` with the 10-char Key ID from B.3 step 17.
+    - Replace `APPLE_P8_PATH` with the path where you saved the `.p8` (typically `~/Downloads/AuthKey_<KEY_ID>.p8`).
+    - `pbcopy` puts the JWT on your macOS clipboard without it appearing in scrollback. (On Linux: replace `pbcopy` with `xclip -selection clipboard`.)
+
+21. The script writes the signed JWT to your clipboard. Verify the script exited cleanly (no error output).
+
+22. **Set a calendar reminder for 5 months from today** to re-run this script before the JWT expires. Without rotation, Apple sign-in will silently break for all users.
+
+### B.5. Supabase Dashboard — enable Apple provider
+
+> **UI label note:** Same as Google — the menu entry is **Sign In / Providers** (under "CONFIGURATION"), NOT "Providers" alone. Do NOT click "OAuth Apps" or "OAuth Server".
+
+23. Supabase Dashboard → your **lyricpro** project → left nav → **Authentication** → **Sign In / Providers**.
+24. Find **Apple** in the Auth Providers list → click to expand.
+25. Fill in:
+    - **Enable Sign in with Apple:** toggle ON.
+    - **Client IDs:** `ai.intentionai.lyricpro.web` (the Services ID — NOT the App ID, NOT prefixed with Team ID).
+    - **Secret Key (for OAuth):** **Cmd+V** to paste the JWT from your clipboard (generated in B.4). The field shows it masked once saved.
+    - **Allow users without an email:** leave **OFF**. Apple's private-relay flow still issues a relay email address (`xyz@privaterelay.appleid.com`), so we always receive one. Turning this ON would also allow Apple to send users through with NO email at all — breaks our user-row provisioning.
+    - **Callback URL (for OAuth):** read-only, Supabase displays the URL it already uses (`https://lkjxhpcowfzwbvtpnevz.supabase.co/auth/v1/callback`). This is informational only — you already pasted it into Apple Developer's Services ID Return URLs in B.2.
+26. Click **Save**.
+27. **Verify the save persisted:** reload the page, re-open the Apple provider row, and confirm the toggle is still ON and the Secret Key field shows masked dots (`••••••••`). If the toggle flipped back off, the JWT was malformed — re-run B.4 and re-paste.
 
 ### B.5. Verify Supabase Auth version
 
