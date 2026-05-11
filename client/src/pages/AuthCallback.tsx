@@ -4,22 +4,27 @@ import { supabase } from "@/lib/supabase";
 import { Button } from "@/components/ui/button";
 import { Music, ShieldCheck } from "lucide-react";
 
-// Click-to-confirm sign-in interstitial.
+// Sign-in callback. Handles two return-trip shapes:
 //
-// On magic-link click the URL looks like /auth/callback?code=<opaque> (PKCE)
-// or /auth/callback#access_token=... (implicit). Industry research consistently
-// flags corporate URL scanners (Outlook Safe Links, Microsoft Defender,
-// Mimecast, Proofpoint, Barracuda) that pre-fetch every link in an email
-// before the user clicks. If we exchange the code on page load, those
-// scanners burn the single-use token and the human's click lands on
-// "expired or already used."
+// 1) OAuth (Google / Apple): user just clicked a button on /signin moments
+//    ago, sessionStorage carries `lp-oauth-in-flight=1`. Exchange the code
+//    immediately and redirect home — no interstitial, no scanner concern
+//    (this URL was never sent through email).
 //
-// Defense: GET only PARSES the URL. The actual exchange runs only inside
-// a real user-gesture button click. Headless scanners that GET the page
-// don't click "Continue", so the token survives until the human arrives.
-// Same change also fixes the in-app webview class of bug — the user can
-// see the "Continue" page and choose to open it in their real browser
-// before the token is consumed.
+// 2) Magic link (?code= or #access_token=...): the link is in an email
+//    that may pass through corporate URL scanners (Outlook Safe Links,
+//    Microsoft Defender, Mimecast, Proofpoint, Barracuda) which pre-fetch
+//    links before the human clicks. Defense: GET only PARSES the URL.
+//    The actual exchange runs only inside a real user-gesture button
+//    click. Headless scanners that GET the page don't click "Continue",
+//    so the token survives until the human arrives. Same change also
+//    addresses the in-app webview class of bug — the user can see the
+//    "Continue" page and choose to open it in their real browser before
+//    the token is consumed.
+//
+// Note on PKCE: the supabase client is configured with
+// detectSessionInUrl: false in lib/supabase.ts; we are the sole exchanger
+// of the code on this page.
 
 export default function AuthCallback() {
   const [, navigate] = useLocation();
@@ -28,8 +33,9 @@ export default function AuthCallback() {
   const [phase, setPhase] = useState<"ready" | "exchanging" | "error">("ready");
   const [errorMsg, setErrorMsg] = useState<string>("");
 
-  // ── Mount: parse the URL only — do NOT touch the token yet. ─────────────
+  // ── Mount: parse the URL; for OAuth, exchange immediately. ──────────────
   useEffect(() => {
+    let cancelled = false;
     const url = new URL(window.location.href);
 
     // Supabase sends error info as query params on failure. Surface
@@ -42,8 +48,43 @@ export default function AuthCallback() {
       return;
     }
 
-    // PKCE path — capture the code but DO NOT exchange yet.
     const code = url.searchParams.get("code");
+    const hasHash = !!(window.location.hash && window.location.hash.length > 1);
+
+    // Was this return-trip initiated by an OAuth button click in this
+    // tab? If so, skip the click-to-confirm interstitial — the URL was
+    // never emailed, so scanner-prefetch isn't a concern.
+    let oauthInFlight = false;
+    try {
+      oauthInFlight = sessionStorage.getItem("lp-oauth-in-flight") === "1";
+      if (oauthInFlight) sessionStorage.removeItem("lp-oauth-in-flight");
+    } catch {
+      // Private mode etc. — fall through to click-to-confirm path.
+    }
+
+    if (oauthInFlight && code) {
+      (async () => {
+        setPhase("exchanging");
+        try {
+          const { error } = await supabase.auth.exchangeCodeForSession(code);
+          if (error) throw error;
+          if (cancelled) return;
+          window.history.replaceState(null, "", "/");
+          navigate("/");
+        } catch (e) {
+          if (cancelled) return;
+          const msg = e instanceof Error ? e.message : "Unknown error";
+          console.error("[AuthCallback:oauth]", msg, e);
+          setErrorMsg(msg);
+          setPhase("error");
+        }
+      })();
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    // PKCE path (magic link) — capture the code but DO NOT exchange yet.
     if (code) {
       setAuthCode(code);
       return;
@@ -53,7 +94,7 @@ export default function AuthCallback() {
     // Fragments don't get sent to corporate scanners (they're client-side
     // only), so the prefetch problem doesn't apply here. We still gate
     // session creation behind the click for consistency.
-    if (window.location.hash && window.location.hash.length > 1) {
+    if (hasHash) {
       setHasFragment(true);
       return;
     }
@@ -61,7 +102,7 @@ export default function AuthCallback() {
     // No code, no fragment, no error — user landed here directly.
     setErrorMsg("This page is reached after clicking a sign-in link. If you got here some other way, head back to sign in.");
     setPhase("error");
-  }, []);
+  }, [navigate]);
 
   // ── Click handler: NOW exchange the code for a session. ─────────────────
   const handleConfirm = async () => {
@@ -71,9 +112,11 @@ export default function AuthCallback() {
         const { error } = await supabase.auth.exchangeCodeForSession(authCode);
         if (error) throw error;
       }
-      // For the implicit-fragment path, supabase-js's detectSessionInUrl
-      // has already parsed the fragment by now — we just verify a session
-      // landed below. No code exchange needed.
+      // Implicit-fragment path is effectively dead under PKCE (flowType:
+      // "pkce" in lib/supabase.ts means Supabase doesn't issue implicit
+      // tokens). If we got here via a legacy emailed fragment URL,
+      // getSession() will return null and the "no session created" branch
+      // below handles it gracefully — user is bounced back to /signin.
 
       const { data, error: sessErr } = await supabase.auth.getSession();
       if (sessErr) throw sessErr;

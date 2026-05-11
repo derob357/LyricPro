@@ -18,19 +18,21 @@ export const supabase = createClient(url ?? "", key ?? "", {
   auth: {
     persistSession: true,
     autoRefreshToken: true,
-    detectSessionInUrl: true, // handles the magic-link / OAuth redirect
     // PKCE binds the code-exchange to the originating browser via a
     // code_verifier stored in localStorage. Mitigates code-interception
     // attacks on the OAuth redirect. RFC 9700 deprecates implicit flow.
-    // supabase-js handles the exchange automatically via
-    // detectSessionInUrl: true; AuthCallback.tsx also calls
-    // exchangeCodeForSession() explicitly for the click-to-confirm UX
-    // that defends against corporate email scanner link prefetching.
-    // Note: magic links opened in a *different* browser lose the verifier,
-    // but Supabase OTP magic-links are single-use server-side codes — the
-    // verifier concern applies to OAuth provider flows, not OTP. Surfaced
-    // by Wave 0 baseline scan finding CA-13.
     flowType: "pkce",
+    // detectSessionInUrl is OFF on purpose. With it on, supabase-js
+    // auto-exchanges the ?code= query param during _initialize() and
+    // deletes the code_verifier from storage. That races AuthCallback.tsx
+    // (which also calls exchangeCodeForSession for the magic-link
+    // click-to-confirm UX), producing AuthPKCECodeVerifierMissingError
+    // on the second exchange attempt. Each callback page exchanges
+    // explicitly: AuthCallback.tsx (OAuth + magic-link) and
+    // PasswordReset.tsx (recovery). Under PKCE this is also strictly
+    // safer — only the originating browser holds the verifier, so a
+    // scanner prefetch of /auth/callback?code= cannot burn the token.
+    detectSessionInUrl: false,
   },
 });
 

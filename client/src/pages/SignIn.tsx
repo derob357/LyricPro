@@ -131,6 +131,16 @@ export default function SignIn() {
         // if the 'name' scope is requested. Subsequent sign-ins omit name claims.
         oauthOptions.scopes = "name email";
       }
+      // Tell AuthCallback.tsx this return-trip is an OAuth flow so it skips
+      // the magic-link click-to-confirm interstitial and exchanges
+      // immediately. sessionStorage survives the redirect to Google and
+      // back, and is per-tab so concurrent magic-link tabs aren't affected.
+      try {
+        sessionStorage.setItem("lp-oauth-in-flight", "1");
+      } catch {
+        // Private-mode browsers may block sessionStorage; AuthCallback
+        // gracefully falls back to the click-to-confirm path in that case.
+      }
       const { error } = await supabase.auth.signInWithOAuth({
         provider,
         options: oauthOptions,
@@ -138,6 +148,7 @@ export default function SignIn() {
       if (error) throw error;
       // signInWithOAuth redirects the browser — no further code runs here.
     } catch (err) {
+      try { sessionStorage.removeItem("lp-oauth-in-flight"); } catch { /* ignore */ }
       toast.error(
         err instanceof Error ? err.message : `Failed to start ${provider} sign-in`
       );

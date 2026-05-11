@@ -15,11 +15,13 @@ import {
 } from "@/lib/passwordValidation";
 
 // Landing page after a user clicks the password-reset link in their email.
-// At this point Supabase has populated a recovery session in the URL hash;
-// supabase-js parses it on load. We only need to call updateUser({ password }).
+// The link carries a PKCE ?code= we must exchange ourselves — the supabase
+// client has detectSessionInUrl: false to avoid races on /auth/callback,
+// so no auto-exchange happens here either. Once exchanged, the recovery
+// session is active and updateUser({ password }) can run.
 //
-// If the user lands here without a recovery session (link expired, opened
-// directly), we surface an error and bounce them to /signin.
+// If the user lands here without a code or with an expired/invalid one,
+// we surface an error and bounce them to /signin.
 
 export default function PasswordReset() {
   const [, navigate] = useLocation();
@@ -30,13 +32,27 @@ export default function PasswordReset() {
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
-    // supabase-js auto-parses the URL hash on load (#access_token=...).
-    // Listen once for the recovery session, or check synchronously.
     let cancelled = false;
-    supabase.auth.getSession().then(({ data }) => {
-      if (cancelled) return;
-      setHasSession(!!data.session);
-    });
+    (async () => {
+      try {
+        const url = new URL(window.location.href);
+        const code = url.searchParams.get("code");
+        if (code) {
+          const { error } = await supabase.auth.exchangeCodeForSession(code);
+          if (cancelled) return;
+          if (!error) {
+            // Strip the code from the URL bar so a refresh doesn't retry.
+            url.searchParams.delete("code");
+            window.history.replaceState(null, "", url.pathname + url.search);
+          }
+        }
+        const { data } = await supabase.auth.getSession();
+        if (cancelled) return;
+        setHasSession(!!data.session);
+      } catch {
+        if (!cancelled) setHasSession(false);
+      }
+    })();
     return () => { cancelled = true; };
   }, []);
 
