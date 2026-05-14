@@ -321,6 +321,21 @@ export const songs = pgTable("songs", {
   inCuratedBank: boolean("in_curated_bank").default(false).notNull(),
   // curator_notes: free-text song-level notes from the curator.
   curatorNotes: text("curator_notes"),
+  // ── PRO-grade licensing metadata (Phase 0 of admin-audit-and-ddex-logging) ──
+  iswc: varchar("iswc", { length: 15 }),
+  isrc: varchar("isrc", { length: 15 }),
+  songwriters: jsonb("songwriters")
+    .$type<Array<{ name: string; share?: number; ipiNumber?: string }>>()
+    .default([])
+    .notNull(),
+  publishers: jsonb("publishers")
+    .$type<Array<{ name: string; share?: number; territory?: string }>>()
+    .default([])
+    .notNull(),
+  lyricSourceProvider: lyricSourceProviderEnum("lyric_source_provider")
+    .default("internal")
+    .notNull(),
+  providerTrackId: varchar("provider_track_id", { length: 64 }),
   // Aggregate counters seeded by scripts/backfill-song-displays.mjs and
   // updated transactionally by getNextSong. Used to power the global
   // over-show penalty in selection + the admin usage report. song_displays
