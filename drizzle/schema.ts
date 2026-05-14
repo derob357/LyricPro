@@ -6,6 +6,7 @@ import {
   integer,
   jsonb,
   pgEnum,
+  pgSchema,
   pgTable,
   primaryKey,
   serial,
@@ -13,6 +14,7 @@ import {
   text,
   timestamp,
   uniqueIndex,
+  uuid,
   varchar,
 } from "drizzle-orm/pg-core";
 
@@ -1000,3 +1002,64 @@ export const gameplayItems = pgTable(
 
 export type GameplayItem = typeof gameplayItems.$inferSelect;
 export type InsertGameplayItem = typeof gameplayItems.$inferInsert;
+
+// ─── Audit: admin_actions ─────────────────────────────────────────────────
+// Append-only forensics log of every admin action. Hard-immutable at the DB
+// level — the migration also runs REVOKE UPDATE/DELETE + a deny-change
+// trigger because Supabase service_role bypasses RLS. We declare the table
+// inline here so Drizzle can introspect it for queries; the immutability
+// enforcement happens in raw SQL in the migration (Task 0.6).
+//
+// Lives in the `audit` Postgres schema. Drizzle's pgTable accepts a schema
+// via the second argument syntax `pgTable('admin_actions', {...}, () => ({
+// schema: 'audit' }))` — but the recommended pattern is `pgSchema` so we
+// use that.
+export const auditSchema = pgSchema("audit");
+
+export const adminActions = auditSchema.table("admin_actions", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  occurredAt: timestamp("occurred_at", { withTimezone: true })
+    .defaultNow()
+    .notNull(),
+  actorType: varchar("actor_type", { length: 16 }).notNull(),
+  actorId: integer("actor_id"),
+  actorEmail: varchar("actor_email", { length: 320 }),
+  action: varchar("action", { length: 64 }).notNull(),
+  targetType: varchar("target_type", { length: 32 }).notNull(),
+  targetId: varchar("target_id", { length: 64 }).notNull(),
+  targetVariantIndex: integer("target_variant_index"),
+  payload: jsonb("payload").$type<{
+    before?: Record<string, unknown>;
+    after?: Record<string, unknown>;
+    params?: Record<string, unknown>;
+    reason?: string;
+  }>().default({}).notNull(),
+  requestId: varchar("request_id", { length: 64 }),
+  ipTruncated: text("ip_truncated"), // 'inet' type maps to text in drizzle here
+  userAgent: text("user_agent"),
+}, (t) => ({
+  actorIdx: index("idx_admin_actions_actor").on(t.actorId, t.occurredAt),
+  targetIdx: index("idx_admin_actions_target").on(
+    t.targetType,
+    t.targetId,
+    t.occurredAt
+  ),
+  actionIdx: index("idx_admin_actions_action").on(t.action, t.occurredAt),
+}));
+
+export type AdminActionRow = typeof adminActions.$inferSelect;
+export type InsertAdminActionRow = typeof adminActions.$inferInsert;
+
+export const adminActionsRedactions = auditSchema.table(
+  "admin_actions_redactions",
+  {
+    actionId: uuid("action_id")
+      .primaryKey()
+      .references(() => adminActions.id),
+    redactedAt: timestamp("redacted_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    reason: text("reason").notNull(),
+    fields: text("fields").array().notNull(),
+  },
+);
