@@ -16,6 +16,9 @@ import ProfileCompletion from "./pages/ProfileCompletion";
 import { UserDashboard } from "./pages/UserDashboard";
 import { AdminDashboard } from "./pages/AdminDashboard";
 import UsageReport from "./pages/UsageReport";
+import SongsList from "./pages/admin/SongsList";
+import SongEdit from "./pages/admin/SongEdit";
+import SongNew from "./pages/admin/SongNew";
 import SignIn from "./pages/SignIn";
 import AuthCallback from "./pages/AuthCallback";
 import AccountSecurity from "./pages/AccountSecurity";
@@ -48,6 +51,9 @@ function Router() {
       <Route path="/leaderboards" component={Leaderboards} />
       <Route path="/dashboard" component={UserDashboard} />
       <Route path="/admin" component={AdminDashboard} />
+      <Route path="/admin/songs" component={SongsList} />
+      <Route path="/admin/songs/new" component={SongNew} />
+      <Route path="/admin/songs/:id" component={SongEdit} />
       <Route path="/admin/usage" component={UsageReport} />
       <Route path="/signin" component={SignIn} />
       <Route path="/auth/callback" component={AuthCallback} />
