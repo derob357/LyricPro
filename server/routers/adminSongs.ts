@@ -69,4 +69,14 @@ export const adminSongsRouter = router({
         nextCursor: hasMore ? trimmed[trimmed.length - 1].id : null,
       };
     }),
+
+  get: adminProcedure
+    .input(z.object({ id: z.number().int() }))
+    .query(async ({ input }) => {
+      const db = await getDb();
+      if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "DB unavailable" });
+      const [row] = await db.select().from(songs).where(eq(songs.id, input.id)).limit(1);
+      if (!row) throw new TRPCError({ code: "NOT_FOUND" });
+      return row;
+    }),
 });

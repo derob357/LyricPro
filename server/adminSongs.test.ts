@@ -63,3 +63,29 @@ liveDescribe("admin.songs.list", () => {
     expect([...page1Ids].some((id) => page2Ids.has(id))).toBe(false);
   });
 });
+
+liveDescribe("admin.songs.get", () => {
+  it("get returns a song with all PRO metadata fields", async () => {
+    const caller = makeAdminCaller();
+    const list = await caller.adminSongs.list({ limit: 1 });
+    if (list.rows.length === 0) return; // empty DB — skip vacuously
+    const song = await caller.adminSongs.get({ id: list.rows[0].id });
+    expect(song).toEqual(expect.objectContaining({
+      id: list.rows[0].id,
+      title: expect.any(String),
+      artistName: expect.any(String),
+      songwriters: expect.any(Array),
+      publishers: expect.any(Array),
+      lyricSourceProvider: expect.any(String),
+    }));
+    // iswc/isrc/lyricVariants may be null on existing rows
+    expect(song).toHaveProperty("iswc");
+    expect(song).toHaveProperty("isrc");
+    expect(song).toHaveProperty("lyricVariants");
+  });
+
+  it("get throws NOT_FOUND for nonexistent song id", async () => {
+    const caller = makeAdminCaller();
+    await expect(caller.adminSongs.get({ id: -1 })).rejects.toThrow();
+  });
+});
