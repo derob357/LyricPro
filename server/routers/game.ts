@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { and, eq, gte, inArray, isNotNull, ne, notInArray, sql } from "drizzle-orm";
 import { TRPCError } from "@trpc/server";
+import { createHash } from "node:crypto";
 import { router, publicProcedure, protectedProcedure } from "../_core/trpc";
 import { rateLimit } from "../_core/rateLimit";
 import { getDb } from "../db";
@@ -17,6 +18,15 @@ import {
   loadVariantsForSongs,
   type Variant,
 } from "../_core/variantReader";
+
+// Hashes a userId with USER_HASH_PEPPER for storage in song_displays.user_id_hashed.
+// Exported for test coverage. Uses a fixed fallback pepper in dev when the env
+// var is missing — production MUST have USER_HASH_PEPPER set or the hashes
+// across sessions become predictable.
+export function hashUserId(userId: number): string {
+  const pepper = process.env.USER_HASH_PEPPER ?? "dev-fallback-pepper-not-for-prod";
+  return createHash("sha256").update(`${userId}${pepper}`).digest("hex");
+}
 
 const STREAK_INSURANCE_PRICE_GN = 3;
 const HINT_PRICE_GN = 1;
@@ -760,7 +770,10 @@ export const gameRouter = router({
       // window and the usage report. Back-to-back rather than wrapped in a
       // transaction to match the surrounding style — the worst case if the
       // counter UPDATE fails is one missing display row, not a corrupt game.
+      // pickedVariant.prompt is the lyric text actually displayed.
+      const promptShown = pickedVariant.prompt;
       await db.insert(songDisplays).values({
+        // Original fields
         songId: song.id,
         userId: dedupUserId,
         guestToken: dedupGuestToken
@@ -768,6 +781,19 @@ export const gameRouter = router({
           : null,
         roomCode: room.roomCode ?? null,
         variantIndex: pickedVariantIndex,
+        // DDEX-ready fields (Phase 1 Track B)
+        territoryCode: ctx.countryCode ?? null,
+        // durationOfUseSeconds: NULL at insert; updated on round end (Task 1B.2)
+        lyricFragmentLengthChars: promptShown.length,
+        lyricFragmentLengthLines: promptShown.split("\n").length,
+        commercialModelType: "free", // Upgrade when subscriptionEnforcement integrates
+        serviceDescription: "lyricpro-web",
+        grossRevenuePerEventMicros: 0,
+        currencyCode: "USD",
+        attributionServed: null, // Populated when LyricFind/Musixmatch is wired
+        userIdHashed: dedupUserId !== null ? hashUserId(dedupUserId) : null,
+        sessionId: room.roomCode ?? (dedupGuestToken?.slice(0, 64) ?? null),
+        // reportingPeriodYyyymm is a GENERATED column — Postgres computes it
       });
       await db
         .update(songs)
