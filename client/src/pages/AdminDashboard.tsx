@@ -6,6 +6,9 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell } from "recharts";
 import { TrendingUp, Users, DollarSign, Trophy, ListMusic } from "lucide-react";
 import { Link } from "wouter";
+import SongsTab from "./admin/tabs/SongsTab";
+import LogTab from "./admin/tabs/LogTab";
+import UsageTab from "./admin/tabs/UsageTab";
 
 const formatCurrency = (amount: number) => {
   return new Intl.NumberFormat('en-US', {
@@ -121,11 +124,14 @@ export function AdminDashboard() {
 
         {/* Tabs */}
         <Tabs defaultValue="overview" className="w-full">
-          <TabsList className="grid w-full grid-cols-4">
+          <TabsList className="grid w-full grid-cols-4 md:grid-cols-7">
             <TabsTrigger value="overview">Overview</TabsTrigger>
             <TabsTrigger value="users">Users</TabsTrigger>
             <TabsTrigger value="revenue">Revenue</TabsTrigger>
             <TabsTrigger value="payouts">Payouts</TabsTrigger>
+            <TabsTrigger value="songs">Songs</TabsTrigger>
+            <TabsTrigger value="log">Log</TabsTrigger>
+            <TabsTrigger value="usage">Usage</TabsTrigger>
           </TabsList>
 
           {/* Overview Tab */}
@@ -251,6 +257,15 @@ export function AdminDashboard() {
               <Button className="w-full mt-6">View Payout History</Button>
             </Card>
           </TabsContent>
+
+          {/* Songs Tab */}
+          <TabsContent value="songs"><SongsTab /></TabsContent>
+
+          {/* Log Tab */}
+          <TabsContent value="log"><LogTab /></TabsContent>
+
+          {/* Usage Tab */}
+          <TabsContent value="usage"><UsageTab /></TabsContent>
         </Tabs>
       </div>
     </div>
