@@ -956,11 +956,21 @@ export const gameRouter = router({
         displayConditions.push(eq(songDisplays.guestToken, scoringGuestToken.slice(0, 64)));
       }
       const [latestDisplay] = await db
-        .select({ variantIndex: songDisplays.variantIndex })
+        .select({ id: songDisplays.id, variantIndex: songDisplays.variantIndex })
         .from(songDisplays)
         .where(and(...displayConditions))
         .orderBy(sql`${songDisplays.shownAt} DESC`)
         .limit(1);
+      // Phase 1 Track B: stamp duration_of_use_seconds on the matched display row
+      // so the usage report and DDEX export know how long the lyric was on screen.
+      // `responseTimeSeconds` is provided by the client; cap and floor for sanity.
+      if (latestDisplay?.id !== undefined) {
+        const duration = Math.max(0, Math.min(3600, Math.floor(input.responseTimeSeconds)));
+        await db
+          .update(songDisplays)
+          .set({ durationOfUseSeconds: duration })
+          .where(eq(songDisplays.id, latestDisplay.id));
+      }
       // Phase 5c: same dual-path resolver as getNextSong. The variantIndex
       // stored in song_displays must map to the same variant the player
       // saw — verified symmetric across all live data on 2026-05-05.
