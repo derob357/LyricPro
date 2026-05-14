@@ -1,7 +1,7 @@
 import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import NotFound from "@/pages/NotFound";
-import { Route, Switch, useSearch } from "wouter";
+import { Route, Switch, Redirect, useSearch } from "wouter";
 import ErrorBoundary from "./components/ErrorBoundary";
 import { ThemeProvider } from "./contexts/ThemeContext";
 import Home from "./pages/Home";
@@ -15,7 +15,6 @@ import Leaderboards from "./pages/Leaderboards";
 import ProfileCompletion from "./pages/ProfileCompletion";
 import { UserDashboard } from "./pages/UserDashboard";
 import { AdminDashboard } from "./pages/AdminDashboard";
-import UsageReport from "./pages/UsageReport";
 import SongsList from "./pages/admin/SongsList";
 import SongEdit from "./pages/admin/SongEdit";
 import SongNew from "./pages/admin/SongNew";
@@ -54,7 +53,7 @@ function Router() {
       <Route path="/admin/songs" component={SongsList} />
       <Route path="/admin/songs/new" component={SongNew} />
       <Route path="/admin/songs/:id" component={SongEdit} />
-      <Route path="/admin/usage" component={UsageReport} />
+      <Route path="/admin/usage">{() => <Redirect to="/admin?tab=usage" />}</Route>
       <Route path="/signin" component={SignIn} />
       <Route path="/auth/callback" component={AuthCallback} />
       <Route path="/auth/reset-password" component={PasswordReset} />

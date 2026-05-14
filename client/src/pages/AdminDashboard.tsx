@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell } from "recharts";
 import { TrendingUp, Users, DollarSign, Trophy, ListMusic } from "lucide-react";
-import { Link } from "wouter";
+import { Link, useSearch } from "wouter";
 import SongsTab from "./admin/tabs/SongsTab";
 import LogTab from "./admin/tabs/LogTab";
 import UsageTab from "./admin/tabs/UsageTab";
@@ -17,9 +17,20 @@ const formatCurrency = (amount: number) => {
   }).format(amount);
 };
 
+const VALID_TABS = ["overview", "users", "revenue", "payouts", "songs", "log", "usage"] as const;
+type TabValue = typeof VALID_TABS[number];
+
 export function AdminDashboard() {
   const { user } = useAuth();
   const { data: metrics, isLoading } = trpc.monetization.getAdminMetrics.useQuery();
+
+  // Read ?tab= from URL so /admin?tab=usage deep-links to the Usage tab.
+  const search = useSearch();
+  const tabParam = new URLSearchParams(search).get("tab");
+  const defaultTab: TabValue =
+    tabParam && (VALID_TABS as readonly string[]).includes(tabParam)
+      ? (tabParam as TabValue)
+      : "overview";
 
   // Redirect if not admin
   if (user?.role !== "admin") {
@@ -123,7 +134,7 @@ export function AdminDashboard() {
         </div>
 
         {/* Tabs */}
-        <Tabs defaultValue="overview" className="w-full">
+        <Tabs defaultValue={defaultTab} className="w-full">
           <TabsList className="grid w-full grid-cols-4 md:grid-cols-7">
             <TabsTrigger value="overview">Overview</TabsTrigger>
             <TabsTrigger value="users">Users</TabsTrigger>
