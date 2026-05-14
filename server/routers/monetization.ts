@@ -1,4 +1,4 @@
-import { router, protectedProcedure, publicProcedure } from "../_core/trpc";
+import { router, protectedProcedure, publicProcedure, adminProcedure } from "../_core/trpc";
 import { z } from "zod";
 import {
   createSubscriptionCheckout,
@@ -255,14 +255,7 @@ export const monetizationRouter = router({
 
   // ─── Admin Procedures ────────────────────────────────────────────────────
 
-  getAdminMetrics: protectedProcedure.query(async ({ ctx }) => {
-    if (ctx.user.role !== "admin") {
-      throw new TRPCError({
-        code: "FORBIDDEN",
-        message: "Only admins can view metrics",
-      });
-    }
-
+  getAdminMetrics: adminProcedure.query(async () => {
     return await getAdminMetrics();
   }),
 
