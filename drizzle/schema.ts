@@ -169,6 +169,20 @@ export const qaStatusEnum = pgEnum("qa_status", [
   "blocked",
 ]);
 
+export const lyricSourceProviderEnum = pgEnum("lyric_source_provider", [
+  "internal",
+  "lyricfind",
+  "musixmatch",
+  "direct_publisher",
+]);
+
+export const commercialModelEnum = pgEnum("commercial_model", [
+  "free",
+  "subscription",
+  "ad_supported",
+  "entry_fee",
+]);
+
 // Shared helper: all tables with an `updatedAt` use Drizzle's $onUpdate to
 // mirror MySQL's `ON UPDATE CURRENT_TIMESTAMP`. Postgres has no native
 // equivalent — the ORM layer rewrites the value on every UPDATE issued
