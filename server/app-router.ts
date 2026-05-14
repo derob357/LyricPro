@@ -10,6 +10,7 @@ import { goldenNotesRouter } from "./routers/goldenNotes";
 import { avatarsRouter } from "./routers/avatars";
 import { insightsRouter } from "./routers/insights";
 import { adminRouter } from "./routers/admin";
+import { adminSongsRouter } from "./routers/adminSongs";
 import { getDb } from "./db";
 import { z } from "zod";
 import { eq } from "drizzle-orm";
@@ -311,6 +312,7 @@ export const appRouter = router({
   avatars: avatarsRouter,
   insights: insightsRouter,
   admin: adminRouter,
+  adminSongs: adminSongsRouter,
 });
 
 export type AppRouter = typeof appRouter;
