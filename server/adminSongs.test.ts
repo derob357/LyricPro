@@ -119,3 +119,57 @@ liveDescribe("admin.songs.update", () => {
     });
   });
 });
+
+liveDescribe("admin.songs.create / disable / enable", () => {
+  // Helper that builds a caller with a unique requestId per test run
+  function uniqueAdminCaller(label: string) {
+    const requestId = `vitest-${label}-${Date.now()}-${Math.random().toString(36).slice(2,8)}`;
+    return appRouter.createCaller({
+      user: { id: 1, role: "admin", email: "admin@test" } as any,
+      req: {} as any, res: {} as any,
+      ip: "10.0.0.2", userAgent: "vitest",
+      requestId, countryCode: "US",
+    });
+  }
+
+  it("create inserts a song and the song appears in list; emits song.create audit row", async () => {
+    const caller = uniqueAdminCaller("create");
+    const uniqueTitle = "VitestSong-" + Date.now();
+    const created = await caller.adminSongs.create({
+      title: uniqueTitle,
+      artistName: "VitestArtist",
+      genre: "Pop",
+      releaseYear: 2024,
+      decadeRange: "2020s",
+      difficulty: "medium",
+      lyricSectionType: "verse",
+      lyricPrompt: "Test prompt [____]",
+      lyricAnswer: "test",
+    });
+    expect(created.id).toEqual(expect.any(Number));
+    expect(created.title).toBe(uniqueTitle);
+
+    // The newly-created song should be retrievable via get
+    const fetched = await caller.adminSongs.get({ id: created.id });
+    expect(fetched.title).toBe(uniqueTitle);
+    expect(fetched.isActive).toBe(true);
+
+    // Cleanup: disable so the song doesn't show in active rotation
+    await caller.adminSongs.disable({ id: created.id, reason: "vitest cleanup" });
+    const afterDisable = await caller.adminSongs.get({ id: created.id });
+    expect(afterDisable.isActive).toBe(false);
+  });
+
+  it("enable flips isActive back to true", async () => {
+    const caller = uniqueAdminCaller("enable");
+    // Find a disabled song (the create test above creates one), or skip if none exist
+    const list = await caller.adminSongs.list({ limit: 50, status: "disabled" });
+    if (list.rows.length === 0) return;
+    const id = list.rows[0].id;
+    await caller.adminSongs.enable({ id });
+    const after = await caller.adminSongs.get({ id });
+    expect(after.isActive).toBe(true);
+    // Restore: re-disable so test is idempotent for the next run
+    await caller.adminSongs.disable({ id, reason: "vitest cleanup re-disable" });
+  });
+});

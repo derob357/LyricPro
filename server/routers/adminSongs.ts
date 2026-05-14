@@ -136,4 +136,76 @@ export const adminSongsRouter = router({
         return after;
       });
     }),
+
+  create: adminProcedure
+    .input(songPatchSchema.extend({
+      title: z.string().min(1).max(256),
+      artistName: z.string().min(1).max(256),
+      genre: z.string().max(64),
+      releaseYear: z.number().int(),
+      decadeRange: z.string().max(32),
+      difficulty: z.enum(["low", "medium", "high"]),
+      lyricSectionType: z.enum(["chorus","hook","verse","call-response","bridge"]),
+      lyricPrompt: z.string(),
+      lyricAnswer: z.string(),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      const db = await getDb();
+      if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "DB unavailable" });
+      return await db.transaction(async (tx) => {
+        const [inserted] = await tx.insert(songs).values(input as any).returning();
+        await recordAdminAction({
+          ctx, tx,
+          action: "song.create",
+          targetType: "song",
+          targetId: String(inserted.id),
+          payload: { after: inserted, params: input },
+        });
+        return inserted;
+      });
+    }),
+
+  disable: adminProcedure
+    .input(z.object({ id: z.number().int(), reason: z.string().optional() }))
+    .mutation(async ({ ctx, input }) => {
+      const db = await getDb();
+      if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "DB unavailable" });
+      return await db.transaction(async (tx) => {
+        const [before] = await tx.select().from(songs).where(eq(songs.id, input.id)).limit(1);
+        if (!before) throw new TRPCError({ code: "NOT_FOUND" });
+        const [after] = await tx
+          .update(songs).set({ isActive: false, updatedAt: new Date() })
+          .where(eq(songs.id, input.id)).returning();
+        await recordAdminAction({
+          ctx, tx,
+          action: "song.disable",
+          targetType: "song",
+          targetId: String(input.id),
+          payload: { before, after, reason: input.reason },
+        });
+        return after;
+      });
+    }),
+
+  enable: adminProcedure
+    .input(z.object({ id: z.number().int() }))
+    .mutation(async ({ ctx, input }) => {
+      const db = await getDb();
+      if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "DB unavailable" });
+      return await db.transaction(async (tx) => {
+        const [before] = await tx.select().from(songs).where(eq(songs.id, input.id)).limit(1);
+        if (!before) throw new TRPCError({ code: "NOT_FOUND" });
+        const [after] = await tx
+          .update(songs).set({ isActive: true, updatedAt: new Date() })
+          .where(eq(songs.id, input.id)).returning();
+        await recordAdminAction({
+          ctx, tx,
+          action: "song.enable",
+          targetType: "song",
+          targetId: String(input.id),
+          payload: { before, after },
+        });
+        return after;
+      });
+    }),
 });
