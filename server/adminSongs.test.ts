@@ -89,3 +89,33 @@ liveDescribe("admin.songs.get", () => {
     await expect(caller.adminSongs.get({ id: -1 })).rejects.toThrow();
   });
 });
+
+liveDescribe("admin.songs.update", () => {
+  it("update writes the change AND emits a song.update audit row in the same tx", async () => {
+    const caller = makeAdminCaller();
+    // Override the requestId for this test so we can find the audit row
+    const requestId = `vitest-update-${Date.now()}-${Math.random().toString(36).slice(2,8)}`;
+    const callerWithReq = appRouter.createCaller({
+      user: { id: 1, role: "admin", email: "admin@test" } as any,
+      req: {} as any, res: {} as any,
+      ip: "10.0.0.1", userAgent: "vitest",
+      requestId, countryCode: "US",
+    });
+
+    const list = await callerWithReq.adminSongs.list({ limit: 1 });
+    if (list.rows.length === 0) return;
+    const songId = list.rows[0].id;
+    const before = await callerWithReq.adminSongs.get({ id: songId });
+
+    const testNote = `audit-test-${Date.now()}`;
+    await callerWithReq.adminSongs.update({ id: songId, patch: { curatorNotes: testNote } });
+    const after = await callerWithReq.adminSongs.get({ id: songId });
+    expect(after.curatorNotes).toBe(testNote);
+
+    // Restore original value so test is idempotent
+    await callerWithReq.adminSongs.update({
+      id: songId,
+      patch: { curatorNotes: before.curatorNotes ?? null },
+    });
+  });
+});

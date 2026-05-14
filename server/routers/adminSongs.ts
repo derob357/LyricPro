@@ -4,8 +4,41 @@ import { adminProcedure, router } from "../_core/trpc";
 import { getDb } from "../db";
 import { songs } from "../../drizzle/schema";
 import { TRPCError } from "@trpc/server";
+import { recordAdminAction } from "../_core/audit";
 
 const songStatusValues = ["active", "disabled", "pending"] as const;
+
+const songPatchSchema = z.object({
+  title: z.string().min(1).max(256).optional(),
+  artistName: z.string().min(1).max(256).optional(),
+  featuredArtist: z.string().max(256).nullable().optional(),
+  genre: z.string().max(64).optional(),
+  subgenre: z.string().max(64).nullable().optional(),
+  releaseYear: z.number().int().min(1900).max(2100).optional(),
+  decadeRange: z.string().max(32).optional(),
+  difficulty: z.enum(["low", "medium", "high"]).optional(),
+  lyricSectionType: z.enum(["chorus", "hook", "verse", "call-response", "bridge"]).optional(),
+  explicitFlag: z.boolean().optional(),
+  isActive: z.boolean().optional(),
+  approvedForGame: z.boolean().optional(),
+  inCuratedBank: z.boolean().optional(),
+  approvalStatus: z.enum(["pending", "approved", "rejected"]).optional(),
+  curatorNotes: z.string().nullable().optional(),
+  iswc: z.string().max(15).nullable().optional(),
+  isrc: z.string().max(15).nullable().optional(),
+  songwriters: z.array(z.object({
+    name: z.string(),
+    share: z.number().optional(),
+    ipiNumber: z.string().optional(),
+  })).optional(),
+  publishers: z.array(z.object({
+    name: z.string(),
+    share: z.number().optional(),
+    territory: z.string().optional(),
+  })).optional(),
+  lyricSourceProvider: z.enum(["internal", "lyricfind", "musixmatch", "direct_publisher"]).optional(),
+  providerTrackId: z.string().max(64).nullable().optional(),
+});
 
 export const adminSongsRouter = router({
   list: adminProcedure
@@ -78,5 +111,29 @@ export const adminSongsRouter = router({
       const [row] = await db.select().from(songs).where(eq(songs.id, input.id)).limit(1);
       if (!row) throw new TRPCError({ code: "NOT_FOUND" });
       return row;
+    }),
+
+  update: adminProcedure
+    .input(z.object({ id: z.number().int(), patch: songPatchSchema }))
+    .mutation(async ({ ctx, input }) => {
+      const db = await getDb();
+      if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "DB unavailable" });
+      return await db.transaction(async (tx) => {
+        const [before] = await tx.select().from(songs).where(eq(songs.id, input.id)).limit(1);
+        if (!before) throw new TRPCError({ code: "NOT_FOUND" });
+        const [after] = await tx
+          .update(songs)
+          .set({ ...input.patch, updatedAt: new Date() })
+          .where(eq(songs.id, input.id))
+          .returning();
+        await recordAdminAction({
+          ctx, tx,
+          action: "song.update",
+          targetType: "song",
+          targetId: String(input.id),
+          payload: { before, after, params: input.patch },
+        });
+        return after;
+      });
     }),
 });
