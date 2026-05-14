@@ -1,4 +1,5 @@
 import {
+  bigint,
   boolean,
   doublePrecision,
   index,
@@ -378,6 +379,30 @@ export const songDisplays = pgTable(
     // today; extending later requires no schema change.
     variantIndex: integer("variantIndex").default(0).notNull(),
     shownAt: timestamp("shownAt", { withTimezone: true }).defaultNow().notNull(),
+    // ── DDEX-ready event metadata (Phase 0 of admin-audit-and-ddex-logging) ──
+    territoryCode: varchar("territory_code", { length: 2 }),
+    durationOfUseSeconds: integer("duration_of_use_seconds"),
+    lyricFragmentLengthChars: integer("lyric_fragment_length_chars"),
+    lyricFragmentLengthLines: integer("lyric_fragment_length_lines"),
+    commercialModelType: commercialModelEnum("commercial_model_type")
+      .default("free")
+      .notNull(),
+    serviceDescription: varchar("service_description", { length: 64 })
+      .default("lyricpro-web")
+      .notNull(),
+    grossRevenuePerEventMicros: bigint("gross_revenue_per_event_micros", {
+      mode: "number",
+    })
+      .default(0)
+      .notNull(),
+    currencyCode: varchar("currency_code", { length: 3 }).default("USD").notNull(),
+    attributionServed: varchar("attribution_served", { length: 64 }),
+    userIdHashed: varchar("user_id_hashed", { length: 64 }),
+    sessionId: varchar("session_id", { length: 64 }),
+    // Generated column — Drizzle does not yet support GENERATED in TS DSL,
+    // so we declare it as a regular column and the migration SQL converts it.
+    // See Task 0.6 for the ALTER TABLE that adds GENERATED ALWAYS AS.
+    reportingPeriodYyyymm: varchar("reporting_period_yyyymm", { length: 6 }),
   },
   (t) => ({
     userShownAtIdx: index("song_displays_user_shown_at_idx").on(
@@ -389,6 +414,13 @@ export const songDisplays = pgTable(
       t.shownAt,
     ),
     songIdIdx: index("song_displays_song_id_idx").on(t.songId),
+    reportingPeriodSongIdx: index(
+      "song_displays_reporting_period_song_idx"
+    ).on(t.reportingPeriodYyyymm, t.songId),
+    songIdVariantIdx: index("song_displays_song_id_variant_idx").on(
+      t.songId,
+      t.variantIndex,
+    ),
   }),
 );
 
