@@ -7,6 +7,10 @@ export type TrpcContext = {
   req: CreateExpressContextOptions["req"];
   res: CreateExpressContextOptions["res"];
   user: User | null;
+  ip: string | undefined;
+  userAgent: string | undefined;
+  requestId: string | undefined;
+  countryCode: string | undefined;
 };
 
 // Synthesize a deterministic dev user when DEV_AUTH_BYPASS is enabled and
@@ -62,9 +66,27 @@ export async function createContext(
     user = await getOrCreateDevUser();
   }
 
+  const ip = (opts.req.headers["x-forwarded-for"] as string | undefined)
+    ?.split(",")[0]
+    ?.trim()
+    ?? opts.req.ip
+    ?? undefined;
+  const userAgent = opts.req.headers["user-agent"] as string | undefined;
+  const requestId =
+    (opts.req.headers["x-request-id"] as string | undefined) ??
+    (opts.req.headers["x-vercel-id"] as string | undefined) ??
+    undefined;
+  const countryCode =
+    (opts.req.headers["x-vercel-ip-country"] as string | undefined) ??
+    undefined;
+
   return {
     req: opts.req,
     res: opts.res,
     user,
+    ip,
+    userAgent,
+    requestId,
+    countryCode,
   };
 }

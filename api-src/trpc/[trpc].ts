@@ -66,7 +66,26 @@ async function buildContext(req: Request, res: VercelResponse): Promise<TrpcCont
       "0.0.0.0",
     headers: Object.fromEntries(req.headers.entries()),
   } as unknown as TrpcContext["req"];
-  return { req: shimExpressReq, res: res as unknown as TrpcContext["res"], user };
+  const ip =
+    req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ??
+    shimExpressReq.ip ??
+    undefined;
+  const userAgent = req.headers.get("user-agent") ?? undefined;
+  const requestId =
+    req.headers.get("x-request-id") ??
+    req.headers.get("x-vercel-id") ??
+    undefined;
+  const countryCode = req.headers.get("x-vercel-ip-country") ?? undefined;
+
+  return {
+    req: shimExpressReq,
+    res: res as unknown as TrpcContext["res"],
+    user,
+    ip,
+    userAgent,
+    requestId,
+    countryCode,
+  };
 }
 
 export const config = {
