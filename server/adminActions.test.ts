@@ -1,4 +1,15 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
+
+vi.mock("stripe", () => {
+  const Stripe = vi.fn().mockImplementation(() => ({
+    checkout: { sessions: { create: vi.fn() } },
+    webhooks: { constructEvent: vi.fn() },
+    subscriptions: { retrieve: vi.fn() },
+    customers: { search: vi.fn().mockResolvedValue({ data: [] }) },
+  }));
+  return { default: Stripe };
+});
+
 import { appRouter } from "./app-router";
 
 const DB_URL =
