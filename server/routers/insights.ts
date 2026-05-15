@@ -11,6 +11,7 @@ import {
   roomPlayers,
   goldenNoteBalances,
   goldenNoteTransactions,
+  playerProfiles,
 } from "../../drizzle/schema";
 import { nanoid } from "nanoid";
 
@@ -142,6 +143,18 @@ Write ONE sentence (max 22 words) calling out a strength and gently challenging 
 // ── Router ────────────────────────────────────────────────────────────────────
 
 export const insightsRouter = router({
+  /** Returns the AI-computed player profile, or null if not yet computed. */
+  getProfile: protectedProcedure.query(async ({ ctx }) => {
+    const db = await getDb();
+    if (!db) return null;
+    const [row] = await db
+      .select()
+      .from(playerProfiles)
+      .where(eq(playerProfiles.userId, ctx.user.id))
+      .limit(1);
+    return row ?? null;
+  }),
+
   /**
    * Aggregates the last 30 rounds for the authenticated user, identifies the
    * weakest (genre × decade × category) cell, calls Claude Haiku for a 1-line

@@ -539,6 +539,16 @@ export const roundResults = pgTable("round_results", {
 
 export type RoundResult = typeof roundResults.$inferSelect;
 
+// ─── Player Profiles (AI Player Intelligence) ────────────────────────────────
+export const playerProfiles = pgTable("player_profiles", {
+  userId: integer("user_id").primaryKey().references(() => users.id, { onDelete: "cascade" }),
+  profile: jsonb("profile").notNull().default({}),
+  computedAt: timestamp("computed_at", { withTimezone: true }).defaultNow().notNull(),
+  gamesAtCompute: integer("games_at_compute").default(0).notNull(),
+});
+
+export type PlayerProfile = typeof playerProfiles.$inferSelect;
+
 // ─── Leaderboard Entries ──────────────────────────────────────────────────────
 export const leaderboardEntries = pgTable("leaderboard_entries", {
   id: serial("id").primaryKey(),

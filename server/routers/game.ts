@@ -18,6 +18,7 @@ import {
   loadVariantsForSongs,
   type Variant,
 } from "../_core/variantReader";
+import { computePlayerProfile } from "../_core/playerProfile";
 
 // Hashes a userId with USER_HASH_PEPPER for storage in song_displays.user_id_hashed.
 // Exported for test coverage. Uses a fixed fallback pepper in dev when the env
@@ -1362,6 +1363,16 @@ export const gameRouter = router({
               gamesPlayed: sql`${users.gamesPlayed} + 1`,
               totalWins: i === 0 ? sql`${users.totalWins} + 1` : sql`${users.totalWins}`,
             }).where(eq(users.id, p.userId));
+          }
+        }
+
+        // AI Player Intelligence: recompute profiles for all authed players.
+        // Fire-and-forget — never blocks the game-over response.
+        for (const p of players) {
+          if (p.userId) {
+            computePlayerProfile(db, p.userId).catch(err =>
+              console.warn("[playerProfile] compute failed for user", p.userId, err),
+            );
           }
         }
       }
