@@ -7,7 +7,10 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
-import { Plus, Search } from "lucide-react";
+import { Plus, Search, ArrowUp, ArrowDown, ArrowUpDown } from "lucide-react";
+
+type SortColumn = "title" | "artistName" | "genre" | "releaseYear" | "status" | "displayCount";
+type SortDir = "asc" | "desc";
 
 export default function SongsList() {
   const { user } = useAuth();
@@ -15,10 +18,9 @@ export default function SongsList() {
   const [genre, setGenre] = useState<string | undefined>(undefined);
   const [status, setStatus] = useState<"active" | "disabled" | "pending" | undefined>(undefined);
   const [cursor, setCursor] = useState<number | undefined>(undefined);
+  const [sortBy, setSortBy] = useState<SortColumn>("title");
+  const [sortDir, setSortDir] = useState<SortDir>("asc");
 
-  // All hooks must run before any conditional return (Rules of Hooks).
-  // `enabled` skips the network call for non-admins while keeping the hook
-  // call unconditional.
   const { data, isLoading } = trpc.adminSongs.list.useQuery(
     {
       limit: 50,
@@ -26,6 +28,8 @@ export default function SongsList() {
       genre,
       status,
       cursor,
+      sortBy,
+      sortDir,
     },
     { enabled: user?.role === "admin" },
   );
@@ -36,6 +40,16 @@ export default function SongsList() {
         <p className="text-red-600 font-semibold">Access Denied: Admin only</p>
       </div>
     );
+  }
+
+  function toggleSort(col: SortColumn) {
+    if (sortBy === col) {
+      setSortDir(sortDir === "asc" ? "desc" : "asc");
+    } else {
+      setSortBy(col);
+      setSortDir("asc");
+    }
+    setCursor(undefined);
   }
 
   return (
@@ -86,6 +100,7 @@ export default function SongsList() {
               <SelectItem value="Gospel">Gospel</SelectItem>
               <SelectItem value="Soul">Soul</SelectItem>
               <SelectItem value="Jazz">Jazz</SelectItem>
+              <SelectItem value="Reggae">Reggae</SelectItem>
             </SelectContent>
           </Select>
           <Select
@@ -114,13 +129,13 @@ export default function SongsList() {
             <table className="w-full text-sm">
               <thead className="bg-muted/30 text-left">
                 <tr>
-                  <th className="px-4 py-3 font-medium">Title</th>
-                  <th className="px-4 py-3 font-medium">Artist</th>
-                  <th className="px-4 py-3 font-medium">Genre</th>
-                  <th className="px-4 py-3 font-medium">Year</th>
+                  <SortHeader col="title" label="Title" sortBy={sortBy} sortDir={sortDir} onSort={toggleSort} />
+                  <SortHeader col="artistName" label="Artist" sortBy={sortBy} sortDir={sortDir} onSort={toggleSort} />
+                  <SortHeader col="genre" label="Genre" sortBy={sortBy} sortDir={sortDir} onSort={toggleSort} />
+                  <SortHeader col="releaseYear" label="Year" sortBy={sortBy} sortDir={sortDir} onSort={toggleSort} />
                   <th className="px-4 py-3 font-medium">Variants</th>
-                  <th className="px-4 py-3 font-medium">Plays</th>
-                  <th className="px-4 py-3 font-medium">Status</th>
+                  <SortHeader col="displayCount" label="Plays" sortBy={sortBy} sortDir={sortDir} onSort={toggleSort} />
+                  <SortHeader col="status" label="Status" sortBy={sortBy} sortDir={sortDir} onSort={toggleSort} />
                 </tr>
               </thead>
               <tbody>
@@ -153,6 +168,37 @@ export default function SongsList() {
         )}
       </div>
     </div>
+  );
+}
+
+function SortHeader({
+  col,
+  label,
+  sortBy,
+  sortDir,
+  onSort,
+}: {
+  col: SortColumn;
+  label: string;
+  sortBy: SortColumn;
+  sortDir: SortDir;
+  onSort: (col: SortColumn) => void;
+}) {
+  const active = sortBy === col;
+  return (
+    <th
+      className="px-4 py-3 font-medium cursor-pointer select-none hover:bg-muted/40 transition-colors"
+      onClick={() => onSort(col)}
+    >
+      <span className="inline-flex items-center gap-1">
+        {label}
+        {active ? (
+          sortDir === "asc" ? <ArrowUp className="w-3.5 h-3.5" /> : <ArrowDown className="w-3.5 h-3.5" />
+        ) : (
+          <ArrowUpDown className="w-3.5 h-3.5 text-muted-foreground/50" />
+        )}
+      </span>
+    </th>
   );
 }
 

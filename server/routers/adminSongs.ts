@@ -1,5 +1,6 @@
 import { z } from "zod";
-import { and, asc, eq, gt, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gt, sql } from "drizzle-orm";
+import type { AnyColumn } from "drizzle-orm";
 import { adminProcedure, router } from "../_core/trpc";
 import { getDb } from "../db";
 import { songs } from "../../drizzle/schema";
@@ -51,6 +52,8 @@ export const adminSongsRouter = router({
         decade: z.string().optional(),
         status: z.enum(songStatusValues).optional(),
         inCuratedBank: z.boolean().optional(),
+        sortBy: z.enum(["title", "artistName", "genre", "releaseYear", "status", "displayCount"]).default("title"),
+        sortDir: z.enum(["asc", "desc"]).default("asc"),
       }),
     )
     .query(async ({ input }) => {
@@ -75,6 +78,17 @@ export const adminSongsRouter = router({
       if (input.inCuratedBank !== undefined) {
         where.push(eq(songs.inCuratedBank, input.inCuratedBank));
       }
+      const sortColumnMap: Record<string, AnyColumn> = {
+        title: songs.title,
+        artistName: songs.artistName,
+        genre: songs.genre,
+        releaseYear: songs.releaseYear,
+        status: songs.isActive,
+        displayCount: songs.displayCount,
+      };
+      const sortCol = sortColumnMap[input.sortBy] ?? songs.title;
+      const orderFn = input.sortDir === "desc" ? desc : asc;
+
       const rows = await db
         .select({
           id: songs.id,
@@ -93,7 +107,7 @@ export const adminSongsRouter = router({
         })
         .from(songs)
         .where(where.length ? and(...where) : undefined)
-        .orderBy(asc(songs.id))
+        .orderBy(orderFn(sortCol), asc(songs.id))
         .limit(input.limit + 1);
       const hasMore = rows.length > input.limit;
       const trimmed = hasMore ? rows.slice(0, input.limit) : rows;
