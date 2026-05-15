@@ -679,17 +679,34 @@ export const gameRouter = router({
           }
         }
 
-        // Weighted random pick: each candidate's section weight is divided
-        // by log10(1 + displayCount) so globally over-shown songs slide
-        // down without being banned. Songs whose section has weight 0
-        // (low difficulty filtering out verses, etc.) are still excluded.
+        // Weighted random pick with pool-relative normalization.
+        // Compute the median displayCount of the current candidate pool,
+        // then penalize songs above the median exponentially. Songs below
+        // or at the median get full section weight; songs above it decay
+        // as 1 / (1 + excessRatio^2) where excessRatio = (count - median)
+        // / max(median, 1). This self-adjusts: in a thin pool where
+        // everything has high plays, the median is high too, so all songs
+        // compete fairly. In a mixed pool, underplayed songs get strong
+        // preference, driving convergence.
+        const displayCounts = stdCandidateSongs
+          .map(s => s.displayCount ?? 0)
+          .sort((a, b) => a - b);
+        const poolMedian = displayCounts.length > 0
+          ? displayCounts[Math.floor(displayCounts.length / 2)]
+          : 0;
+        const medianDivisor = Math.max(poolMedian, 1);
+
         const weighted = stdCandidateSongs
-          .map(s => ({
-            s,
-            w:
-              ((sectionWeights[(s.lyricSectionType as SectionType)] ?? 0) /
-                (1 + Math.log10(1 + (s.displayCount ?? 0)))),
-          }))
+          .map(s => {
+            const sectionW = sectionWeights[(s.lyricSectionType as SectionType)] ?? 0;
+            if (sectionW <= 0) return { s, w: 0 };
+            const count = s.displayCount ?? 0;
+            const excess = count - poolMedian;
+            const penalty = excess <= 0
+              ? 1
+              : 1 / (1 + (excess / medianDivisor) ** 2);
+            return { s, w: sectionW * penalty };
+          })
           .filter(x => x.w > 0);
         const pickPool = weighted.length > 0
           ? weighted
