@@ -11,6 +11,7 @@ export default function UsageTab() {
   const { data: periods } = trpc.adminUsage.availablePeriods.useQuery();
   const [period, setPeriod] = useState<string | undefined>();
   const [aggregation, setAggregation] = useState<"song" | "variant">("variant");
+  const [lintIssues, setLintIssues] = useState<Array<{ code: string; line?: number; detail?: string }>>([]);
 
   // Default to most recent period
   const activePeriod = period ?? periods?.[0]?.period;
@@ -20,6 +21,7 @@ export default function UsageTab() {
     { enabled: !!activePeriod },
   );
   const exportCsv = trpc.adminUsage.exportCsv.useMutation();
+  const exportDdex = trpc.adminUsage.exportDdex.useMutation();
 
   function handleExport() {
     if (!activePeriod) return;
@@ -34,6 +36,36 @@ export default function UsageTab() {
           a.download = `lyricpro-usage-${activePeriod}-${aggregation}.csv`;
           a.click();
           URL.revokeObjectURL(url);
+        },
+      },
+    );
+  }
+
+  function handleExportDdex() {
+    if (!activePeriod) return;
+    exportDdex.mutate(
+      { period: activePeriod, recipient: "UNREGISTERED" },
+      {
+        onSuccess: (r) => {
+          setLintIssues(r.lintIssues);
+          // Download the main DDEX file
+          const blob = new Blob([r.mainFile], { type: "text/tab-separated-values" });
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement("a");
+          a.href = url;
+          a.download = r.filename;
+          a.click();
+          URL.revokeObjectURL(url);
+          // If there's a no-match supplemental file, download it too
+          if (r.noMatchFile) {
+            const nmBlob = new Blob([r.noMatchFile], { type: "text/tab-separated-values" });
+            const nmUrl = URL.createObjectURL(nmBlob);
+            const nmA = document.createElement("a");
+            nmA.href = nmUrl;
+            nmA.download = r.filename.replace(/\.tsv$/, "_NOMATCH.tsv");
+            nmA.click();
+            URL.revokeObjectURL(nmUrl);
+          }
         },
       },
     );
@@ -91,7 +123,15 @@ export default function UsageTab() {
           >
             <Download className="w-3 h-3" /> Internal CSV
           </Button>
-          {/* DDEX button added in Phase 3 */}
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleExportDdex}
+            disabled={!activePeriod || exportDdex.isPending}
+            className="gap-2"
+          >
+            <Download className="w-3 h-3" /> DDEX
+          </Button>
         </div>
       </div>
 
@@ -157,6 +197,23 @@ export default function UsageTab() {
               </tfoot>
             )}
           </table>
+        </Card>
+      )}
+
+      {lintIssues.length > 0 && (
+        <Card className="p-4 mt-4 border-amber-500">
+          <p className="text-sm font-semibold text-amber-600 mb-2">
+            DDEX lint warnings ({lintIssues.length})
+          </p>
+          <ul className="text-xs space-y-1">
+            {lintIssues.map((iss, i) => (
+              <li key={i} className="font-mono">
+                {iss.code}
+                {iss.line !== undefined ? ` (line ${iss.line})` : ""}
+                {iss.detail ? `: ${iss.detail}` : ""}
+              </li>
+            ))}
+          </ul>
         </Card>
       )}
     </div>
