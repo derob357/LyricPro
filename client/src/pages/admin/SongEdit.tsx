@@ -28,6 +28,13 @@ export default function SongEdit() {
   const update = trpc.adminSongs.update.useMutation({
     onSuccess: () => refetch(),
   });
+  const disable = trpc.adminSongs.disable.useMutation({
+    onSuccess: () => refetch(),
+  });
+  const enable = trpc.adminSongs.enable.useMutation({
+    onSuccess: () => refetch(),
+  });
+  const statusPending = disable.isPending || enable.isPending;
 
   if (user?.role !== "admin") {
     return (
@@ -52,10 +59,31 @@ export default function SongEdit() {
           <ChevronLeft className="w-4 h-4" /> Back to songs
         </Button>
         <h1 className="text-3xl font-bold mb-1">{song.title}</h1>
-        <p className="text-muted-foreground mb-6">
+        <p className="text-muted-foreground mb-4">
           {song.artistName}
           {song.featuredArtist ? ` ft. ${song.featuredArtist}` : ""}
         </p>
+
+        {/* Active/disabled toggle — fires enable/disable immediately
+            (separate from the section Save buttons) so the audit log
+            records song.enable / song.disable rather than song.update. */}
+        <div className="flex items-center gap-3 mb-6">
+          <Switch
+            checked={song.isActive}
+            disabled={statusPending}
+            onCheckedChange={(c) =>
+              c
+                ? enable.mutate({ id: songId })
+                : disable.mutate({ id: songId })
+            }
+          />
+          <Label>{song.isActive ? "Active" : "Disabled"}</Label>
+          {!song.isActive && (
+            <span className="text-xs text-muted-foreground">
+              Hidden from gameplay
+            </span>
+          )}
+        </div>
 
         <SectionIdentity song={song} onSave={(patch) => update.mutate({ id: songId, patch })} />
         <SectionLicensing song={song} onSave={(patch) => update.mutate({ id: songId, patch })} />

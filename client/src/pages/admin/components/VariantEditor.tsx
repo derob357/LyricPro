@@ -57,7 +57,21 @@ function VariantCard({
   onDelete: () => void;
 }) {
   const [draft, setDraft] = useState(variant);
-  const dirty = JSON.stringify(draft) !== JSON.stringify(variant);
+  // Distractors are edited as a raw comma-separated string and only parsed
+  // into an array on save. Parsing on every keystroke (the old approach)
+  // made it impossible to type a trailing comma/space to begin a new entry.
+  const [distractorsText, setDistractorsText] = useState(
+    variant.distractors.join(", "),
+  );
+  const parsedDistractors = distractorsText
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+  const dirty =
+    draft.prompt !== variant.prompt ||
+    draft.answer !== variant.answer ||
+    draft.sectionType !== variant.sectionType ||
+    JSON.stringify(parsedDistractors) !== JSON.stringify(variant.distractors);
   return (
     <Card className="p-4 space-y-3">
       <div className="flex items-center justify-between">
@@ -85,23 +99,15 @@ function VariantCard({
           Distractors (comma separated)
         </label>
         <Input
-          value={draft.distractors.join(", ")}
-          onChange={(e) =>
-            setDraft({
-              ...draft,
-              distractors: e.target.value
-                .split(",")
-                .map((s) => s.trim())
-                .filter(Boolean),
-            })
-          }
+          value={distractorsText}
+          onChange={(e) => setDistractorsText(e.target.value)}
         />
       </div>
       <div className="flex justify-end">
         <Button
           size="sm"
           disabled={!dirty}
-          onClick={() => onSave(draft)}
+          onClick={() => onSave({ ...draft, distractors: parsedDistractors })}
           className="gap-2"
         >
           <Save className="w-3 h-3" /> Save variant
