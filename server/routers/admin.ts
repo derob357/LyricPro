@@ -2,6 +2,7 @@ import { asc, desc, eq, gte, sql } from "drizzle-orm";
 import { adminProcedure, router } from "../_core/trpc";
 import { getDb } from "../db";
 import { songs, songDisplays } from "../../drizzle/schema";
+import { sendReengagementNotifications } from "../_core/reengagement";
 
 // ── Admin router ────────────────────────────────────────────────────────────
 // Procedures here are gated by adminProcedure (ctx.user.role === "admin").
@@ -161,6 +162,13 @@ export const adminRouter = router({
       byDecade,
       last7Days: { roundsPlayed, distinctSongsDisplayed },
     };
+  }),
+
+  // Trigger re-engagement notifications for lapsed players.
+  // Returns how many were sent. Designed to be called manually from
+  // the admin dashboard or wired to a cron job later.
+  triggerReengagement: adminProcedure.mutation(async () => {
+    return sendReengagementNotifications();
   }),
 });
 

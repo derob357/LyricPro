@@ -95,6 +95,46 @@ function fillSlots(template: string, ctx: RoundContext): string {
     .replace(/\{correctCount\}/g, String(ctx.correctCount));
 }
 
+// ── LLM Commentary (Phase 5) ────────────────────────────────────────────────
+// When ANTHROPIC_API_KEY is available, generate a personalized one-liner via
+// Claude Haiku. Falls back to template if LLM fails or key is not set.
+
+const LLM_MODEL = "claude-haiku-4-5-20251001";
+
+async function tryLlmCommentary(ctx: RoundContext, templateFallback: string): Promise<string> {
+  if (!process.env.ANTHROPIC_API_KEY) return templateFallback;
+
+  try {
+    const Anthropic = (await import("@anthropic-ai/sdk")).default;
+    const anthropic = new Anthropic({ maxRetries: 2 });
+
+    const p = ctx.profile;
+    const profileSnippet = p
+      ? `Player profile: strongest genres ${p.strongestGenres.join(", ") || "unknown"}, weakest ${p.weakestGenres.join(", ") || "unknown"}, best stage: ${p.bestStage}, worst: ${p.worstStage}, ${p.isSpeedPlayer ? "fast responder" : "deliberate"}, ${p.isStreakPlayer ? "streak builder" : "inconsistent"}, preferred difficulty: ${p.preferredDifficulty}, ${p.totalGames} total games.`
+      : "New player, no profile yet.";
+
+    const prompt = `You write punchy, one-sentence post-round commentary for a music lyric trivia game called LyricPro.
+
+Round result: ${ctx.correctCount}/4 correct (lyric: ${ctx.lyricCorrect}, title: ${ctx.titleCorrect}, artist: ${ctx.artistCorrect}, year: ${ctx.yearCorrect}). Genre: ${ctx.genre}. ${ctx.passUsed ? "Player passed." : ""} Response time: ${ctx.responseTimeSeconds ?? "unknown"}s. Streak: ${ctx.streakCount}.
+${profileSnippet}
+
+Write ONE sentence (max 20 words). Tone: witty, observational, slightly cocky hype-coach. Reference specifics from the round. No emojis. No greetings. No sign-off. Just the sentence.`;
+
+    const res = await anthropic.messages.create({
+      model: LLM_MODEL,
+      max_tokens: 100,
+      messages: [{ role: "user", content: prompt }],
+    });
+    const block = res.content.find((b) => b.type === "text") as { type: "text"; text: string } | undefined;
+    const text = block?.text?.trim();
+    if (text && text.length > 5 && text.length < 200) return text;
+  } catch (err) {
+    console.warn("[commentary] LLM failed, using template:", err);
+  }
+
+  return templateFallback;
+}
+
 // ── Public API ──────────────────────────────────────────────────────────────
 
 export async function resolveCommentary(ctx: RoundContext): Promise<string | null> {
@@ -112,13 +152,98 @@ export async function resolveCommentary(ctx: RoundContext): Promise<string | nul
 
   const triggerKeys = resolveTriggerKeys(ctx);
 
-  // For each trigger key (most specific first), find matching templates.
-  // Pick a random one from the matches to avoid repetition.
+  // Pick the best template match as a fallback.
+  let templateText: string | null = null;
   for (const key of triggerKeys) {
     const matches = templates.filter(t => t.triggerKey === key);
     if (matches.length > 0) {
       const pick = matches[Math.floor(Math.random() * matches.length)];
-      return fillSlots(pick.text, ctx);
+      templateText = fillSlots(pick.text, ctx);
+      break;
+    }
+  }
+
+  if (!templateText) return null;
+
+  // Try LLM upgrade (uses template as fallback).
+  return tryLlmCommentary(ctx, templateText);
+}
+
+// ── Game Summary Commentary (Phase 3b) ──────────────────────────────────────
+
+export interface GameSummaryContext {
+  totalScore: number;
+  rounds: number;
+  isMultiplayer: boolean;
+  isWinner: boolean;
+  margin: number;             // points between 1st and 2nd (or self and 1st)
+  genre: string;              // primary genre played
+  perfectRounds: number;      // count of 4/4 rounds
+  profile: PlayerProfileData | null;
+}
+
+function resolveGameTriggerKeys(ctx: GameSummaryContext): string[] {
+  const keys: string[] = [];
+
+  // Perfect game (all rounds perfect)
+  if (ctx.perfectRounds === ctx.rounds && ctx.rounds > 0) {
+    keys.push("game_perfect_game");
+  }
+
+  // Multiplayer outcomes
+  if (ctx.isMultiplayer) {
+    if (ctx.margin <= 20 && ctx.rounds >= 3) keys.push("game_mp_close");
+    if (ctx.isWinner) keys.push("game_mp_winner");
+    else keys.push("game_mp_loser");
+  }
+
+  // Genre mastery / struggle (based on profile)
+  const p = ctx.profile;
+  if (p) {
+    if (p.strongestGenres.includes(ctx.genre)) keys.push("game_genre_master");
+    if (p.weakestGenres.includes(ctx.genre)) keys.push("game_genre_struggle");
+  }
+
+  // Score-based
+  const avgPerRound = ctx.rounds > 0 ? ctx.totalScore / ctx.rounds : 0;
+  if (avgPerRound >= 150) keys.push("game_high_score");
+  else if (avgPerRound < 50 && ctx.rounds >= 3) keys.push("game_low_score");
+
+  // Solo streak
+  if (!ctx.isMultiplayer && ctx.totalScore > 0) keys.push("game_solo_streak");
+
+  // Always have a fallback
+  keys.push("game_summary_default");
+  return keys;
+}
+
+function fillGameSlots(template: string, ctx: GameSummaryContext): string {
+  return template
+    .replace(/\{totalScore\}/g, String(ctx.totalScore))
+    .replace(/\{rounds\}/g, String(ctx.rounds))
+    .replace(/\{margin\}/g, String(ctx.margin))
+    .replace(/\{genre\}/g, ctx.genre);
+}
+
+export async function resolveGameSummaryCommentary(ctx: GameSummaryContext): Promise<string | null> {
+  const db = await getDb();
+  if (!db) return null;
+
+  const templates = await db
+    .select()
+    .from(commentaryTemplates)
+    .where(eq(commentaryTemplates.isActive, true))
+    .orderBy(asc(commentaryTemplates.priority));
+
+  if (templates.length === 0) return null;
+
+  const triggerKeys = resolveGameTriggerKeys(ctx);
+
+  for (const key of triggerKeys) {
+    const matches = templates.filter(t => t.triggerKey === key);
+    if (matches.length > 0) {
+      const pick = matches[Math.floor(Math.random() * matches.length)];
+      return fillGameSlots(pick.text, ctx);
     }
   }
 

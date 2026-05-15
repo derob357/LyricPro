@@ -1,9 +1,13 @@
 import { router, protectedProcedure } from "../_core/trpc";
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
+import { setNotificationStore } from "../_core/reengagement";
 
 // In-memory notification store (replace with DB for production)
 const notificationStore = new Map<number, any[]>();
+
+// Share the store with the re-engagement module so it can push notifications.
+setNotificationStore(notificationStore);
 
 export const notificationRouter = router({
   // Get unread notifications

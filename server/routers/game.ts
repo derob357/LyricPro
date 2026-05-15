@@ -19,7 +19,7 @@ import {
   type Variant,
 } from "../_core/variantReader";
 import { computePlayerProfile } from "../_core/playerProfile";
-import { resolveCommentary, type RoundContext } from "../_core/commentaryEngine";
+import { resolveCommentary, resolveGameSummaryCommentary, type RoundContext, type GameSummaryContext } from "../_core/commentaryEngine";
 import { playerProfiles } from "../../drizzle/schema";
 import type { PlayerProfileData } from "../_core/playerProfile";
 
@@ -1417,7 +1417,7 @@ export const gameRouter = router({
   // Get final results
   getFinalResults: publicProcedure
     .input(z.object({ roomCode: z.string() }))
-    .query(async ({ input }) => {
+    .query(async ({ input, ctx }) => {
       const db = await getDb();
       if (!db) throw new Error("Database not available");
       const [room] = await db.select().from(gameRooms).where(eq(gameRooms.roomCode, input.roomCode)).limit(1);
@@ -1425,10 +1425,72 @@ export const gameRouter = router({
       const players = await db.select().from(roomPlayers).where(and(eq(roomPlayers.roomId, room.id), eq(roomPlayers.isActive, true)));
       const roomTeams = await db.select().from(teams).where(eq(teams.roomId, room.id));
       const sorted = [...players].sort((a, b) => b.currentScore - a.currentScore);
+
+      // Game summary commentary (best-effort)
+      let gameSummaryCommentary: string | null = null;
+      try {
+        const callerId = ctx.user?.id ?? null;
+        const callerPlayer = callerId
+          ? sorted.find(p => p.userId === callerId)
+          : null;
+        const myScore = callerPlayer?.currentScore ?? sorted[0]?.currentScore ?? 0;
+        const topScore = sorted[0]?.currentScore ?? 0;
+        const secondScore = sorted[1]?.currentScore ?? 0;
+        const isWinner = callerPlayer
+          ? callerPlayer.currentScore >= topScore
+          : true;
+        const margin = isWinner
+          ? topScore - secondScore
+          : topScore - myScore;
+        const parsedGenres = JSON.parse(room.selectedGenres) as string[];
+
+        // Count perfect rounds for this player
+        let perfectRounds = 0;
+        if (callerPlayer) {
+          const roundRows = await db
+            .select({ totalRoundPoints: roundResults.totalRoundPoints })
+            .from(roundResults)
+            .where(and(
+              eq(roundResults.roomId, room.id),
+              eq(roundResults.activePlayerId, callerPlayer.id),
+            ));
+          // A "perfect" round = got all 4 stages right. Approximation:
+          // total > 0 and no points lost (hard to know exactly without
+          // storing correctCount, so use a high-score threshold per difficulty).
+          const maxPerRound = room.difficulty === "high" ? 400 : room.difficulty === "medium" ? 250 : 125;
+          perfectRounds = roundRows.filter(r => r.totalRoundPoints >= maxPerRound * 0.95).length;
+        }
+
+        let profileData: PlayerProfileData | null = null;
+        if (callerId) {
+          const [profileRow] = await db
+            .select({ profile: playerProfiles.profile })
+            .from(playerProfiles)
+            .where(eq(playerProfiles.userId, callerId))
+            .limit(1);
+          if (profileRow) profileData = profileRow.profile as unknown as PlayerProfileData;
+        }
+
+        const summaryCtx: GameSummaryContext = {
+          totalScore: myScore,
+          rounds: room.roundsTotal,
+          isMultiplayer: room.mode !== "solo",
+          isWinner,
+          margin,
+          genre: parsedGenres[0] ?? "Mixed",
+          perfectRounds,
+          profile: profileData,
+        };
+        gameSummaryCommentary = await resolveGameSummaryCommentary(summaryCtx);
+      } catch (err) {
+        console.warn("[commentary] game summary failed:", err);
+      }
+
       return {
         room: { ...room, selectedGenres: JSON.parse(room.selectedGenres), selectedDecades: JSON.parse(room.selectedDecades) },
         players: sorted,
         teams: roomTeams,
+        gameSummaryCommentary,
       };
     }),
 

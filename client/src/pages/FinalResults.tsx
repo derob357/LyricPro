@@ -123,6 +123,9 @@ export default function FinalResults() {
                   <span className="text-primary font-bold">{winner.currentScore} points</span>
                 </p>
               )}
+              {results.gameSummaryCommentary && (
+                <p className="text-sm text-muted-foreground italic mt-3">{results.gameSummaryCommentary}</p>
+              )}
             </div>
           </div>
 
