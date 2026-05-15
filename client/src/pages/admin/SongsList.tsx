@@ -16,6 +16,20 @@ export default function SongsList() {
   const [status, setStatus] = useState<"active" | "disabled" | "pending" | undefined>(undefined);
   const [cursor, setCursor] = useState<number | undefined>(undefined);
 
+  // All hooks must run before any conditional return (Rules of Hooks).
+  // `enabled` skips the network call for non-admins while keeping the hook
+  // call unconditional.
+  const { data, isLoading } = trpc.adminSongs.list.useQuery(
+    {
+      limit: 50,
+      search: search || undefined,
+      genre,
+      status,
+      cursor,
+    },
+    { enabled: user?.role === "admin" },
+  );
+
   if (user?.role !== "admin") {
     return (
       <div className="p-8 text-center">
@@ -23,14 +37,6 @@ export default function SongsList() {
       </div>
     );
   }
-
-  const { data, isLoading } = trpc.adminSongs.list.useQuery({
-    limit: 50,
-    search: search || undefined,
-    genre,
-    status,
-    cursor,
-  });
 
   return (
     <div className="min-h-screen bg-background p-4 md:p-8">
