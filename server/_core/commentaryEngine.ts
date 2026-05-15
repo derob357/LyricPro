@@ -57,6 +57,7 @@ function resolveTriggerKeys(ctx: RoundContext): string[] {
     // First perfect ever (streak=1 or no profile yet)
     if (!p || ctx.streakCount <= 1) keys.push("perfect_first");
     keys.push("perfect");
+    keys.push("perfect_game_reward");
   } else if (ctx.correctCount === 3) {
     keys.push("three_correct");
   } else if (ctx.correctCount === 2) {
@@ -79,6 +80,11 @@ function resolveTriggerKeys(ctx: RoundContext): string[] {
     if (p && p.isStreakPlayer) keys.push("zero_correct_streak");
     if (p && p.weakestGenres.includes(ctx.genre)) keys.push("zero_correct_genre_mismatch");
     keys.push("zero_correct");
+  }
+
+  // Monetization nudge: if player has low Golden Notes balance, occasionally suggest shop
+  if (p && p.goldenNotesBalance <= 1 && Math.random() < 0.3) {
+    keys.push("shop_nudge_low_balance");
   }
 
   return keys;

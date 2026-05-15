@@ -1,5 +1,5 @@
 import { Link } from "wouter";
-import { Music, Music2, ShoppingCart } from "lucide-react";
+import { Music2, ShoppingCart } from "lucide-react";
 import { trpc } from "@/lib/trpc";
 import { supabase } from "@/lib/supabase";
 import { Button } from "@/components/ui/button";
@@ -28,14 +28,15 @@ export function PersistentHeader() {
   };
 
   return (
-    <header className="fixed top-0 left-0 right-0 z-50 bg-background border-b border-border">
+    <header className="fixed top-0 left-0 right-0 z-50 bg-background/80 backdrop-blur-xl border-b border-border/30">
       <div className="flex items-center justify-between h-16 px-4 max-w-7xl mx-auto w-full">
-        {/* Logo - Links to Home */}
-        <Link href="/" className="flex items-center gap-2 hover:opacity-80 transition-opacity">
-          <Music className="w-6 h-6 text-purple-500" />
-          <span className="font-bold text-lg bg-gradient-to-r from-purple-400 to-blue-400 bg-clip-text text-transparent">
-            LyricPro Ai
-          </span>
+        {/* Logo - Gradient wordmark */}
+        <Link href="/" className="flex items-center hover:opacity-80 transition-opacity">
+          <span className="font-display text-lg font-extrabold" style={{
+            background: 'linear-gradient(90deg, #8B5CF6, #F59E0B)',
+            WebkitBackgroundClip: 'text',
+            WebkitTextFillColor: 'transparent',
+          }}>LyricPro</span>
         </Link>
 
         {/* Right Navigation */}
@@ -48,8 +49,8 @@ export function PersistentHeader() {
                 className="hidden sm:flex items-center gap-1.5 px-2 py-1 rounded-md hover:bg-primary/10 transition"
                 title="Golden Notes balance"
               >
-                <Music2 className="w-4 h-4 text-yellow-400 neon-gold-sm" />
-                <span className="font-display font-bold text-yellow-400 neon-gold-sm text-sm">
+                <Music2 className="w-4 h-4 text-amber-400" />
+                <span className="font-display font-bold text-amber-400 text-sm">
                   {balance?.balance?.toLocaleString() ?? 0}
                 </span>
               </Link>
@@ -102,22 +103,23 @@ export function PersistentHeader() {
           ) : (
             <>
               <Button
-                variant="ghost"
+                variant="outline"
                 size="sm"
-                onClick={() => {
-                  window.location.href = getLoginUrl();
-                }}
-              >
-                Sign In
-              </Button>
-              <Button
-                size="sm"
-                className="bg-purple-600 hover:bg-purple-700"
+                className="border-primary/30 text-primary hover:bg-primary/10"
                 onClick={() => {
                   window.location.href = getLoginUrl();
                 }}
               >
                 Sign Up
+              </Button>
+              <Button
+                size="sm"
+                className="bg-primary hover:bg-primary/90 shadow-[0_0_24px_rgba(139,92,246,0.2)]"
+                onClick={() => {
+                  window.location.href = getLoginUrl();
+                }}
+              >
+                Play Now
               </Button>
             </>
           )}

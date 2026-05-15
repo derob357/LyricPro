@@ -4,21 +4,17 @@ import { motion } from "framer-motion";
 import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Badge } from "@/components/ui/badge";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { getLoginUrl, getSignUpUrl } from "@/const";
 import SocialShareButtons from "@/components/SocialShareButtons";
 import { getHomepageShareContent } from "@/lib/shareUtils";
 import { WeaknessPackCard } from "@/components/WeaknessPackCard";
 import { SuggestionCard } from "@/components/SuggestionCard";
+import { HeroBanner } from "@/components/HeroBanner";
 import {
   Music, Mic, Users, Trophy, Zap, ChevronRight,
   Play, Radio, Clock, Target, ArrowRight, ShoppingCart,
-  User, Repeat, UsersRound, Smartphone,
 } from "lucide-react";
-
-const GENRES = ["R&B", "Hip Hop", "Pop", "Rock", "Country", "Gospel", "Soul", "Jazz"];
-const DECADES = ["80s", "90s", "2000s", "2010s", "2020s"];
 
 export default function Home() {
   const [, navigate] = useLocation();
@@ -47,21 +43,48 @@ export default function Home() {
   };
 
   return (
-    <div className="min-h-screen text-foreground overflow-x-hidden">
+    <div className="min-h-screen text-foreground overflow-x-hidden relative">
+      {/* ── Ambient Orbs (fixed behind content) ── */}
+      <div className="fixed inset-0 pointer-events-none overflow-hidden z-0">
+        <div
+          className="ambient-orb ambient-orb-purple w-80 h-56"
+          style={{ top: "-60px", left: "50%", transform: "translateX(-50%)" }}
+        />
+        <div
+          className="ambient-orb ambient-orb-red w-60 h-60"
+          style={{ top: "200px", right: "-60px" }}
+        />
+        <div
+          className="ambient-orb ambient-orb-amber w-48 h-48"
+          style={{ bottom: "100px", left: "-40px" }}
+        />
+      </div>
+
       {/* ── Navigation ── */}
       <nav className="fixed top-0 left-0 right-0 z-50 glass border-b border-border/50">
         <div className="container flex items-center justify-between h-16">
           <div className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-lg bg-primary/20 flex items-center justify-center glow-purple">
-              <Music className="w-4 h-4 text-primary" />
-            </div>
-            <span className="font-display font-bold text-lg text-gradient">LyricPro Ai</span>
+            <span
+              className="font-display font-bold text-xl"
+              style={{
+                background: "linear-gradient(90deg, #8B5CF6, #F59E0B)",
+                WebkitBackgroundClip: "text",
+                WebkitTextFillColor: "transparent",
+                backgroundClip: "text",
+              }}
+            >
+              LyricPro
+            </span>
           </div>
           <div className="flex items-center gap-3">
             {/* Social sharing icons */}
             <div className="hidden md:flex items-center gap-1">
               <SocialShareButtons content={getHomepageShareContent()} compact showNativeShare={false} />
             </div>
+            <Button variant="ghost" size="sm" onClick={() => navigate("/events")}
+              className="text-muted-foreground hover:text-foreground hidden sm:flex">
+              Events
+            </Button>
             <Button variant="ghost" size="sm" onClick={() => navigate("/leaderboards")}
               className="text-muted-foreground hover:text-foreground hidden sm:flex">
               <Trophy className="w-4 h-4 mr-1" /> Leaderboards
@@ -94,8 +117,8 @@ export default function Home() {
                   <a href={getSignUpUrl()}>Sign Up</a>
                 </Button>
                 <Button size="sm" onClick={handlePlayNow}
-                  className="bg-primary text-primary-foreground hover:bg-primary/90">
-                  Play Free
+                  className="bg-primary text-primary-foreground hover:bg-primary/90 glow-purple">
+                  Play Now
                 </Button>
               </div>
             )}
@@ -103,79 +126,117 @@ export default function Home() {
         </div>
       </nav>
 
-      {/* ── Hero ── */}
-      <section className="relative pt-32 pb-20 px-4 overflow-hidden">
-        {/* Background orbs */}
-        <div className="absolute top-20 left-1/4 w-96 h-96 rounded-full bg-primary/10 blur-3xl pointer-events-none" />
-        <div className="absolute top-40 right-1/4 w-80 h-80 rounded-full bg-accent/10 blur-3xl pointer-events-none" />
-
+      {/* ── Hero Headline ── */}
+      <section className="relative pt-32 pb-8 px-4 z-10">
         <div className="container relative">
           <motion.div
-            className="text-center max-w-4xl mx-auto"
+            className="text-center max-w-3xl mx-auto"
             initial="hidden"
             animate="visible"
             variants={{ visible: { transition: { staggerChildren: 0.15 } } }}
           >
-            <motion.div variants={fadeUp} className="mb-4">
-              <Badge className="bg-primary/20 text-primary border-primary/30 px-4 py-1 text-sm font-medium">
-                <Zap className="w-3 h-3 mr-1" /> AI-Powered Music Trivia
-              </Badge>
-            </motion.div>
-
-            <motion.h1 variants={fadeUp}
-              className="font-display text-5xl sm:text-6xl md:text-7xl font-black leading-tight mb-6">
-              <span className="text-gradient">Lyric Pro</span>
+            <motion.h1
+              variants={fadeUp}
+              className="font-display text-4xl sm:text-5xl font-black leading-tight mb-4"
+            >
+              Finish the Lyric.
+              <br />
+              <span className="text-gradient">Win the Night.</span>
             </motion.h1>
 
-            <motion.p variants={fadeUp}
-              className="text-muted-foreground text-lg sm:text-xl max-w-2xl mx-auto mb-8 leading-relaxed">
-              Name the song title, name the artist, guess the year or finish the lyric.
-              Play solo or battle friends across every genre and decade.
+            <motion.p
+              variants={fadeUp}
+              className="text-muted-foreground text-base sm:text-lg max-w-xl mx-auto mb-8"
+            >
+              <StatsLine /> across every genre and decade.
             </motion.p>
 
             <motion.div variants={fadeUp} className="flex flex-col sm:flex-row gap-4 justify-center items-center">
               <Button size="lg" onClick={handlePlayNow}
                 className="bg-primary text-primary-foreground hover:bg-primary/90 glow-purple px-8 py-6 text-lg font-semibold rounded-xl w-full sm:w-auto">
-                <Play className="w-5 h-5 mr-2" /> Play Now — Free to try
+                <Play className="w-5 h-5 mr-2" /> Play Now
               </Button>
               <Button size="lg" variant="outline" onClick={handleHostGame}
                 className="border-border/60 hover:border-primary/50 hover:bg-primary/5 px-8 py-6 text-lg font-semibold rounded-xl w-full sm:w-auto">
                 <Users className="w-5 h-5 mr-2" /> Host a Game
               </Button>
             </motion.div>
-
-            {/* Social share buttons moved to top nav */}
-
-            {/* Genre list — plain text, not pill-shaped */}
-            <motion.div variants={fadeUp} className="mt-10 flex flex-wrap gap-x-4 gap-y-1 justify-center">
-              {GENRES.map((g) => (
-                <span key={g} className="text-sm text-muted-foreground">
-                  {g}
-                </span>
-              ))}
-              <span className="text-sm text-muted-foreground">
-                + More
-              </span>
-            </motion.div>
           </motion.div>
         </div>
       </section>
 
-      {/* ── Stats bar ── */}
-      <StatsBar />
+      {/* ── Hero Banner ── */}
+      <section className="py-4 px-4 z-10 relative">
+        <div className="container max-w-2xl">
+          <HeroBanner />
+        </div>
+      </section>
+
+      {/* ── Mode Cards ── */}
+      <section className="py-8 px-4 z-10 relative">
+        <div className="container max-w-2xl">
+          <div className="grid grid-cols-2 gap-4">
+            {/* Solo Mode */}
+            <motion.div
+              initial={{ opacity: 0, y: 16 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              viewport={{ once: true }}
+              className="relative overflow-hidden rounded-2xl p-6 border border-primary/15 bg-primary/[0.04] cursor-pointer group hover:border-primary/30 transition-all duration-300"
+              onClick={handlePlayNow}
+            >
+              <div className="ambient-orb ambient-orb-purple w-24 h-24" style={{ top: "-12px", right: "-12px" }} />
+              <div className="relative">
+                <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center mb-3 glow-purple">
+                  <Target className="w-5 h-5 text-primary" />
+                </div>
+                <h3 className="font-display font-bold text-lg text-foreground mb-1">Solo</h3>
+                <p className="text-xs text-muted-foreground leading-relaxed">
+                  Challenge yourself. Beat your personal best.
+                </p>
+                <ChevronRight className="w-4 h-4 text-primary mt-3 group-hover:translate-x-1 transition-transform" />
+              </div>
+            </motion.div>
+
+            {/* Challenge Mode */}
+            <motion.div
+              initial={{ opacity: 0, y: 16 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              viewport={{ once: true }}
+              transition={{ delay: 0.05 }}
+              className="relative overflow-hidden rounded-2xl p-6 border border-amber-500/15 bg-amber-500/[0.04] cursor-pointer group hover:border-amber-500/30 transition-all duration-300"
+              onClick={handleHostGame}
+            >
+              <div className="ambient-orb ambient-orb-amber w-24 h-24" style={{ top: "-12px", right: "-12px" }} />
+              <div className="relative">
+                <div className="w-10 h-10 rounded-xl bg-amber-500/10 flex items-center justify-center mb-3 glow-amber">
+                  <Users className="w-5 h-5 text-amber-400" />
+                </div>
+                <h3 className="font-display font-bold text-lg text-foreground mb-1">Challenge</h3>
+                <p className="text-xs text-muted-foreground leading-relaxed">
+                  Battle friends. Host a multiplayer game.
+                </p>
+                <ChevronRight className="w-4 h-4 text-amber-400 mt-3 group-hover:translate-x-1 transition-transform" />
+              </div>
+            </motion.div>
+          </div>
+        </div>
+      </section>
 
       {/* ── AI Suggestions + Weakness Pack (authenticated users only) ── */}
       {isAuthenticated && (
-        <section className="py-6 px-4">
-          <div className="container max-w-3xl space-y-4">
+        <section className="py-4 px-4 z-10 relative">
+          <div className="container max-w-2xl space-y-4">
             <SuggestionCard />
             <WeaknessPackCard />
           </div>
         </section>
       )}
 
+      {/* ── Stats Strip ── */}
+      <StatsStrip />
+
       {/* ── How It Works ── */}
-      <section className="py-20 px-4">
+      <section className="py-20 px-4 z-10 relative">
         <div className="container">
           <motion.div
             initial={{ opacity: 0, y: 20 }}
@@ -207,7 +268,7 @@ export default function Home() {
                 title: "Read the Lyric",
                 desc: "On Low/Medium: see the full lyric and name the song, artist, and year. On High: complete the missing lyric plus name the artist and year.",
                 color: "text-accent",
-                glow: "glow-cyan",
+                glow: "glow-amber",
               },
               {
                 step: "03",
@@ -240,42 +301,8 @@ export default function Home() {
         </div>
       </section>
 
-      {/* ── Game Modes ── */}
-      <section className="py-16 px-4">
-        <div className="container">
-          <h2 className="font-display text-4xl font-bold text-center mb-12">
-            Play Your <span className="text-gradient">Way</span>
-          </h2>
-          <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
-            {[
-              { icon: User, title: "Solo Mode", desc: "Challenge yourself. Beat your personal best.", badge: "Any time", color: "text-primary", glow: "glow-purple" },
-              { icon: Repeat, title: "Turn-Based", desc: "Pass the device. Take turns. Battle it out.", badge: "1 device", color: "text-accent", glow: "glow-cyan" },
-              { icon: UsersRound, title: "Team Mode", desc: "Form teams. Collaborate. Crush the competition.", badge: "Group play", color: "text-yellow-400", glow: "glow-gold" },
-              { icon: Smartphone, title: "Remote Live", desc: "Join from anywhere. Play over FaceTime or Zoom.", badge: "Any device", color: "text-primary", glow: "glow-purple" },
-            ].map(({ icon: Icon, title, desc, badge, color, glow }) => (
-              <motion.div
-                key={title}
-                initial={{ opacity: 0, scale: 0.95 }}
-                whileInView={{ opacity: 1, scale: 1 }}
-                viewport={{ once: true }}
-                className="glass rounded-2xl p-6 text-center hover:border-primary/30 transition-all duration-300 cursor-pointer group"
-                onClick={handlePlayNow}
-              >
-                <div className={`w-12 h-12 rounded-xl bg-card flex items-center justify-center mx-auto mb-4 ${glow}`}>
-                  <Icon className={`w-6 h-6 ${color}`} />
-                </div>
-                <Badge variant="secondary" className="mb-3 text-xs">{badge}</Badge>
-                <h3 className="font-display font-bold text-lg mb-2 text-foreground">{title}</h3>
-                <p className="text-muted-foreground text-sm">{desc}</p>
-                <ChevronRight className="w-4 h-4 text-primary mx-auto mt-3 group-hover:translate-x-1 transition-transform" />
-              </motion.div>
-            ))}
-          </div>
-        </div>
-      </section>
-
       {/* ── CTA ── */}
-      <section className="py-20 px-4">
+      <section className="py-20 px-4 z-10 relative">
         <div className="container">
           <div className="relative glass rounded-3xl p-10 md:p-16 text-center overflow-hidden max-w-3xl mx-auto">
             <div className="absolute inset-0 bg-gradient-to-br from-primary/10 to-accent/5 pointer-events-none rounded-3xl" />
@@ -306,11 +333,11 @@ export default function Home() {
       </section>
 
       {/* ── Footer ── */}
-      <footer className="border-t border-border/30 py-8 px-4">
+      <footer className="border-t border-border/30 py-8 px-4 z-10 relative">
         <div className="container flex flex-col sm:flex-row items-center justify-between gap-4">
           <div className="flex items-center gap-2">
             <Music className="w-4 h-4 text-primary" />
-            <span className="font-display font-bold text-gradient">LyricPro Ai</span>
+            <span className="font-display font-bold text-gradient">LyricPro</span>
           </div>
           <p className="text-muted-foreground text-sm">
             Finish the lyric. Name the artist. Guess the year. Rule the room.
@@ -357,30 +384,49 @@ export default function Home() {
   );
 }
 
-// Live song count + static stats. Pulled out of Home so the trpc query
-// has its own component scope and re-renders don't churn the whole page.
-function StatsBar() {
+// Inline stats for the hero subtitle line
+function StatsLine() {
   const { data } = trpc.system.libraryStats.useQuery(undefined, {
     refetchOnWindowFocus: false,
     staleTime: 5 * 60_000,
   });
   const songCount = (data?.totalSongs ?? 0).toLocaleString();
   return (
-    <section className="py-8 border-y border-border/30">
+    <>
+      <span className="text-primary font-semibold">{songCount || "800+"} songs</span>
+      {" "}
+    </>
+  );
+}
+
+// Stats strip between sections
+function StatsStrip() {
+  const { data } = trpc.system.libraryStats.useQuery(undefined, {
+    refetchOnWindowFocus: false,
+    staleTime: 5 * 60_000,
+  });
+  const songCount = (data?.totalSongs ?? 0).toLocaleString();
+
+  return (
+    <section className="py-6 border-t border-b border-border/30 z-10 relative">
       <div className="container">
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-6 text-center">
-          {[
-            { icon: Music, label: "Song Catalog", value: songCount },
-            { icon: Users, label: "Game Modes", value: "4" },
-            { icon: Radio, label: "Genres", value: "9" },
-            { icon: Clock, label: "Decades Covered", value: "7" },
-          ].map(({ icon: Icon, label, value }) => (
-            <div key={label} className="flex flex-col items-center gap-1">
-              <Icon className="w-5 h-5 text-primary mb-1" />
-              <span className="font-display font-bold text-2xl text-foreground">{value}</span>
-              <span className="text-muted-foreground text-sm">{label}</span>
-            </div>
-          ))}
+        <div className="flex justify-around items-center">
+          <div className="text-center">
+            <span className="font-display font-bold text-2xl text-primary">{songCount || "834"}</span>
+            <span className="block text-xs text-muted-foreground mt-0.5">Songs</span>
+          </div>
+          <div className="text-center">
+            <span className="font-display font-bold text-2xl text-amber-400">7</span>
+            <span className="block text-xs text-muted-foreground mt-0.5">Decades</span>
+          </div>
+          <div className="text-center">
+            <span className="font-display font-bold text-2xl text-foreground">9</span>
+            <span className="block text-xs text-muted-foreground mt-0.5">Genres</span>
+          </div>
+          <div className="text-center">
+            <span className="font-display font-bold text-2xl text-foreground">4</span>
+            <span className="block text-xs text-muted-foreground mt-0.5">Modes</span>
+          </div>
         </div>
       </div>
     </section>

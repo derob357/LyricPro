@@ -66,7 +66,7 @@ export default function FinalResults() {
   const rankTier = myPlayer ? getRankTier(myPlayer.currentScore) : null;
 
   const getRankIcon = (idx: number) => {
-    if (idx === 0) return <Crown className="w-5 h-5 text-yellow-400" />;
+    if (idx === 0) return <Crown className="w-5 h-5 text-amber-400" />;
     if (idx === 1) return <Medal className="w-5 h-5 text-slate-300" />;
     if (idx === 2) return <Medal className="w-5 h-5 text-amber-600" />;
     return <span className="text-muted-foreground text-sm font-bold w-5 text-center">{idx + 1}</span>;
@@ -97,7 +97,8 @@ export default function FinalResults() {
 
           {/* Winner announcement */}
           <div className="glass rounded-3xl p-8 text-center relative overflow-hidden">
-            <div className="absolute inset-0 bg-gradient-to-br from-yellow-400/10 to-primary/5 pointer-events-none" />
+            <div className="card-glow-line" />
+            <div className="absolute inset-0 bg-gradient-to-br from-amber-400/10 to-primary/5 pointer-events-none" />
             <div className="relative">
               <motion.div
                 initial={{ scale: 0, rotate: -10 }}
@@ -132,7 +133,7 @@ export default function FinalResults() {
           {/* Final Rankings */}
           <div className="glass rounded-2xl p-5">
             <h2 className="font-display font-semibold text-lg mb-4 flex items-center gap-2">
-              <Trophy className="w-5 h-5 text-yellow-400" /> Final Rankings
+              <Trophy className="w-5 h-5 text-amber-400" /> Final Rankings
             </h2>
             <div className="space-y-3">
               {players.map((player, idx) => {
@@ -146,12 +147,12 @@ export default function FinalResults() {
                       initial={{ opacity: 0, x: -20 }}
                       animate={{ opacity: 1, x: 0 }}
                       transition={{ delay: idx * 0.1 }}
-                      className={`flex items-center gap-4 p-4 rounded-xl border ${
+                      className={`flex items-center gap-4 p-4 rounded-xl glass ${
                         idx === 0
-                          ? "border-yellow-400/40 bg-yellow-400/5"
+                          ? "border-amber-400/40 bg-amber-400/5"
                           : isMe
                           ? "border-primary/40 bg-primary/5"
-                          : "border-border/30 bg-card/30"
+                          : "border-border/30"
                       }`}
                     >
                       <div className="flex items-center justify-center w-6">
@@ -161,7 +162,7 @@ export default function FinalResults() {
                         <UserAvatar size="sm" className="w-10 h-10 rounded-full" />
                       ) : (
                         <div className={`w-10 h-10 rounded-full flex items-center justify-center font-bold text-sm ${
-                          idx === 0 ? "bg-yellow-400/20 text-yellow-400" :
+                          idx === 0 ? "bg-amber-400/20 text-amber-400" :
                           "bg-secondary text-foreground"
                         }`}>
                           {name.charAt(0).toUpperCase()}
@@ -175,7 +176,7 @@ export default function FinalResults() {
                       </div>
                       <div className="text-right">
                         <div className={`font-display font-bold text-xl ${
-                          idx === 0 ? "text-yellow-400" : isMe ? "text-primary" : "text-foreground"
+                          idx === 0 ? "text-amber-400" : isMe ? "text-primary" : "text-foreground"
                         }`}>
                           {player.currentScore}
                         </div>

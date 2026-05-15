@@ -224,7 +224,7 @@ export default function RoundResults() {
           </div>
           {/* Right: Score */}
           <div className="flex items-center gap-2">
-            <Trophy className="w-4 h-4 text-yellow-400" />
+            <Trophy className="w-4 h-4 text-amber-400" />
             <span className="font-semibold">{result.newScore}</span>
           </div>
         </div>
@@ -266,8 +266,8 @@ export default function RoundResults() {
                     <p className="text-muted-foreground text-sm">points this round</p>
                     {result.newStreak >= 2 && (
                       <div className="flex items-center justify-center sm:justify-start gap-1 mt-2">
-                        <Flame className="w-4 h-4 text-orange-400" />
-                        <span className="text-orange-400 font-medium text-sm">{result.newStreak}x Streak!</span>
+                        <Flame className="w-4 h-4 text-amber-400" />
+                        <span className="text-amber-400 font-medium text-sm">{result.newStreak}x Streak!</span>
                       </div>
                     )}
                     {result.commentary && (
@@ -279,7 +279,7 @@ export default function RoundResults() {
 
               {/* Next Round / See Final Results button */}
               <Button
-                className="shrink-0 bg-primary text-primary-foreground hover:bg-primary/90 glow-purple px-6 py-5 text-base font-semibold rounded-xl"
+                className="shrink-0 bg-primary text-primary-foreground hover:bg-primary/90 glow-purple px-6 py-5 text-base font-semibold rounded-xl transition-all"
                 onClick={handleNext}
                 disabled={isAdvancing}
               >
@@ -364,19 +364,19 @@ export default function RoundResults() {
               {result.speedBonus > 0 && (
                 <div className="flex items-center justify-between py-2 border-t border-border/30">
                   <div className="flex items-center gap-2">
-                    <Zap className="w-4 h-4 text-yellow-400" />
+                    <Zap className="w-4 h-4 text-amber-400" />
                     <span className="text-sm text-muted-foreground">Speed Bonus</span>
                   </div>
-                  <span className="font-semibold text-yellow-400">+{result.speedBonus}</span>
+                  <span className="font-semibold text-amber-400">+{result.speedBonus}</span>
                 </div>
               )}
               {result.streakBonus > 0 && (
                 <div className="flex items-center justify-between py-2 border-t border-border/30">
                   <div className="flex items-center gap-2">
-                    <Flame className="w-4 h-4 text-orange-400" />
+                    <Flame className="w-4 h-4 text-amber-400" />
                     <span className="text-sm text-muted-foreground">Streak Bonus</span>
                   </div>
-                  <span className="font-semibold text-orange-400">+{result.streakBonus}</span>
+                  <span className="font-semibold text-amber-400">+{result.streakBonus}</span>
                 </div>
               )}
               <div className="flex items-center justify-between py-2 border-t border-border/40">

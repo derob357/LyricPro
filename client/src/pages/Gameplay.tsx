@@ -410,7 +410,7 @@ export default function Gameplay() {
             </AlertDialog>
             <Badge variant="secondary" className="font-mono">Round {room.currentRound}/{room.roundsTotal}</Badge>
             {room.rankingMode === "streak_bonus" && myPlayer && myPlayer.currentStreak >= 2 && (
-              <Badge className="bg-orange-500/20 text-orange-400 border-orange-500/30">
+              <Badge className="bg-amber-500/10 text-amber-400 border-amber-500/30">
                 <Flame className="w-3 h-3 mr-1" /> {myPlayer.currentStreak}x Streak
               </Badge>
             )}
@@ -419,7 +419,7 @@ export default function Gameplay() {
             {muted ? <VolumeX className="w-4 h-4" /> : <Volume2 className="w-4 h-4" />}
           </Button>
           <div className="flex items-center gap-2">
-            <Trophy className="w-4 h-4 text-yellow-400" />
+            <Trophy className="w-4 h-4 text-amber-400" />
             <motion.span
               key={myPlayer?.currentScore ?? 0}
               initial={{ scale: 1.5, color: "#fbbf24" }}
@@ -446,7 +446,7 @@ export default function Gameplay() {
         {/* Header row: round badge + title + prize value + timer */}
         <div className="flex items-start justify-between gap-4 mb-6 relative z-10">
           <div className="flex items-center gap-4">
-            <div className={`w-14 h-14 rounded-full bg-${stageColor === "gold" ? "yellow-400" : stageColor}/15 border-2 border-${stageColor === "gold" ? "yellow-400" : stageColor}/50 flex items-center justify-center font-display font-black text-lg text-foreground glow-purple`}>
+            <div className={`w-14 h-14 rounded-full bg-${stageColor === "gold" ? "amber-400" : stageColor}/15 border-2 border-${stageColor === "gold" ? "amber-400" : stageColor}/50 flex items-center justify-center font-display font-black text-lg text-foreground glow-purple`}>
               {roundNumberPadded}
             </div>
             <div>
@@ -459,7 +459,7 @@ export default function Gameplay() {
                 <Badge className={`text-xs ${
                   stage === "lyric" || stage === "title" ? "bg-primary/20 text-primary border-primary/40" :
                   stage === "artist" ? "bg-accent/20 text-accent border-accent/40" :
-                  "bg-yellow-500/20 text-yellow-400 border-yellow-500/40"
+                  "bg-amber-500/20 text-amber-400 border-amber-500/40"
                 }`}>{stageInfo.tag}</Badge>
                 <Badge variant="secondary" className="text-xs">{currentSong.genre}</Badge>
                 <Badge variant="secondary" className="text-xs">{currentSong.decade}</Badge>
@@ -468,7 +468,7 @@ export default function Gameplay() {
             </div>
           </div>
           <div className="text-right shrink-0">
-            <div className="font-display font-black text-3xl sm:text-4xl text-yellow-400 neon-gold inline-flex items-center justify-end gap-1.5">
+            <div className="font-display font-black text-3xl sm:text-4xl text-amber-400 neon-gold inline-flex items-center justify-end gap-1.5">
               <Music2 className="w-7 h-7 sm:w-9 sm:h-9" />
               {stageInfo.value}
             </div>
@@ -486,7 +486,7 @@ export default function Gameplay() {
           transition={isUrgent ? { duration: 0.5, repeat: Infinity, ease: "easeInOut" } : { duration: 0.2 }}
         >
           <motion.div
-            className={`h-full [box-shadow:inset_0_1px_0_rgba(255,255,255,0.25),inset_0_-2px_4px_rgba(0,0,0,0.2)] ${isUrgent ? "bg-gradient-to-r from-red-600 to-red-400" : "bg-gradient-to-r from-primary to-accent"}`}
+            className={`h-full [box-shadow:inset_0_1px_0_rgba(255,255,255,0.25),inset_0_-2px_4px_rgba(0,0,0,0.2)] ${isUrgent ? "bg-gradient-to-r from-red-600 to-red-400" : "bg-gradient-to-r from-purple-500 to-amber-500"}`}
             animate={{ width: `${timerPct}%` }}
             transition={{ duration: 1, ease: "linear" }}
           />
@@ -532,20 +532,21 @@ export default function Gameplay() {
             transition={{ type: "spring", stiffness: 180, damping: 22 }}
             className="relative z-10 mb-6 [perspective:1400px] [transform-style:preserve-3d] origin-bottom"
           >
-            <p
-              className={
-                stage === "title"
-                  // Title stage: lyric quote is supporting context, not the
-                  // main question — use the older smaller size and dim it
-                  // 30% so the new white "What's the Song Title?" header
-                  // pops as the primary instruction.
-                  ? "font-display text-xl sm:text-2xl font-bold text-foreground/70 leading-relaxed text-center max-w-3xl mx-auto"
-                  : "font-display text-3xl sm:text-5xl md:text-6xl font-black text-foreground leading-tight text-center max-w-4xl mx-auto tracking-tight drop-shadow-[0_4px_12px_rgba(168,85,247,0.25)] [text-shadow:0_2px_0_rgba(0,0,0,0.4),0_8px_24px_rgba(168,85,247,0.18)]"
-              }
-            >
-              {stageInfo.prompt}
-            </p>
-            <p className="text-muted-foreground text-sm sm:text-base text-center mt-3">{stageInfo.sub}</p>
+            {/* Lyric display card with cinematic gradient + ambient orb + glow line */}
+            <div className="relative rounded-2xl bg-gradient-to-br from-[#12082a] to-[#0c1424] p-6 sm:p-8 overflow-hidden">
+              <div className="card-glow-line" />
+              <div className="ambient-orb ambient-orb-purple -top-20 left-1/2 -translate-x-1/2 w-80 h-40" />
+              <p
+                className={
+                  stage === "title"
+                    ? "relative z-10 font-display text-xl sm:text-2xl font-bold text-foreground/70 leading-relaxed text-center max-w-3xl mx-auto"
+                    : "relative z-10 font-display text-3xl sm:text-5xl md:text-6xl font-black text-foreground leading-tight text-center max-w-4xl mx-auto tracking-tight drop-shadow-[0_4px_12px_rgba(168,85,247,0.25)] [text-shadow:0_2px_0_rgba(0,0,0,0.4),0_8px_24px_rgba(168,85,247,0.18)]"
+                }
+              >
+                {stageInfo.prompt}
+              </p>
+              <p className="relative z-10 text-muted-foreground text-sm sm:text-base text-center mt-3">{stageInfo.sub}</p>
+            </div>
           </motion.div>
         </AnimatePresence>
 
@@ -561,9 +562,9 @@ export default function Gameplay() {
         {/* Hint notice — shown above MC grid after hint is used */}
         {stage !== "submitting" && hintData[stage] && (
           <div className="relative z-10 max-w-3xl mx-auto mb-3">
-            <div className="glass rounded-xl px-4 py-2.5 flex items-center gap-2 border border-yellow-400/30 bg-yellow-400/5">
-              <Lightbulb className="w-4 h-4 text-yellow-400 shrink-0" />
-              <span className="text-sm text-yellow-300">
+            <div className="glass rounded-xl px-4 py-2.5 flex items-center gap-2 border border-amber-400/30 bg-amber-400/5">
+              <Lightbulb className="w-4 h-4 text-amber-400 shrink-0" />
+              <span className="text-sm text-amber-300">
                 {stage === "year" && hintData[stage]?.narrowedRange
                   ? `Year is between ${hintData[stage]!.narrowedRange![0]} and ${hintData[stage]!.narrowedRange![1]}`
                   : `Starts with: ${hintData[stage]?.firstLetter}`
@@ -625,7 +626,7 @@ export default function Gameplay() {
                   useHintMutation.mutate({ roomCode: roomCode ?? "", songId: currentSong.id, stage: stage as "lyric" | "title" | "artist" | "year" });
                 }}
                 disabled={useHintMutation.isPending}
-                className="text-yellow-400 hover:text-yellow-300 hover:bg-yellow-400/10"
+                className="text-amber-400 hover:text-amber-300 hover:bg-amber-400/10"
               >
                 <Lightbulb className="w-3.5 h-3.5 mr-1" />
                 Hint (1 GN)
@@ -647,7 +648,7 @@ export default function Gameplay() {
                 <div
                   key={p.id}
                   className={`relative glass rounded-xl pt-3 px-3 pb-2 text-center transition-all ${
-                    hasBuzzed ? "ring-2 ring-accent glow-cyan" : ""
+                    hasBuzzed ? "ring-2 ring-accent glow-purple" : ""
                   } ${isMe ? "border-primary/60" : "border-border/50"}`}
                 >
                   {!isSolo && (
@@ -661,7 +662,7 @@ export default function Gameplay() {
                   <div className="font-display font-bold text-foreground text-sm mt-1 truncate">
                     {displayName}
                   </div>
-                  <div className="text-yellow-400 font-bold text-sm neon-gold-sm">
+                  <div className="text-amber-400 font-bold text-sm neon-gold-sm">
                     {p.currentScore ?? 0}
                   </div>
                   {p.currentStreak >= 2 && (

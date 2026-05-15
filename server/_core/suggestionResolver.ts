@@ -53,6 +53,16 @@ const triggerConditions: Record<string, ConditionFn> = {
     p.goldenNotesBalance >= 5 && p.goldenNotesSpent === 0 && p.totalGames >= 5,
   "practice-pack": (p) =>
     p.weakestGenres.length > 0 && p.totalGames >= 15,
+  "event-entry-nudge": (p) =>
+    p.goldenNotesBalance >= 8 && p.totalGames >= 5,
+  "post-game-shop": (p) =>
+    p.goldenNotesBalance >= 1 && p.goldenNotesBalance < 4 && p.totalGames >= 3,
+  "partner-concert": (p) =>
+    p.totalGames >= 3,
+  "streak-protection-upsell": (p) =>
+    p.isStreakPlayer && p.goldenNotesBalance >= 2,
+  "returning-bonus": (p) =>
+    p.daysSinceLastGame >= 3 && p.daysSinceLastGame < 7,
 };
 
 // ── Template slot filling ───────────────────────────────────────────────────
