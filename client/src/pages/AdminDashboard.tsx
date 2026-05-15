@@ -11,6 +11,7 @@ import LogTab from "./admin/tabs/LogTab";
 import UsageTab from "./admin/tabs/UsageTab";
 import SuggestionsTab from "./admin/tabs/SuggestionsTab";
 import CommentaryTab from "./admin/tabs/CommentaryTab";
+import GenresTab from "./admin/tabs/GenresTab";
 
 const formatCurrency = (amount: number) => {
   return new Intl.NumberFormat('en-US', {
@@ -19,7 +20,7 @@ const formatCurrency = (amount: number) => {
   }).format(amount);
 };
 
-const VALID_TABS = ["overview", "users", "revenue", "payouts", "songs", "log", "usage", "suggestions", "commentary"] as const;
+const VALID_TABS = ["overview", "users", "revenue", "payouts", "songs", "genres", "log", "usage", "suggestions", "commentary"] as const;
 type TabValue = typeof VALID_TABS[number];
 
 export function AdminDashboard() {
@@ -137,12 +138,13 @@ export function AdminDashboard() {
 
         {/* Tabs */}
         <Tabs defaultValue={defaultTab} className="w-full">
-          <TabsList className="grid w-full grid-cols-4 md:grid-cols-9">
+          <TabsList className="flex flex-wrap gap-1">
             <TabsTrigger value="overview">Overview</TabsTrigger>
             <TabsTrigger value="users">Users</TabsTrigger>
             <TabsTrigger value="revenue">Revenue</TabsTrigger>
             <TabsTrigger value="payouts">Payouts</TabsTrigger>
             <TabsTrigger value="songs">Songs</TabsTrigger>
+            <TabsTrigger value="genres">Genres</TabsTrigger>
             <TabsTrigger value="log">Log</TabsTrigger>
             <TabsTrigger value="usage">Usage</TabsTrigger>
             <TabsTrigger value="suggestions">Suggestions</TabsTrigger>
@@ -278,6 +280,9 @@ export function AdminDashboard() {
 
           {/* Log Tab */}
           <TabsContent value="log"><LogTab /></TabsContent>
+
+          {/* Genres Tab */}
+          <TabsContent value="genres"><GenresTab /></TabsContent>
 
           {/* Usage Tab */}
           <TabsContent value="usage"><UsageTab /></TabsContent>

@@ -116,11 +116,13 @@ function SectionCard({
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function SectionIdentity({ song, onSave }: { song: any; onSave: (patch: any) => void }) {
+  const { data: allGenres } = trpc.adminGenres.list.useQuery();
   const [draft, setDraft] = useState({
     title: song.title,
     artistName: song.artistName,
     featuredArtist: song.featuredArtist ?? "",
     genre: song.genre,
+    subgenre: song.subgenre ?? "",
     releaseYear: song.releaseYear,
   });
   const dirty =
@@ -130,8 +132,16 @@ function SectionIdentity({ song, onSave }: { song: any; onSave: (patch: any) => 
       artistName: song.artistName,
       featuredArtist: song.featuredArtist ?? "",
       genre: song.genre,
+      subgenre: song.subgenre ?? "",
       releaseYear: song.releaseYear,
     });
+
+  const topGenres = allGenres?.filter(g => !g.parentId && g.isActive) ?? [];
+  const selectedParent = topGenres.find(g => g.name === draft.genre);
+  const subgenres = selectedParent
+    ? (allGenres?.filter(g => g.parentId === selectedParent.id && g.isActive) ?? [])
+    : [];
+
   return (
     <SectionCard
       title="Identity"
@@ -143,6 +153,7 @@ function SectionIdentity({ song, onSave }: { song: any; onSave: (patch: any) => 
             onSave({
               ...draft,
               featuredArtist: draft.featuredArtist || null,
+              subgenre: draft.subgenre || null,
             })
           }
         >
@@ -165,18 +176,27 @@ function SectionIdentity({ song, onSave }: { song: any; onSave: (patch: any) => 
         </div>
         <div>
           <Label>Genre</Label>
-          <Select value={draft.genre} onValueChange={(v) => setDraft({ ...draft, genre: v })}>
+          <Select value={draft.genre} onValueChange={(v) => setDraft({ ...draft, genre: v, subgenre: "" })}>
             <SelectTrigger><SelectValue /></SelectTrigger>
             <SelectContent>
-              <SelectItem value="Rock">Rock</SelectItem>
-              <SelectItem value="Pop">Pop</SelectItem>
-              <SelectItem value="Hip Hop">Hip Hop</SelectItem>
-              <SelectItem value="R&B">R&B</SelectItem>
-              <SelectItem value="Country">Country</SelectItem>
-              <SelectItem value="Gospel">Gospel</SelectItem>
-              <SelectItem value="Soul">Soul</SelectItem>
-              <SelectItem value="Jazz">Jazz</SelectItem>
-              <SelectItem value="Reggae">Reggae</SelectItem>
+              {topGenres.map(g => (
+                <SelectItem key={g.id} value={g.name}>{g.name}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+        <div>
+          <Label>Subgenre</Label>
+          <Select
+            value={draft.subgenre || "__none__"}
+            onValueChange={(v) => setDraft({ ...draft, subgenre: v === "__none__" ? "" : v })}
+          >
+            <SelectTrigger><SelectValue placeholder="None" /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="__none__">None</SelectItem>
+              {subgenres.map(g => (
+                <SelectItem key={g.id} value={g.name}>{g.name}</SelectItem>
+              ))}
             </SelectContent>
           </Select>
         </div>

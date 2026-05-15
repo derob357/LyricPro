@@ -14,6 +14,8 @@ type SortDir = "asc" | "desc";
 
 export default function SongsList() {
   const { user } = useAuth();
+  const { data: allGenres } = trpc.adminGenres.list.useQuery();
+  const topGenres = allGenres?.filter(g => !g.parentId && g.isActive) ?? [];
   const [search, setSearch] = useState("");
   const [genre, setGenre] = useState<string | undefined>(undefined);
   const [status, setStatus] = useState<"active" | "disabled" | "pending" | undefined>(undefined);
@@ -92,15 +94,9 @@ export default function SongsList() {
             <SelectTrigger className="w-40"><SelectValue placeholder="Genre" /></SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All genres</SelectItem>
-              <SelectItem value="Rock">Rock</SelectItem>
-              <SelectItem value="Pop">Pop</SelectItem>
-              <SelectItem value="Hip Hop">Hip Hop</SelectItem>
-              <SelectItem value="R&B">R&B</SelectItem>
-              <SelectItem value="Country">Country</SelectItem>
-              <SelectItem value="Gospel">Gospel</SelectItem>
-              <SelectItem value="Soul">Soul</SelectItem>
-              <SelectItem value="Jazz">Jazz</SelectItem>
-              <SelectItem value="Reggae">Reggae</SelectItem>
+              {topGenres.map(g => (
+                <SelectItem key={g.id} value={g.name}>{g.name}</SelectItem>
+              ))}
             </SelectContent>
           </Select>
           <Select

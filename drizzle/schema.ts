@@ -272,6 +272,18 @@ export const artistMetadata = pgTable("artist_metadata", {
 
 export type ArtistMetadata = typeof artistMetadata.$inferSelect;
 
+// ─── Genres (managed reference table) ────────────────────────────────────────
+export const genres = pgTable("genres", {
+  id: serial("id").primaryKey(),
+  name: varchar("name", { length: 64 }).notNull(),
+  parentId: integer("parent_id"),
+  isActive: boolean("is_active").default(true).notNull(),
+  sortOrder: integer("sort_order").default(100).notNull(),
+  createdAt: createdAtColumn(),
+});
+
+export type Genre = typeof genres.$inferSelect;
+
 // ─── Songs ────────────────────────────────────────────────────────────────────
 export const songs = pgTable("songs", {
   id: serial("id").primaryKey(),
