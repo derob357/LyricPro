@@ -164,6 +164,23 @@ function SectionIdentity({ song, onSave }: { song: any; onSave: (patch: any) => 
           <Input value={draft.featuredArtist} onChange={(e) => setDraft({ ...draft, featuredArtist: e.target.value })} />
         </div>
         <div>
+          <Label>Genre</Label>
+          <Select value={draft.genre} onValueChange={(v) => setDraft({ ...draft, genre: v })}>
+            <SelectTrigger><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="Rock">Rock</SelectItem>
+              <SelectItem value="Pop">Pop</SelectItem>
+              <SelectItem value="Hip Hop">Hip Hop</SelectItem>
+              <SelectItem value="R&B">R&B</SelectItem>
+              <SelectItem value="Country">Country</SelectItem>
+              <SelectItem value="Gospel">Gospel</SelectItem>
+              <SelectItem value="Soul">Soul</SelectItem>
+              <SelectItem value="Jazz">Jazz</SelectItem>
+              <SelectItem value="Reggae">Reggae</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+        <div>
           <Label>Year</Label>
           <Input
             type="number"
