@@ -4,6 +4,8 @@ import { adminProcedure, router } from "../_core/trpc";
 import { getDb } from "../db";
 import { recordAdminAction } from "../_core/audit";
 import { TRPCError } from "@trpc/server";
+import { generateDdexDsr, type SongDisplayWithSong } from "../_core/ddex-exporter";
+import { lintDdex } from "../_core/ddex-lint";
 
 export const adminUsageRouter = router({
   availablePeriods: adminProcedure.query(async () => {
@@ -129,6 +131,78 @@ export const adminUsageRouter = router({
       });
       return { csv, rowCount: rows.length };
     }),
+
+  exportDdex: adminProcedure
+    .input(z.object({
+      period: z.string().regex(/^\d{4}-\d{2}$/),
+      recipient: z.string().min(1).default("UNREGISTERED"),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      const db = await getDb();
+      if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "DB unavailable" });
+      const yyyymm = input.period.replace("-", "");
+      const result = await db.execute(sql`
+        SELECT
+          sd."songId"                            AS "songId",
+          sd."variantIndex"                      AS "variantIndex",
+          sd."shownAt"                           AS "shownAt",
+          sd.territory_code                      AS "territoryCode",
+          sd.duration_of_use_seconds             AS "durationOfUseSeconds",
+          sd.commercial_model_type               AS "commercialModelType",
+          sd.service_description                 AS "serviceDescription",
+          sd.gross_revenue_per_event_micros      AS "grossRevenuePerEventMicros",
+          sd.currency_code                       AS "currencyCode",
+          sd.attribution_served                  AS "attributionServed",
+          s.title                                AS title,
+          s."artistName"                         AS "artistName",
+          s.iswc                                 AS iswc,
+          s.isrc                                 AS isrc
+        FROM song_displays sd
+        JOIN songs s ON s.id = sd."songId"
+        WHERE sd.reporting_period_yyyymm = ${yyyymm}
+      `);
+      const raw = (result as any).rows ?? (Array.isArray(result) ? result : []);
+      const rows: SongDisplayWithSong[] = raw.map((r: any) => ({
+        songId: Number(r.songId),
+        variantIndex: Number(r.variantIndex),
+        shownAt: r.shownAt instanceof Date ? r.shownAt.toISOString() : String(r.shownAt),
+        territoryCode: r.territoryCode ?? null,
+        durationOfUseSeconds: r.durationOfUseSeconds ?? null,
+        commercialModelType: String(r.commercialModelType),
+        serviceDescription: String(r.serviceDescription),
+        grossRevenuePerEventMicros: Number(r.grossRevenuePerEventMicros ?? 0),
+        currencyCode: String(r.currencyCode ?? "USD"),
+        attributionServed: r.attributionServed ?? null,
+        title: String(r.title),
+        artistName: String(r.artistName),
+        iswc: r.iswc ?? null,
+        isrc: r.isrc ?? null,
+      }));
+      const [start, end] = monthBounds(input.period);
+      const file = generateDdexDsr(rows, {
+        messageSender: "LYRICPRO-UNREGISTERED",
+        messageRecipient: input.recipient,
+        reportingPeriodStart: start,
+        reportingPeriodEnd: end,
+        messageVersion: "2025-current",
+      });
+      const lintIssues = lintDdex(file.mainFile);
+      await db.transaction(async (tx) => {
+        await recordAdminAction({
+          ctx, tx,
+          action: "export.usage_ddex",
+          targetType: "export",
+          targetId: `ddex_${yyyymm}_${input.recipient}`,
+          payload: {
+            params: input,
+            mainRowCount: rows.filter((r) => r.isrc !== null).length,
+            noMatchRowCount: rows.filter((r) => r.isrc === null).length,
+            lintIssueCount: lintIssues.length,
+          } as any,
+        });
+      });
+      return { ...file, lintIssues };
+    }),
 });
 
 function csvEsc(s: string | number | null | undefined): string {
@@ -138,4 +212,12 @@ function csvEsc(s: string | number | null | undefined): string {
     return `"${str.replace(/"/g, '""')}"`;
   }
   return str;
+}
+
+function monthBounds(period: string): [Date, Date] {
+  const [yyyy, mm] = period.split("-").map(Number);
+  return [
+    new Date(Date.UTC(yyyy, mm - 1, 1)),
+    new Date(Date.UTC(yyyy, mm, 0, 23, 59, 59)),
+  ];
 }

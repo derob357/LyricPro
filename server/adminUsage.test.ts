@@ -90,3 +90,19 @@ liveDescribe("admin.usage.exportCsv", () => {
     expect(r.rowCount).toEqual(expect.any(Number));
   });
 });
+
+liveDescribe("admin.usage.exportDdex", () => {
+  it("returns a DDEX file with mainFile, filename, and lintIssues", async () => {
+    const caller = makeAdminCaller("usage-ddex");
+    const periods = await caller.adminUsage.availablePeriods();
+    if (periods.length === 0) return; // no data — skip
+    const r = await caller.adminUsage.exportDdex({
+      period: periods[0].period,
+      recipient: "TEST-PUBLISHER",
+    });
+    expect(typeof r.mainFile).toBe("string");
+    expect(r.mainFile.startsWith("HEAD")).toBe(true);
+    expect(r.filename).toMatch(/\.tsv$/);
+    expect(Array.isArray(r.lintIssues)).toBe(true);
+  });
+});
