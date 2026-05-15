@@ -1,0 +1,14 @@
+HEAD	2025-current	BasicAudioProfile	1.4	MSG-MAIN-20260515T031500	2026-05-15T03:15:00Z	1	1	2026-04-01	2026-04-30	LYRICPRO-UNREGISTERED	LYRICPRO-UNREGISTERED	LyricProApp	PADPIDA2021010101A	PADPIDA2021010101A	
+SY01.03	SUM-1	LyricProApp		SubscriptionModel	OnDemandStream	CA	LyricProApp-Premium	1		USD	0.00						
+SY01.03	SUM-2	LyricProApp		SubscriptionModel	OnDemandStream	US	LyricProApp-Premium	2		USD	0.00						
+SY01.03	SUM-3	LyricProApp		AdvertisementSupportedModel	OnDemandStream	US	LyricProApp-Free	2		USD	0.00						
+RE01.03	BLK-1	1	REL-USRC12400001				Nadia Vale		Aurora Skies		Single			LyricPro		Nadia Vale
+AS02.04	BLK-1	1	RES-USRC12400001	USRC12400001	Aurora Skies		Nadia Vale			SoundRecording	T1234567890										true	false		Nadia Vale
+SU02.03	BLK-1	SUM-1	TXN-1		1	true	1			OnDemandStream	
+RE01.03	BLK-2	1	REL-USRC12400001				Nadia Vale		Aurora Skies		Single			LyricPro		Nadia Vale
+AS02.04	BLK-2	1	RES-USRC12400001	USRC12400001	Aurora Skies		Nadia Vale			SoundRecording	T1234567890										true	false		Nadia Vale
+SU02.03	BLK-2	SUM-2	TXN-2		1	true	2			OnDemandStream	
+RE01.03	BLK-3	1	REL-USRC12400002				Jae Park		Midnight Train		Single			LyricPro		Jae Park
+AS02.04	BLK-3	1	RES-USRC12400002	USRC12400002	Midnight Train		Jae Park			SoundRecording	T0987654321										true	false		Jae Park
+SU02.03	BLK-3	SUM-3	TXN-3		1	true	2			OnDemandStream	
+FOOT	14	14	3
