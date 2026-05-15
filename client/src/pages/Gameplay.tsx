@@ -115,7 +115,9 @@ export default function Gameplay() {
       // new value while the score flash is flying toward it.
       refetchRoom();
       const cnt = result.correctCount ?? 0;
-      const lvl = (cnt >= 3 ? 3 : cnt >= 2 ? 2 : cnt >= 1 ? 1 : 0) as CelebrationLevel;
+      // Celebration requires real accuracy: 1 out of 4 isn't worth celebrating.
+      // 2 correct = subtle particles, 3 = confetti, all 4 = fireworks.
+      const lvl = (cnt >= 4 ? 3 : cnt >= 3 ? 2 : cnt >= 2 ? 1 : 0) as CelebrationLevel;
       if (lvl > 0) {
         setTimeout(() => setCelebrationLevel(lvl), 600);
       } else {

@@ -341,7 +341,8 @@ export default function Celebration({ level, onComplete, duration, muted }: Cele
 
   if (level === 0) return null;
 
-  const label = level === 3 ? "🎆 Amazing!" : level === 2 ? "🎉 Great job!" : "✨ Nice!";
+  // Level 3 = perfect round (all 4 correct), Level 2 = 3/4, Level 1 = 2/4
+  const label = level === 3 ? "🎆 Perfect!" : level === 2 ? "🎉 Nice!" : "✨ Not bad!";
 
   return (
     <div
