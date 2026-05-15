@@ -14,6 +14,8 @@ import {
   playerProfiles,
 } from "../../drizzle/schema";
 import { nanoid } from "nanoid";
+import { resolveSuggestions } from "../_core/suggestionResolver";
+import type { PlayerProfileData } from "../_core/playerProfile";
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 const MIN_ROUNDS_FOR_DIAGNOSIS = 10;
@@ -153,6 +155,21 @@ export const insightsRouter = router({
       .where(eq(playerProfiles.userId, ctx.user.id))
       .limit(1);
     return row ?? null;
+  }),
+
+  /** Returns contextual suggestions based on the player's profile. */
+  getSuggestions: protectedProcedure.query(async ({ ctx }) => {
+    const db = await getDb();
+    if (!db) return null;
+    const [row] = await db
+      .select()
+      .from(playerProfiles)
+      .where(eq(playerProfiles.userId, ctx.user.id))
+      .limit(1);
+    if (!row) return null;
+    const profile = row.profile as unknown as PlayerProfileData;
+    if (!profile || !profile.totalGames) return null;
+    return resolveSuggestions(profile);
   }),
 
   /**

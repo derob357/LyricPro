@@ -10,6 +10,7 @@ import { getLoginUrl, getSignUpUrl } from "@/const";
 import SocialShareButtons from "@/components/SocialShareButtons";
 import { getHomepageShareContent } from "@/lib/shareUtils";
 import { WeaknessPackCard } from "@/components/WeaknessPackCard";
+import { SuggestionCard } from "@/components/SuggestionCard";
 import {
   Music, Mic, Users, Trophy, Zap, ChevronRight,
   Play, Radio, Clock, Target, ArrowRight, ShoppingCart,
@@ -163,10 +164,11 @@ export default function Home() {
       {/* ── Stats bar ── */}
       <StatsBar />
 
-      {/* ── Weakness Pack Card (authenticated users only) ── */}
+      {/* ── AI Suggestions + Weakness Pack (authenticated users only) ── */}
       {isAuthenticated && (
         <section className="py-6 px-4">
-          <div className="container max-w-3xl">
+          <div className="container max-w-3xl space-y-4">
+            <SuggestionCard />
             <WeaknessPackCard />
           </div>
         </section>
