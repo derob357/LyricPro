@@ -16,6 +16,7 @@ import { adminActionsRouter } from "./routers/adminActions";
 import { adminUsageRouter } from "./routers/adminUsage";
 import { adminSuggestionsRouter } from "./routers/adminSuggestions";
 import { adminGenresRouter } from "./routers/adminGenres";
+import { bannersRouter } from "./routers/banners";
 import { getDb } from "./db";
 import { z } from "zod";
 import { eq } from "drizzle-orm";
@@ -323,6 +324,7 @@ export const appRouter = router({
   adminUsage: adminUsageRouter,
   adminSuggestions: adminSuggestionsRouter,
   adminGenres: adminGenresRouter,
+  banners: bannersRouter,
 });
 
 export type AppRouter = typeof appRouter;

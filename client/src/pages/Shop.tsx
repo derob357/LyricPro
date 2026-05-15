@@ -121,41 +121,49 @@ export default function Shop() {
   const subscriptionTier = (subscriptionQuery.data as { tier?: string } | undefined)?.tier ?? "free";
 
   return (
-    <div className="min-h-screen relative overflow-hidden">
-      <div className="absolute top-0 left-1/4 w-[28rem] h-[28rem] rounded-full bg-primary/20 blur-3xl pointer-events-none" />
-      <div className="absolute bottom-0 right-1/4 w-[22rem] h-[22rem] rounded-full bg-accent/15 blur-3xl pointer-events-none" />
+    <div className="min-h-screen relative overflow-hidden bg-background">
+      {/* Ambient glow — amber-tinted for the shop */}
+      <div className="absolute top-[-10%] left-1/2 -translate-x-1/2 w-[40rem] h-[40rem] rounded-full bg-amber-500/8 blur-[120px] pointer-events-none" />
+      <div className="absolute bottom-[-5%] right-1/4 w-[24rem] h-[24rem] rounded-full bg-pink-500/6 blur-[100px] pointer-events-none" />
 
-      <div className="relative z-10 max-w-5xl mx-auto px-4 pt-24 pb-12">
-        {/* Header */}
-        <div className="flex items-start justify-between gap-4 mb-8">
-          <div>
-            <div className="flex items-center gap-2 mb-2">
-              <Music2 className="w-5 h-5 text-yellow-400 neon-gold-sm" />
-              <h1 className="font-display font-black text-3xl sm:text-4xl text-gradient">
-                Golden Notes Shop
-              </h1>
-            </div>
-            <p className="text-muted-foreground max-w-2xl">
-              Golden Notes unlock extra daily games, tournament entries,
-              advanced game modes, and gifts to friends. Purchased on the web,
-              spendable anywhere — including the LyricPro mobile app.
-            </p>
+      <div className="relative z-10 max-w-3xl mx-auto px-4 pt-24 pb-16">
+        {/* ── Header ── */}
+        <div className="text-center mb-10">
+          <div className="inline-flex items-center gap-2.5 mb-3">
+            <Music2 className="w-6 h-6 text-amber-400 neon-gold-sm" />
+            <h1 className="font-display font-black text-3xl sm:text-4xl text-gradient-gold">
+              Golden Notes Shop
+            </h1>
           </div>
-          <div className="glass rounded-xl p-4 text-right shrink-0 border border-border/50">
-            <div className="text-xs uppercase tracking-wider text-muted-foreground">
-              Your balance
-            </div>
-            <div className="font-display font-black text-3xl text-yellow-400 neon-gold">
-              {balance.toLocaleString()}
-            </div>
-            <div className="text-xs text-muted-foreground mt-1">
-              Golden Notes
-            </div>
-          </div>
+          <p className="text-muted-foreground text-sm sm:text-base max-w-lg mx-auto">
+            Unlock practice packs, extra games, and more
+          </p>
         </div>
 
-        {/* Status: subscription tier + rank tier */}
-        <div className="glass rounded-2xl p-5 border border-border/50 mb-8">
+        {/* ── Balance card ── */}
+        <div
+          className="glass rounded-2xl border border-border/50 p-6 sm:p-8 text-center mb-12"
+          style={{ boxShadow: "0 0 24px rgba(245,158,11,0.15)" }}
+        >
+          <div className="text-xs uppercase tracking-widest text-muted-foreground mb-2">
+            Your Balance
+          </div>
+          <div
+            className="font-display font-black text-5xl sm:text-6xl leading-none mb-1"
+            style={{
+              background: "linear-gradient(135deg, #f59e0b, #ec4899)",
+              WebkitBackgroundClip: "text",
+              WebkitTextFillColor: "transparent",
+              backgroundClip: "text",
+            }}
+          >
+            {balance.toLocaleString()}
+          </div>
+          <div className="text-sm text-muted-foreground">Golden Notes</div>
+        </div>
+
+        {/* ── Status: subscription + rank ── */}
+        <div className="glass rounded-2xl p-5 border border-border/50 mb-10">
           <div className="flex flex-wrap items-center gap-x-8 gap-y-3">
             <div>
               <div className="text-xs uppercase tracking-wider text-muted-foreground mb-0.5">Membership</div>
@@ -175,17 +183,14 @@ export default function Shop() {
               </div>
             </div>
             <div className="ml-auto flex gap-3 text-sm">
-              <Link href="/profile" className="underline text-muted-foreground hover:text-foreground">
+              <Link href="/profile" className="underline text-muted-foreground hover:text-foreground transition-colors">
                 View profile →
               </Link>
             </div>
           </div>
         </div>
 
-        {/* Native (iOS/Android): no purchase UI per App Store / Play policy.
-            Instead, a clear notice directing users to the web to top up.
-            App Store §3.1.3(a) says we can't *link* from the app to the
-            web purchase page, but we can inform the user it exists. */}
+        {/* Native (iOS/Android): no purchase UI per App Store / Play policy. */}
         {!CAN_PURCHASE && (
           <div className="glass rounded-2xl p-5 border border-border/50 mb-12">
             <div className="flex items-start gap-3">
@@ -205,8 +210,7 @@ export default function Shop() {
           </div>
         )}
 
-        {/* Subscriptions — recurring monthly. Web-only per App Store / Play
-            policy on digital goods. */}
+        {/* ── Subscriptions ── */}
         {CAN_PURCHASE && (
           <div className="mb-12">
             <h2 className="font-display font-bold text-lg text-foreground mb-2 flex items-center gap-2">
@@ -224,57 +228,61 @@ export default function Shop() {
           </div>
         )}
 
-        {/* Packs — web only */}
+        {/* ── Buy Golden Notes ── */}
         {CAN_PURCHASE && (
         <>
-        <h2 className="font-display font-bold text-lg text-foreground mb-4 flex items-center gap-2">
-          <Music className="w-4 h-4 text-primary" />
-          Buy a pack
+        <h2 className="font-display font-bold text-xl text-foreground mb-5">
+          Buy Golden Notes
         </h2>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mb-12">
-          {packs.map((pack) => (
-            <div
-              key={pack.id}
-              className={`glass rounded-2xl p-5 border transition ${
-                pack.id === "pro"
-                  ? "border-primary/60 glow-purple"
-                  : "border-border/50 hover:border-primary/40"
-              }`}
-            >
-              <div className="flex items-start justify-between mb-2">
-                <div className="font-display font-bold text-foreground text-lg">
-                  {pack.label.split("—")[0].trim()}
-                </div>
-                {pack.id === "pro" && (
-                  <Badge className="bg-primary/20 text-primary border-primary/40">
-                    Best value
-                  </Badge>
-                )}
-              </div>
-              <div className="flex items-baseline gap-2 mb-1">
-                <Music2 className="w-4 h-4 text-yellow-400 neon-gold-sm" />
-                <span className="font-display font-black text-2xl text-yellow-400 neon-gold">
-                  {pack.notes.toLocaleString()}
-                </span>
-                <span className="text-sm text-muted-foreground">notes</span>
-              </div>
-              <div className="text-muted-foreground text-sm mb-4">
-                ${pack.priceUsd} USD
-              </div>
-              <Button
-                className="w-full bg-primary text-primary-foreground hover:bg-primary/90"
-                onClick={() => checkoutMutation.mutate({ packId: pack.id })}
-                disabled={checkoutMutation.isPending}
+        <div className="grid grid-cols-2 gap-4 mb-12">
+          {packs.map((pack) => {
+            const isBestValue = pack.id === "pro";
+            return (
+              <div
+                key={pack.id}
+                className="glass rounded-2xl p-5 border border-border/50 relative transition-all duration-300 hover:border-amber-400/40 hover:scale-[1.02] group"
               >
-                {checkoutMutation.isPending ? "Redirecting…" : `Buy ${pack.notes}`}
-              </Button>
-            </div>
-          ))}
+                {isBestValue && (
+                  <div
+                    className="absolute -top-3 -right-3 px-3 py-1 rounded-full text-xs font-bold text-white"
+                    style={{
+                      background: "linear-gradient(135deg, #f59e0b, #ec4899)",
+                    }}
+                  >
+                    Best Value
+                  </div>
+                )}
+                <div className="text-center mb-4">
+                  <div
+                    className="font-display font-black text-3xl sm:text-4xl leading-none mb-1"
+                    style={{
+                      background: "linear-gradient(135deg, #f59e0b, #ec4899)",
+                      WebkitBackgroundClip: "text",
+                      WebkitTextFillColor: "transparent",
+                      backgroundClip: "text",
+                    }}
+                  >
+                    {pack.notes.toLocaleString()}
+                  </div>
+                  <div className="text-xs text-muted-foreground uppercase tracking-wider">
+                    notes
+                  </div>
+                </div>
+                <Button
+                  className="w-full bg-amber-500 text-black font-bold hover:bg-amber-400 transition-colors"
+                  onClick={() => checkoutMutation.mutate({ packId: pack.id })}
+                  disabled={checkoutMutation.isPending}
+                >
+                  {checkoutMutation.isPending ? "Redirecting…" : `$${pack.priceUsd}`}
+                </Button>
+              </div>
+            );
+          })}
         </div>
         <div className="text-center mb-12">
           <Link
             href="/avatars"
-            className="inline-flex items-center gap-2 text-sm text-primary hover:underline"
+            className="inline-flex items-center gap-2 text-sm text-primary hover:underline transition-colors"
           >
             Looking to unlock avatars? <span className="font-semibold">Visit the Avatar Locker →</span>
           </Link>
@@ -282,48 +290,114 @@ export default function Shop() {
         </>
         )}
 
-        {/* What you can do with them */}
-        <div className="glass rounded-2xl p-5 border border-border/50 mb-12">
-          <h2 className="font-display font-bold text-lg text-foreground mb-3 flex items-center gap-2">
-            <Gift className="w-4 h-4 text-accent" />
-            What Golden Notes unlock
-          </h2>
-          <ul className="space-y-2 text-sm text-muted-foreground">
-            <li className="flex items-start gap-2">
-              <Check className="w-4 h-4 text-accent mt-0.5 shrink-0" />
-              <span><span className="text-foreground font-semibold">1 note</span> — one extra game after your daily limit</span>
-            </li>
-            <li className="flex items-start gap-2">
-              <Check className="w-4 h-4 text-accent mt-0.5 shrink-0" />
-              <span><span className="text-foreground font-semibold">5 notes</span> — a 30-minute advanced mode session, or a small tournament entry</span>
-            </li>
-            <li className="flex items-start gap-2">
-              <Check className="w-4 h-4 text-accent mt-0.5 shrink-0" />
-              <span><span className="text-foreground font-semibold">20 notes</span> — full-day advanced mode pass</span>
-            </li>
-            <li className="flex items-start gap-2">
-              <Check className="w-4 h-4 text-accent mt-0.5 shrink-0" />
-              <span><span className="text-foreground font-semibold">25+ notes</span> — medium tournament entry</span>
-            </li>
-            <li className="flex items-start gap-2">
-              <Check className="w-4 h-4 text-accent mt-0.5 shrink-0" />
-              <span><span className="text-foreground font-semibold">100+ notes</span> — large tournament with bigger prize pool</span>
-            </li>
-            <li className="flex items-start gap-2">
-              <Gift className="w-4 h-4 text-yellow-400 mt-0.5 shrink-0" />
-              <span className="text-muted-foreground italic">Gifting to friends — coming soon.</span>
-            </li>
-          </ul>
+        {/* ── Spend Golden Notes ── */}
+        <h2 className="font-display font-bold text-xl text-foreground mb-5">
+          Spend Golden Notes
+        </h2>
+        <div className="space-y-3 mb-12">
+          {[
+            {
+              icon: <Music className="w-5 h-5 text-amber-400" />,
+              title: "Extra Game",
+              description: "Play one more round after your daily limit",
+              cost: 1,
+            },
+            {
+              icon: <Check className="w-5 h-5 text-amber-400" />,
+              title: "Advanced Mode (30 min)",
+              description: "Unlock harder songs and tighter timers",
+              cost: 5,
+            },
+            {
+              icon: <Check className="w-5 h-5 text-amber-400" />,
+              title: "Advanced Mode (Full Day)",
+              description: "All-day access to the advanced song pool",
+              cost: 20,
+            },
+            {
+              icon: <Music2 className="w-5 h-5 text-amber-400" />,
+              title: "Tournament Entry (Small)",
+              description: "Compete for prizes against other players",
+              cost: 5,
+            },
+            {
+              icon: <Music2 className="w-5 h-5 text-amber-400" />,
+              title: "Tournament Entry (Medium)",
+              description: "Larger field, bigger prize pool",
+              cost: 25,
+            },
+            {
+              icon: <Music2 className="w-5 h-5 text-amber-400" />,
+              title: "Tournament Entry (Large)",
+              description: "The biggest stage with the biggest rewards",
+              cost: 100,
+            },
+            {
+              icon: <Gift className="w-5 h-5 text-amber-400" />,
+              title: "Gift to a Friend",
+              description: "Send Golden Notes to someone you know",
+              cost: null,
+            },
+          ].map((item) => (
+            <div
+              key={item.title}
+              className="glass rounded-xl border border-border/50 p-4 flex items-center gap-4 transition-all duration-200 hover:border-amber-400/30"
+            >
+              <div className="w-10 h-10 rounded-lg bg-amber-500/10 border border-amber-500/20 flex items-center justify-center shrink-0">
+                {item.icon}
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="font-display font-semibold text-foreground text-sm">
+                  {item.title}
+                </div>
+                <div className="text-xs text-muted-foreground truncate">
+                  {item.description}
+                </div>
+              </div>
+              <div className="text-right shrink-0">
+                {item.cost !== null ? (
+                  <span className="font-display font-bold text-amber-400 text-sm">
+                    {item.cost} 🎵
+                  </span>
+                ) : (
+                  <span className="text-xs text-muted-foreground italic">
+                    Coming soon
+                  </span>
+                )}
+              </div>
+            </div>
+          ))}
         </div>
 
-        {/* Recent activity */}
+        {/* ── Partner promo strip ── */}
+        <div
+          className="glass rounded-2xl border border-border/50 p-5 mb-12 flex items-center gap-4"
+          style={{ borderColor: "rgba(245,158,11,0.2)" }}
+        >
+          <div className="w-10 h-10 rounded-full bg-gradient-to-br from-red-500 to-pink-600 flex items-center justify-center shrink-0">
+            <span className="text-white font-bold text-xs">iHR</span>
+          </div>
+          <div className="flex-1 min-w-0">
+            <div className="font-display font-semibold text-foreground text-sm">
+              iHeartRadio Premium Members
+            </div>
+            <div className="text-xs text-muted-foreground">
+              Premium members get 5 free Golden Notes monthly
+            </div>
+          </div>
+          <Badge className="bg-amber-500/15 text-amber-400 border-amber-500/30 shrink-0">
+            Partner
+          </Badge>
+        </div>
+
+        {/* ── Recent activity ── */}
         {transactions.length > 0 && (
           <>
             <h2 className="font-display font-bold text-lg text-foreground mb-3 flex items-center gap-2">
               <History className="w-4 h-4 text-muted-foreground" />
               Recent activity
             </h2>
-            <div className="glass rounded-2xl border border-border/50 divide-y divide-border/50">
+            <div className="glass rounded-2xl border border-border/50 divide-y divide-border/50 mb-12">
               {transactions.map((t) => {
                 const isCredit = t.amount > 0;
                 return (
@@ -337,7 +411,7 @@ export default function Shop() {
                         {new Date(t.createdAt).toLocaleString()}
                       </div>
                     </div>
-                    <div className={`font-display font-bold ${isCredit ? "text-yellow-400 neon-gold-sm" : "text-muted-foreground"}`}>
+                    <div className={`font-display font-bold ${isCredit ? "text-amber-400 neon-gold-sm" : "text-muted-foreground"}`}>
                       {isCredit ? "+" : ""}{t.amount}
                     </div>
                   </div>
@@ -350,7 +424,7 @@ export default function Shop() {
         <p className="text-xs text-muted-foreground text-center mt-8">
           Payments processed by Stripe. Golden Notes have no cash value and
           are non-refundable except where required by law. See{" "}
-          <a href="/termsofservice" className="underline">Terms</a>.
+          <a href="/termsofservice" className="underline hover:text-foreground transition-colors">Terms</a>.
         </p>
       </div>
     </div>

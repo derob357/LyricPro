@@ -12,6 +12,7 @@ import UsageTab from "./admin/tabs/UsageTab";
 import SuggestionsTab from "./admin/tabs/SuggestionsTab";
 import CommentaryTab from "./admin/tabs/CommentaryTab";
 import GenresTab from "./admin/tabs/GenresTab";
+import BannersTab from "./admin/tabs/BannersTab";
 
 const formatCurrency = (amount: number) => {
   return new Intl.NumberFormat('en-US', {
@@ -20,7 +21,7 @@ const formatCurrency = (amount: number) => {
   }).format(amount);
 };
 
-const VALID_TABS = ["overview", "users", "revenue", "payouts", "songs", "genres", "log", "usage", "suggestions", "commentary"] as const;
+const VALID_TABS = ["overview", "users", "revenue", "payouts", "songs", "genres", "log", "usage", "suggestions", "commentary", "banners"] as const;
 type TabValue = typeof VALID_TABS[number];
 
 export function AdminDashboard() {
@@ -149,6 +150,7 @@ export function AdminDashboard() {
             <TabsTrigger value="usage">Usage</TabsTrigger>
             <TabsTrigger value="suggestions">Suggestions</TabsTrigger>
             <TabsTrigger value="commentary">Commentary</TabsTrigger>
+            <TabsTrigger value="banners">Banners</TabsTrigger>
           </TabsList>
 
           {/* Overview Tab */}
@@ -292,6 +294,9 @@ export function AdminDashboard() {
 
           {/* Commentary Tab */}
           <TabsContent value="commentary"><CommentaryTab /></TabsContent>
+
+          {/* Banners Tab */}
+          <TabsContent value="banners"><BannersTab /></TabsContent>
         </Tabs>
       </div>
     </div>

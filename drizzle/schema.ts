@@ -591,6 +591,39 @@ export const commentaryTemplates = pgTable("commentary_templates", {
 
 export type CommentaryTemplate = typeof commentaryTemplates.$inferSelect;
 
+// ─── Banners (partner/news hero banners) ─────────────────────────────────────
+export const banners = pgTable("banners", {
+  id: serial("id").primaryKey(),
+  title: varchar("title", { length: 256 }).notNull(),
+  subtitle: text("subtitle"),
+  ctaText: varchar("cta_text", { length: 64 }).default("Learn More").notNull(),
+  ctaAction: varchar("cta_action", { length: 512 }).notNull(),
+  partnerName: varchar("partner_name", { length: 128 }),
+  partnerLogoUrl: varchar("partner_logo_url", { length: 512 }),
+  badgeText: varchar("badge_text", { length: 32 }).default("Featured"),
+  badgeColor: varchar("badge_color", { length: 7 }).default("#EF4444"),
+  imageEmoji: varchar("image_emoji", { length: 8 }),
+  imageUrl: varchar("image_url", { length: 512 }),
+  audience: varchar("audience", { length: 32 }).default("all").notNull(),
+  targetJson: jsonb("target_json").default({}),
+  priority: integer("priority").default(100).notNull(),
+  isActive: boolean("is_active").default(true).notNull(),
+  startsAt: timestamp("starts_at", { withTimezone: true }),
+  endsAt: timestamp("ends_at", { withTimezone: true }),
+  createdAt: createdAtColumn(),
+  updatedAt: updatedAtColumn(),
+});
+
+export type Banner = typeof banners.$inferSelect;
+
+export const bannerImpressions = pgTable("banner_impressions", {
+  id: serial("id").primaryKey(),
+  bannerId: integer("banner_id").notNull().references(() => banners.id, { onDelete: "cascade" }),
+  userId: integer("user_id"),
+  clickedAt: timestamp("clicked_at", { withTimezone: true }),
+  shownAt: timestamp("shown_at", { withTimezone: true }).defaultNow().notNull(),
+});
+
 // ─── Leaderboard Entries ──────────────────────────────────────────────────────
 export const leaderboardEntries = pgTable("leaderboard_entries", {
   id: serial("id").primaryKey(),
