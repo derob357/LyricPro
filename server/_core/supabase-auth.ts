@@ -93,24 +93,31 @@ export async function authenticateRequest(
   // Supabase-authenticated users.
   let appUser = await getUserByOpenId(authUser.id);
   if (!appUser) {
-    const meta = (authUser.user_metadata ?? {}) as {
-      firstName?: string;
-      lastName?: string;
-      role?: "user" | "admin";
-    };
-    const name =
-      authUser.user_metadata?.full_name ??
-      [meta.firstName, meta.lastName].filter(Boolean).join(" ") ??
-      authUser.email ??
-      null;
+    const meta = (authUser.user_metadata ?? {}) as Record<string, unknown>;
+    // OAuth providers (Google, Apple) use given_name / family_name.
+    // Email/password sign-up uses firstName / lastName.
+    const firstName =
+      (typeof meta.given_name === "string" && meta.given_name) ||
+      (typeof meta.firstName === "string" && meta.firstName) ||
+      undefined;
+    const lastName =
+      (typeof meta.family_name === "string" && meta.family_name) ||
+      (typeof meta.lastName === "string" && meta.lastName) ||
+      undefined;
+    const fullName =
+      (typeof meta.full_name === "string" && meta.full_name) ||
+      [firstName, lastName].filter(Boolean).join(" ") ||
+      undefined;
+    const name = fullName ?? authUser.email ?? null;
+    const role = meta.role === "admin" ? "admin" as const : "user" as const;
     await upsertUser({
       openId: authUser.id,
       email: authUser.email ?? null,
       name,
-      firstName: meta.firstName ?? null,
-      lastName: meta.lastName ?? null,
+      firstName: firstName ?? null,
+      lastName: lastName ?? null,
       loginMethod: authUser.app_metadata?.provider ?? "supabase",
-      role: meta.role === "admin" ? "admin" : "user",
+      role,
     });
     appUser = await getUserByOpenId(authUser.id);
   } else {
