@@ -126,37 +126,27 @@ export default function Home() {
         </div>
       </nav>
 
-      {/* ── Hero Headline + Featured Banner ── */}
-      <section className="relative pt-28 pb-6 px-4 z-10">
+      {/* ── Hero: Headline + Full-width Banner ── */}
+      <section className="relative pt-28 pb-4 px-4 z-10">
         <div className="container relative">
           <motion.div
-            className="max-w-3xl mx-auto"
             initial="hidden"
             animate="visible"
             variants={{ visible: { transition: { staggerChildren: 0.12 } } }}
           >
             <motion.h1
               variants={fadeUp}
-              className="font-display text-4xl sm:text-5xl font-black leading-tight mb-6 text-center"
+              className="font-display text-4xl sm:text-5xl md:text-6xl font-black leading-tight mb-8 text-center"
             >
               Finish the Lyric.
-              <br />
-              <span className="text-gradient">Win the Night.</span>
             </motion.h1>
 
-            {/* Featured Partner Banner — top billing, immediately after headline */}
+            {/* ── Full-width Featured Banner / Ad Space ── */}
             <motion.div variants={fadeUp} className="mb-8">
               <HeroBanner />
             </motion.div>
 
-            <motion.p
-              variants={fadeUp}
-              className="text-muted-foreground text-base sm:text-lg max-w-xl mx-auto mb-6 text-center"
-            >
-              AI-powered music trivia — <StatsLine /> across every genre and decade.
-            </motion.p>
-
-            <motion.div variants={fadeUp} className="flex flex-col sm:flex-row gap-4 justify-center items-center">
+            <motion.div variants={fadeUp} className="flex flex-col sm:flex-row gap-4 justify-center items-center mb-2">
               <Button size="lg" onClick={handlePlayNow}
                 className="bg-primary text-primary-foreground hover:bg-primary/90 glow-purple px-8 py-6 text-lg font-semibold rounded-xl w-full sm:w-auto">
                 <Play className="w-5 h-5 mr-2" /> Play Now
@@ -166,6 +156,13 @@ export default function Home() {
                 <Users className="w-5 h-5 mr-2" /> Host a Game
               </Button>
             </motion.div>
+
+            <motion.p
+              variants={fadeUp}
+              className="text-muted-foreground text-sm max-w-md mx-auto text-center"
+            >
+              AI-powered music trivia — <StatsLine /> across every genre and decade.
+            </motion.p>
           </motion.div>
         </div>
       </section>
