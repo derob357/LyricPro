@@ -19,6 +19,9 @@ import {
   type Variant,
 } from "../_core/variantReader";
 import { computePlayerProfile } from "../_core/playerProfile";
+import { resolveCommentary, type RoundContext } from "../_core/commentaryEngine";
+import { playerProfiles } from "../../drizzle/schema";
+import type { PlayerProfileData } from "../_core/playerProfile";
 
 // Hashes a userId with USER_HASH_PEPPER for storage in song_displays.user_id_hashed.
 // Exported for test coverage. Uses a fixed fallback pepper in dev when the env
@@ -1155,6 +1158,36 @@ export const gameRouter = router({
           streakInsuranceUsed,
         });
 
+        // ── Commentary (fire-and-forget fetch, best-effort) ──────────────
+        let commentary: string | null = null;
+        try {
+          let profileData: PlayerProfileData | null = null;
+          if (userId) {
+            const [profileRow] = await db
+              .select({ profile: playerProfiles.profile })
+              .from(playerProfiles)
+              .where(eq(playerProfiles.userId, userId))
+              .limit(1);
+            if (profileRow) profileData = profileRow.profile as unknown as PlayerProfileData;
+          }
+          const roundCtx: RoundContext = {
+            correctCount,
+            lyricCorrect,
+            titleCorrect,
+            artistCorrect: artistCorrect || artistPartial,
+            yearCorrect: yearPoints > 0,
+            passUsed: input.passUsed,
+            responseTimeSeconds: input.responseTimeSeconds ?? null,
+            genre: song.genre,
+            streakCount: newStreak,
+            isMultiplayer: room.mode !== "solo",
+            profile: profileData,
+          };
+          commentary = await resolveCommentary(roundCtx);
+        } catch (err) {
+          console.warn("[commentary] resolve failed:", err);
+        }
+
         return {
           lyricCorrect,
           lyricPartial: lyricPartialFlag,
@@ -1179,6 +1212,7 @@ export const gameRouter = router({
           correctYear: song.releaseYear,
           difficulty: diff,
           passUsed: input.passUsed,
+          commentary,
         };
       }
 
@@ -1187,7 +1221,7 @@ export const gameRouter = router({
         artistCorrect, artistPartial, correctCount,
         lyricPoints, titlePoints, artistPoints, yearPoints,
         speedBonus, streakBonus, total: 0, newScore: 0, newStreak: 0,
-        streakInsuranceUsed: false,
+        streakInsuranceUsed: false, commentary: null as string | null,
         correctLyric: playedVariant.answer, correctTitle: song.title,
         correctArtist: song.artistName, correctYear: song.releaseYear, difficulty: diff,
         passUsed: input.passUsed,

@@ -1,15 +1,19 @@
-// AI Player Intelligence — Phase 2: Suggestion Resolver
+// AI Player Intelligence — Phase 2: DB-Driven Suggestion Resolver
 //
-// Reads a computed PlayerProfileData and returns at most one game-mode
-// suggestion and one upsell suggestion. Rules are ordered by priority —
-// first match wins within each category.
+// Reads active suggestion_rules from the DB, evaluates each rule's
+// triggerKey against the player profile, fills template slots, and
+// returns the highest-priority match per category (mode, upsell).
 
+import { eq, asc } from "drizzle-orm";
 import type { PlayerProfileData } from "./playerProfile";
+import { suggestionRules } from "../../drizzle/schema";
+import type { SuggestionRule } from "../../drizzle/schema";
+import { getDb } from "../db";
 
 export interface Suggestion {
-  id: string;          // stable key for dismiss tracking
+  id: string;
   text: string;
-  action: string;      // route or CTA identifier
+  action: string;
   category: "mode" | "upsell";
 }
 
@@ -18,152 +22,92 @@ export interface SuggestionResult {
   upsellSuggestion: Suggestion | null;
 }
 
-// ── Game Mode Suggestions (first match wins) ────────────────────────────────
+// ── Trigger condition evaluators ────────────────────────────────────────────
+// Each triggerKey maps to a function that returns true if the rule should fire.
 
-function resolveGameModeSuggestion(p: PlayerProfileData): Suggestion | null {
-  // Always plays Low, accuracy is high → nudge to Medium
-  if (
-    p.preferredDifficulty === "low" &&
-    p.totalGames >= 5 &&
-    p.strongestGenres.length > 0
-  ) {
-    return {
-      id: "nudge-medium",
-      text: "Low is too easy for you. Medium unlocks harder lyrics and double the points.",
-      action: "/play?difficulty=medium",
-      category: "mode",
-    };
-  }
+type ConditionFn = (p: PlayerProfileData) => boolean;
 
-  // 10+ solo games, never tried multiplayer
-  if (p.totalGames >= 10 && !p.hasTriedMultiplayer) {
-    return {
-      id: "try-multiplayer",
-      text: "You've been going solo — challenge a friend and see who really knows their lyrics.",
-      action: "/play?mode=multiplayer",
-      category: "mode",
-    };
-  }
+const triggerConditions: Record<string, ConditionFn> = {
+  "nudge-medium": (p) =>
+    p.preferredDifficulty === "low" && p.totalGames >= 5 && p.strongestGenres.length > 0,
+  "try-multiplayer": (p) =>
+    p.totalGames >= 10 && !p.hasTriedMultiplayer,
+  "try-team": (p) =>
+    p.hasTriedMultiplayer && !p.hasTriedTeamMode && p.totalGames >= 8,
+  "try-new-genre": (p) =>
+    p.genreDiversity < 0.3 && p.totalGames >= 8 && p.strongestGenres.length > 0 &&
+    p.weakestGenres.length > 0 && p.weakestGenres[0] !== p.strongestGenres[0],
+  "mix-genres": (p) =>
+    p.genreDiversity < 0.3 && p.totalGames >= 8 && p.strongestGenres.length > 0,
+  "try-speed-bonus": (p) =>
+    p.isStreakPlayer && p.totalGames >= 10,
+  "welcome-back": (p) =>
+    p.daysSinceLastGame >= 7,
+  "try-marathon": (p) =>
+    p.avgSessionGames >= 3 && p.totalGames >= 5,
+  "nudge-high": (p) =>
+    p.difficultyProgression === "climbing" && p.preferredDifficulty === "medium",
+  "upsell-golden-notes": (p) =>
+    p.consecutiveDaysPlayed >= 3 && p.goldenNotesBalance <= 2 && p.totalGames >= 10,
+  "spend-golden-notes": (p) =>
+    p.goldenNotesBalance >= 5 && p.goldenNotesSpent === 0 && p.totalGames >= 5,
+  "practice-pack": (p) =>
+    p.weakestGenres.length > 0 && p.totalGames >= 15,
+};
 
-  // 5+ multiplayer games, never tried team mode
-  if (p.hasTriedMultiplayer && !p.hasTriedTeamMode && p.totalGames >= 8) {
-    return {
-      id: "try-team",
-      text: "Try Team mode — draft your squad and battle together.",
-      action: "/play?mode=team",
-      category: "mode",
-    };
-  }
+// ── Template slot filling ───────────────────────────────────────────────────
 
-  // Low genre diversity (plays same genre repeatedly)
-  if (p.genreDiversity < 0.3 && p.totalGames >= 8 && p.strongestGenres.length > 0) {
-    const strong = p.strongestGenres[0];
-    const weak = p.weakestGenres.length > 0 ? p.weakestGenres[0] : null;
-    if (weak && weak !== strong) {
-      return {
-        id: "try-new-genre",
-        text: `You own ${strong}. Ready to test yourself with some ${weak}?`,
-        action: `/play?genre=${encodeURIComponent(weak)}`,
-        category: "mode",
-      };
-    }
-    return {
-      id: "mix-genres",
-      text: "Shake it up — try a mixed-genre game and see how you do across the board.",
-      action: "/play",
-      category: "mode",
-    };
-  }
-
-  // Streak player → suggest speed bonus mode
-  if (p.isStreakPlayer && p.totalGames >= 10) {
-    return {
-      id: "try-speed-bonus",
-      text: "Your streak game is strong. Try speed bonus mode — same fire, tighter clock.",
-      action: "/play?ranking=speed_bonus",
-      category: "mode",
-    };
-  }
-
-  // Returning after absence
-  if (p.daysSinceLastGame >= 7) {
-    return {
-      id: "welcome-back",
-      text: "Welcome back! New songs have been added while you were away.",
-      action: "/play",
-      category: "mode",
-    };
-  }
-
-  // Heavy session today → suggest marathon
-  if (p.avgSessionGames >= 3 && p.totalGames >= 5) {
-    return {
-      id: "try-marathon",
-      text: "Going hard today! A 10-round marathon might be your vibe.",
-      action: "/play?rounds=10",
-      category: "mode",
-    };
-  }
-
-  // Difficulty climbing → encourage continuing
-  if (p.difficultyProgression === "climbing" && p.preferredDifficulty === "medium") {
-    return {
-      id: "nudge-high",
-      text: "You've been leveling up. High difficulty is where the real points are — ready?",
-      action: "/play?difficulty=high",
-      category: "mode",
-    };
-  }
-
-  return null;
+function fillSlots(template: string, p: PlayerProfileData): string {
+  return template
+    .replace(/\{strongGenre\}/g, p.strongestGenres[0] ?? "your best genre")
+    .replace(/\{weakGenre\}/g, p.weakestGenres[0] ?? "a new genre")
+    .replace(/\{gnBalance\}/g, String(p.goldenNotesBalance))
+    .replace(/\{totalGames\}/g, String(p.totalGames))
+    .replace(/\{preferredDifficulty\}/g, p.preferredDifficulty)
+    .replace(/\{bestStage\}/g, p.bestStage)
+    .replace(/\{worstStage\}/g, p.worstStage);
 }
 
-// ── Upsell Suggestions (first match wins) ───────────────────────────────────
-
-function resolveUpsellSuggestion(p: PlayerProfileData): Suggestion | null {
-  // Daily player, no subscription equivalent (Golden Notes balance is low)
-  if (
-    p.consecutiveDaysPlayed >= 3 &&
-    p.goldenNotesBalance <= 2 &&
-    p.totalGames >= 10
-  ) {
-    return {
-      id: "upsell-golden-notes",
-      text: "Playing every day? Grab some Golden Notes so you never hit a cap.",
-      action: "/shop",
-      category: "upsell",
-    };
-  }
-
-  // Has Golden Notes but never spent them
-  if (p.goldenNotesBalance >= 5 && p.goldenNotesSpent === 0 && p.totalGames >= 5) {
-    return {
-      id: "spend-golden-notes",
-      text: `You're sitting on ${p.goldenNotesBalance} Golden Notes. Use them to unlock practice packs for your weak spots.`,
-      action: "/dashboard",
-      category: "upsell",
-    };
-  }
-
-  // Weak genre with enough games → suggest practice pack
-  if (p.weakestGenres.length > 0 && p.totalGames >= 15) {
-    const weak = p.weakestGenres[0];
-    return {
-      id: "practice-pack",
-      text: `Your ${weak} game needs work. Try a practice pack to level up.`,
-      action: "/dashboard",
-      category: "upsell",
-    };
-  }
-
-  return null;
+function fillActionSlots(action: string, p: PlayerProfileData): string {
+  return action
+    .replace(/\{weakGenre\}/g, encodeURIComponent(p.weakestGenres[0] ?? ""))
+    .replace(/\{strongGenre\}/g, encodeURIComponent(p.strongestGenres[0] ?? ""));
 }
 
 // ── Public API ──────────────────────────────────────────────────────────────
 
-export function resolveSuggestions(profile: PlayerProfileData): SuggestionResult {
-  return {
-    gameModeSuggestion: resolveGameModeSuggestion(profile),
-    upsellSuggestion: resolveUpsellSuggestion(profile),
-  };
+export async function resolveSuggestions(profile: PlayerProfileData): Promise<SuggestionResult> {
+  const db = await getDb();
+  if (!db) return { gameModeSuggestion: null, upsellSuggestion: null };
+
+  const rules = await db
+    .select()
+    .from(suggestionRules)
+    .where(eq(suggestionRules.isActive, true))
+    .orderBy(asc(suggestionRules.priority));
+
+  let gameModeSuggestion: Suggestion | null = null;
+  let upsellSuggestion: Suggestion | null = null;
+
+  for (const rule of rules) {
+    const condFn = triggerConditions[rule.triggerKey];
+    if (!condFn || !condFn(profile)) continue;
+
+    const suggestion: Suggestion = {
+      id: rule.triggerKey,
+      text: fillSlots(rule.text, profile),
+      action: fillActionSlots(rule.action, profile),
+      category: rule.category,
+    };
+
+    if (rule.category === "mode" && !gameModeSuggestion) {
+      gameModeSuggestion = suggestion;
+    } else if (rule.category === "upsell" && !upsellSuggestion) {
+      upsellSuggestion = suggestion;
+    }
+
+    if (gameModeSuggestion && upsellSuggestion) break;
+  }
+
+  return { gameModeSuggestion, upsellSuggestion };
 }

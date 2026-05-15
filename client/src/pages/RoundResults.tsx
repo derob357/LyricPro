@@ -40,6 +40,7 @@ type RoundResult = {
   correctArtist: string;
   correctYear: number;
   difficulty?: string;
+  commentary?: string | null;
   song: {
     id: number;
     title: string;
@@ -225,6 +226,9 @@ export default function RoundResults() {
                   <>
                     <SkipForward className="w-10 h-10 text-muted-foreground mx-auto sm:mx-0 mb-2" />
                     <p className="text-muted-foreground font-medium">Round Passed</p>
+                    {result.commentary && (
+                      <p className="text-sm text-muted-foreground italic mt-2">{result.commentary}</p>
+                    )}
                   </>
                 ) : (
                   <>
@@ -242,6 +246,9 @@ export default function RoundResults() {
                         <Flame className="w-4 h-4 text-orange-400" />
                         <span className="text-orange-400 font-medium text-sm">{result.newStreak}x Streak!</span>
                       </div>
+                    )}
+                    {result.commentary && (
+                      <p className="text-sm text-muted-foreground italic mt-2">{result.commentary}</p>
                     )}
                   </>
                 )}

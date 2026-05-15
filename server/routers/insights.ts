@@ -169,7 +169,7 @@ export const insightsRouter = router({
     if (!row) return null;
     const profile = row.profile as unknown as PlayerProfileData;
     if (!profile || !profile.totalGames) return null;
-    return resolveSuggestions(profile);
+    return await resolveSuggestions(profile);
   }),
 
   /**

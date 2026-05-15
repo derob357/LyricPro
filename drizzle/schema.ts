@@ -549,6 +549,36 @@ export const playerProfiles = pgTable("player_profiles", {
 
 export type PlayerProfile = typeof playerProfiles.$inferSelect;
 
+// ─── Suggestion Rules (admin-editable, AI Player Intelligence Phase 2) ───────
+export const suggestionRuleCategoryEnum = pgEnum("suggestion_rule_category", ["mode", "upsell"]);
+
+export const suggestionRules = pgTable("suggestion_rules", {
+  id: serial("id").primaryKey(),
+  category: suggestionRuleCategoryEnum("category").notNull(),
+  triggerKey: varchar("trigger_key", { length: 64 }).notNull().unique(),
+  text: text("text").notNull(),
+  action: varchar("action", { length: 256 }).notNull(),
+  priority: integer("priority").default(100).notNull(),
+  isActive: boolean("is_active").default(true).notNull(),
+  createdAt: createdAtColumn(),
+  updatedAt: updatedAtColumn(),
+});
+
+export type SuggestionRule = typeof suggestionRules.$inferSelect;
+
+// ─── Commentary Templates (admin-editable, AI Player Intelligence Phase 3) ───
+export const commentaryTemplates = pgTable("commentary_templates", {
+  id: serial("id").primaryKey(),
+  triggerKey: varchar("trigger_key", { length: 64 }).notNull(),
+  text: text("text").notNull(),
+  priority: integer("priority").default(100).notNull(),
+  isActive: boolean("is_active").default(true).notNull(),
+  createdAt: createdAtColumn(),
+  updatedAt: updatedAtColumn(),
+});
+
+export type CommentaryTemplate = typeof commentaryTemplates.$inferSelect;
+
 // ─── Leaderboard Entries ──────────────────────────────────────────────────────
 export const leaderboardEntries = pgTable("leaderboard_entries", {
   id: serial("id").primaryKey(),

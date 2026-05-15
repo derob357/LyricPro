@@ -9,6 +9,8 @@ import { Link, useSearch } from "wouter";
 import SongsTab from "./admin/tabs/SongsTab";
 import LogTab from "./admin/tabs/LogTab";
 import UsageTab from "./admin/tabs/UsageTab";
+import SuggestionsTab from "./admin/tabs/SuggestionsTab";
+import CommentaryTab from "./admin/tabs/CommentaryTab";
 
 const formatCurrency = (amount: number) => {
   return new Intl.NumberFormat('en-US', {
@@ -17,7 +19,7 @@ const formatCurrency = (amount: number) => {
   }).format(amount);
 };
 
-const VALID_TABS = ["overview", "users", "revenue", "payouts", "songs", "log", "usage"] as const;
+const VALID_TABS = ["overview", "users", "revenue", "payouts", "songs", "log", "usage", "suggestions", "commentary"] as const;
 type TabValue = typeof VALID_TABS[number];
 
 export function AdminDashboard() {
@@ -135,7 +137,7 @@ export function AdminDashboard() {
 
         {/* Tabs */}
         <Tabs defaultValue={defaultTab} className="w-full">
-          <TabsList className="grid w-full grid-cols-4 md:grid-cols-7">
+          <TabsList className="grid w-full grid-cols-4 md:grid-cols-9">
             <TabsTrigger value="overview">Overview</TabsTrigger>
             <TabsTrigger value="users">Users</TabsTrigger>
             <TabsTrigger value="revenue">Revenue</TabsTrigger>
@@ -143,6 +145,8 @@ export function AdminDashboard() {
             <TabsTrigger value="songs">Songs</TabsTrigger>
             <TabsTrigger value="log">Log</TabsTrigger>
             <TabsTrigger value="usage">Usage</TabsTrigger>
+            <TabsTrigger value="suggestions">Suggestions</TabsTrigger>
+            <TabsTrigger value="commentary">Commentary</TabsTrigger>
           </TabsList>
 
           {/* Overview Tab */}
@@ -277,6 +281,12 @@ export function AdminDashboard() {
 
           {/* Usage Tab */}
           <TabsContent value="usage"><UsageTab /></TabsContent>
+
+          {/* Suggestions Tab */}
+          <TabsContent value="suggestions"><SuggestionsTab /></TabsContent>
+
+          {/* Commentary Tab */}
+          <TabsContent value="commentary"><CommentaryTab /></TabsContent>
         </Tabs>
       </div>
     </div>
