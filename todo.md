@@ -300,8 +300,11 @@ These need your hands / accounts to proceed. I can't do them from here.
 - [ ] **Payout request UI** — users request a cashout of their wallet balance.
 
 ### Priority 6: content management
-- [ ] **Admin page to add songs** — currently song seeding is a Node script; a web admin UI would let you add songs without a code change + deploy.
+- [x] **Admin page to add songs** — SongNew, SongEdit, SongsList, VariantEditor, plus enable/disable toggle and audit logging. Shipped in admin audit initiative (Phases 0–3).
 - [ ] **Preview / approval workflow** — `approvalStatus` field already exists on `songs` but no UI.
+
+### Phase 5c: layer-3 data reconciliation
+- [ ] **Layer-3 prompt drift** — `contentReadMode.test.ts` fails because `gameplay_items`/`lyric_moments` tables have different prompts than `songs.lyricVariants` jsonb for at least some songs. `LYRIC_PRO_READ_FROM_LAYER3` is OFF in prod so users are unaffected. Needs a reconciliation script or migration to align the two sources before the layer-3 flag can be turned on.
 
 ### Priority 7: UX polish
 - [ ] **Daily streak visualization** on profile.
