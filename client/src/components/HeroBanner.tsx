@@ -117,57 +117,65 @@ export function HeroBanner() {
         }}
       />
 
-      <div className="relative p-5 flex items-center gap-4">
+      <div className="relative p-6 sm:p-8 flex items-center gap-5">
         <div className="flex-1 min-w-0">
-          {/* Badge */}
-          <div className="flex items-center gap-2 mb-1.5">
-            <span className="inline-flex items-center gap-1.5 text-xs font-medium text-purple-300/80">
+          {/* Badge + Partner */}
+          <div className="flex items-center gap-3 mb-3">
+            <span className="inline-flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider">
               <span
-                className="w-1.5 h-1.5 rounded-full"
+                className="w-2 h-2 rounded-full animate-pulse"
                 style={{ backgroundColor: banner.badgeColor ?? "#EF4444" }}
               />
-              {banner.badgeText ?? "Featured"}
+              <span style={{ color: banner.badgeColor ?? "#EF4444" }}>
+                {banner.badgeText ?? "Featured"}
+              </span>
             </span>
+            {banner.partnerName && (
+              <>
+                <span className="text-muted-foreground/30">•</span>
+                <span className="text-xs text-muted-foreground/60 uppercase tracking-widest">
+                  Presented by {banner.partnerName}
+                </span>
+              </>
+            )}
           </div>
 
-          {/* Partner name */}
-          {banner.partnerName && (
-            <p className="text-[10px] uppercase tracking-widest text-muted-foreground/60 mb-1">
-              {banner.partnerName}
-            </p>
-          )}
-
           {/* Title */}
-          <h3 className="text-lg font-bold text-foreground leading-snug mb-0.5">
+          <h3 className="text-xl sm:text-2xl font-extrabold text-foreground leading-snug mb-2">
             {banner.title}
           </h3>
 
           {/* Subtitle */}
           {banner.subtitle && (
-            <p className="text-xs text-muted-foreground line-clamp-2">
+            <p className="text-sm text-muted-foreground line-clamp-2 leading-relaxed mb-4">
               {banner.subtitle}
             </p>
           )}
 
-          {/* CTA button */}
-          <Button
-            size="sm"
-            className="mt-3 bg-gradient-to-r from-purple-500 to-amber-500 text-white font-semibold text-xs px-4 py-1.5 h-auto rounded-lg hover:brightness-110 transition-all"
-            onClick={(e) => {
-              e.stopPropagation();
-              handleCtaClick();
-            }}
-          >
-            {banner.ctaText} <ChevronRight className="w-3.5 h-3.5 ml-1" />
-          </Button>
+          {/* CTA buttons */}
+          <div className="flex items-center gap-3">
+            <Button
+              className="bg-gradient-to-r from-purple-500 to-amber-500 text-white font-semibold text-sm px-6 py-2.5 h-auto rounded-xl hover:brightness-110 transition-all shadow-[0_0_24px_rgba(139,92,246,0.2)]"
+              onClick={(e) => {
+                e.stopPropagation();
+                handleCtaClick();
+              }}
+            >
+              {banner.ctaText} <ChevronRight className="w-4 h-4 ml-1.5" />
+            </Button>
+            <span className="text-xs text-muted-foreground/50 hidden sm:inline">
+              Click anywhere on this banner
+            </span>
+          </div>
         </div>
 
         {/* Image emoji or placeholder */}
         {banner.imageEmoji && (
           <div
-            className="w-14 h-14 rounded-xl flex items-center justify-center text-3xl shrink-0"
+            className="w-16 h-16 sm:w-20 sm:h-20 rounded-2xl flex items-center justify-center text-4xl sm:text-5xl shrink-0"
             style={{
               backgroundColor: `${banner.badgeColor ?? "#EF4444"}22`,
+              boxShadow: `0 0 40px ${banner.badgeColor ?? "#EF4444"}15`,
             }}
           >
             {banner.imageEmoji}

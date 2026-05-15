@@ -126,29 +126,34 @@ export default function Home() {
         </div>
       </nav>
 
-      {/* ── Hero Headline ── */}
-      <section className="relative pt-32 pb-8 px-4 z-10">
+      {/* ── Hero Headline + Featured Banner ── */}
+      <section className="relative pt-28 pb-6 px-4 z-10">
         <div className="container relative">
           <motion.div
-            className="text-center max-w-3xl mx-auto"
+            className="max-w-3xl mx-auto"
             initial="hidden"
             animate="visible"
-            variants={{ visible: { transition: { staggerChildren: 0.15 } } }}
+            variants={{ visible: { transition: { staggerChildren: 0.12 } } }}
           >
             <motion.h1
               variants={fadeUp}
-              className="font-display text-4xl sm:text-5xl font-black leading-tight mb-4"
+              className="font-display text-4xl sm:text-5xl font-black leading-tight mb-6 text-center"
             >
               Finish the Lyric.
               <br />
               <span className="text-gradient">Win the Night.</span>
             </motion.h1>
 
+            {/* Featured Partner Banner — top billing, immediately after headline */}
+            <motion.div variants={fadeUp} className="mb-8">
+              <HeroBanner />
+            </motion.div>
+
             <motion.p
               variants={fadeUp}
-              className="text-muted-foreground text-base sm:text-lg max-w-xl mx-auto mb-8"
+              className="text-muted-foreground text-base sm:text-lg max-w-xl mx-auto mb-6 text-center"
             >
-              <StatsLine /> across every genre and decade.
+              AI-powered music trivia — <StatsLine /> across every genre and decade.
             </motion.p>
 
             <motion.div variants={fadeUp} className="flex flex-col sm:flex-row gap-4 justify-center items-center">
@@ -162,13 +167,6 @@ export default function Home() {
               </Button>
             </motion.div>
           </motion.div>
-        </div>
-      </section>
-
-      {/* ── Hero Banner ── */}
-      <section className="py-4 px-4 z-10 relative">
-        <div className="container max-w-2xl">
-          <HeroBanner />
         </div>
       </section>
 
