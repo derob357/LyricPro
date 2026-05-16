@@ -1,0 +1,44 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(node -e ' *)",
+      "Bash(node -e \"const xlsx=require\\('xlsx'\\); const wb=xlsx.readFile\\('/Users/drob/Documents/Lyric Pro/Lyric_Pro_Low_Difficulty_400_Song_Bank_Licensing_Safe.xlsx'\\); const s=wb.Sheets['Master Bank']; const rows=xlsx.utils.sheet_to_json\\(s,{header:1,defval:null}\\); console.log\\('rowCount:', rows.length\\); console.log\\('row0:', JSON.stringify\\(rows[0]\\)\\); console.log\\('row1:', JSON.stringify\\(rows[1]\\)\\); console.log\\('row2:', JSON.stringify\\(rows[2]\\)\\); console.log\\('row400:', JSON.stringify\\(rows[400]\\)\\); console.log\\('row401:', JSON.stringify\\(rows[401]\\)\\);\")",
+      "Bash(node -e \"const xlsx=require\\('xlsx'\\); const wb=xlsx.readFile\\('/Users/drob/Documents/Lyric Pro/Lyric_Pro_HipHop_Lyric_Sets_Template.xlsx'\\); const s=wb.Sheets['Hip Hop Lyric Sets']; const rows=xlsx.utils.sheet_to_json\\(s,{header:1,defval:null}\\); console.log\\('rowCount:', rows.length\\); for\\(let i=0;i<8;i++\\) console.log\\('row'+i+':', JSON.stringify\\(rows[i]\\)\\); console.log\\('lastRow:', JSON.stringify\\(rows[rows.length-1]\\)\\);\")",
+      "Bash(node scripts/catalog-audit.mjs)",
+      "Bash(node -e \"const r=require\\('/Users/drob/Documents/myWork/CCS/LyricPro/lyricpro-ai-2.0/scripts/catalog-audit.report.json'\\); console.log\\('keys:', Object.keys\\(r\\)\\); console.log\\('totals keys:', Object.keys\\(r.totals\\)\\);\")",
+      "Bash(python3 -c \"import json; r=json.load\\(open\\('scripts/catalog-audit.report.json'\\)\\); print\\('totals:', r['totals']\\); print\\('byGenre count:', len\\(r.get\\('byGenre',[]\\)\\)\\); print\\('first 3 suggestedMatches:'\\); [print\\(' -', m\\) for m in r['suggestedMatches'][:3]]\")",
+      "Bash(awk -F= '/^GENIUS_ACCESS_TOKEN=/{print \"value len:\", length\\($2\\)}' .env)",
+      "Bash(node scripts/verify-lyrics.mjs --reset)",
+      "Bash(tee scripts/verify-lyrics.run.log)",
+      "Bash(cp /tmp/mock-verify-report.json scripts/verify-lyrics.report.json)",
+      "Bash(node scripts/apply-deactivations.mjs)",
+      "Bash(node scripts/regenerate-failing-variants.mjs)",
+      "Bash(node scripts/_spotcheck-regen.mjs)",
+      "Bash(python3 -c ' *)",
+      "Bash(node scripts/_spotcheck-active.mjs)",
+      "Bash(node scripts/regenerate-failing-variants.mjs --apply --reset)",
+      "Bash(tee scripts/regenerate-failing-variants.run.log)",
+      "Bash(node scripts/regenerate-lyrics.mjs --dry-run 1)",
+      "Bash(node scripts/generate-lyric-variants.mjs --dry-run --limit 1)",
+      "Bash(node scripts/expand-library.mjs --dry-run --limit 1)",
+      "Bash(node -e \"const cp = require\\('./scripts/expand-library.checkpoint.json'\\); const k='Country|1940–1950'; console.log\\(JSON.stringify\\(cp.buckets[k], null, 2\\)\\);\")",
+      "Bash(node -e \"const cp = require\\('./scripts/expand-library.checkpoint.json'\\); console.log\\('total buckets:', Object.keys\\(cp.buckets\\).length\\); for \\(const [k,v] of Object.entries\\(cp.buckets\\)\\) { if \\(v.suggested === 0 && v.rejections.length === 0\\) console.log\\('blank bucket:', k\\); }\")",
+      "Bash(node -e \"const cp = require\\('./scripts/expand-library.checkpoint.json'\\); console.log\\('Country|1940-1950 present:', cp.buckets['Country|1940–1950'] != null\\); console.log\\('total buckets:', Object.keys\\(cp.buckets\\).length\\);\")",
+      "Bash(node -e \"const cp = require\\('./scripts/regenerate-lyrics.checkpoint.json'\\); console.log\\('total entries:', Object.keys\\(cp.results\\).length\\);\")",
+      "Bash(node -e \"const cp = require\\('./scripts/generate-lyric-variants.checkpoint.json'\\); console.log\\('gen-variants total entries:', Object.keys\\(cp.results\\).length\\);\")",
+      "Bash(node --check scripts/regenerate-lyrics.mjs)",
+      "Bash(node --check scripts/generate-lyric-variants.mjs)",
+      "Bash(node --check scripts/expand-library.mjs)",
+      "Read(//Users/drob/Documents/Lyric Pro/**)",
+      "Bash(node scripts/verify-backfill.mjs)",
+      "Bash(pnpm drizzle-kit *)",
+      "Bash(node scripts/verify-phase0-migration.mjs)",
+      "Bash(pnpm tsx *)",
+      "Bash(pnpm test:server)",
+      "Bash(git tag *)"
+    ],
+    "additionalDirectories": [
+      "/private/tmp"
+    ]
+  }
+}

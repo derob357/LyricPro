@@ -330,6 +330,11 @@ These need your hands / accounts to proceed. I can't do them from here.
 - [ ] **D17 / CA-11 (Medium):** Forward client IP to Supabase admin calls via `Sb-Forwarded-For` header so per-IP OAuth rate limits work behind Vercel/Express. Or enable hCaptcha/Turnstile in Supabase Dashboard as an alternative mitigation.
 - [ ] **CA-12 (Medium):** Account deletion / GDPR erasure flow — currently no path exists. Schedule for a dedicated initiative.
 
+## OAuth branding (2026-05-15)
+
+- [ ] **Google OAuth consent screen** — Update app name to "LyricPro", set homepage to `https://www.playlyricpro.com`, add logo, add `playlyricpro.com` as authorized domain, set privacy/terms links. Done in Google Cloud Console → APIs & Services → OAuth consent screen. Project number: `970200174349`.
+- [ ] **Apple Sign In branding** — Update Services ID description to "LyricPro" or "PlayLyricPro.com" in Apple Developer → Identifiers → Services IDs. This controls what users see on the Apple sign-in screen.
+
 ## Wave 4 delta-scan carryovers (2026-05-11)
 
 - [ ] **SE-D04 (Medium):** Ownership checks still needed on remaining game-room mutations — `server/routers/game.ts:383 setReady`, `:423 getNextSong`, `:888 submitAnswer`, `:1384 assignTeam`. Wave 1 Task 19B addressed `startGame`, `nextRound`, `createTeams`; these four remain. Pattern: validate caller identity (`ctx.user.id` for authed, `input.guestToken` for guests) against the room's player roster before mutating room state.
