@@ -144,6 +144,15 @@ android/build/
 android/capacitor-cordova-android-plugins/build/
 android/local.properties
 
-# LLM rewrite checkpoint output (re-runnable, large)
-scripts/regenerate-lyrics.checkpoint.json
-scripts/resplit-lyrics-half.checkpoint.json
+# LLM rewrite/generation checkpoint output (re-runnable, large)
+scripts/*.checkpoint.json
+
+# Script backups (e.g. *.before-retry-bak, *.backup.json)
+scripts/*-bak
+scripts/*.backup.json
+
+# Script analysis reports (regenerable artifacts)
+scripts/*.report.json
+
+# Claude Code local (machine-specific) settings — shared settings.json is committed
+.claude/settings.local.json
