@@ -335,6 +335,18 @@ These need your hands / accounts to proceed. I can't do them from here.
 - [ ] **Google OAuth consent screen** — Update app name to "LyricPro", set homepage to `https://www.playlyricpro.com`, add logo, add `playlyricpro.com` as authorized domain, set privacy/terms links. Done in Google Cloud Console → APIs & Services → OAuth consent screen. Project number: `970200174349`.
 - [ ] **Apple Sign In branding** — Update Services ID description to "LyricPro" or "PlayLyricPro.com" in Apple Developer → Identifiers → Services IDs. This controls what users see on the Apple sign-in screen.
 
+## Meeting Action Items (2026-05-19)
+
+### Bugs
+- [x] **Scoring awards points for wrong answers** — fixed: added `celebrationCount` (full matches only) separate from `correctCount` which still includes partials for scoring
+- [x] **Move fireworks trigger** — celebration now fires on "Next Round" click from RoundResults, not on lyric completion in Gameplay
+
+### AI Response Quality
+- [x] **Replace canned AI responses with live LLM calls** — upgraded commentary prompt with score-proportionate tone rules (4/4 = electric hype, 0/4 = funny encouragement, pass = no-judgment). 30 words / 150 tokens.
+
+### Multiplayer Mode (Design Doc Needed)
+- [x] **Create design document for multiplayer mode** — `docs/specs/multiplayer-mode-design.md`
+
 ## Wave 4 delta-scan carryovers (2026-05-11)
 
 - [ ] **SE-D04 (Medium):** Ownership checks still needed on remaining game-room mutations — `server/routers/game.ts:383 setReady`, `:423 getNextSong`, `:888 submitAnswer`, `:1384 assignTeam`. Wave 1 Task 19B addressed `startGame`, `nextRound`, `createTeams`; these four remain. Pattern: validate caller identity (`ctx.user.id` for authed, `input.guestToken` for guests) against the room's player roster before mutating room state.
