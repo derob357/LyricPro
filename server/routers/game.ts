@@ -1090,6 +1090,13 @@ export const gameRouter = router({
         (artistCorrect || artistPartial ? 1 : 0) +
         (yearPoints > 0 ? 1 : 0);
 
+      // celebrationCount: only full matches trigger celebration (no partial credit)
+      const celebrationCount =
+        (lyricCorrect ? 1 : 0) +
+        (titleCorrect ? 1 : 0) +
+        (artistCorrect ? 1 : 0) +
+        (yearPoints > 0 ? 1 : 0);
+
       const userId = ctx.user?.id ?? null;
       const guestToken = input.guestToken ?? null;
 
@@ -1196,6 +1203,7 @@ export const gameRouter = router({
           artistCorrect,
           artistPartial,
           correctCount,
+          celebrationCount,
           lyricPoints,
           titlePoints,
           artistPoints,
@@ -1218,7 +1226,7 @@ export const gameRouter = router({
 
       return {
         lyricCorrect, lyricPartial: lyricPartialFlag, titleCorrect, titlePartial,
-        artistCorrect, artistPartial, correctCount,
+        artistCorrect, artistPartial, correctCount, celebrationCount,
         lyricPoints, titlePoints, artistPoints, yearPoints,
         speedBonus, streakBonus, total: 0, newScore: 0, newStreak: 0,
         streakInsuranceUsed: false, commentary: null as string | null,
