@@ -7,7 +7,7 @@ import { trpc } from "@/lib/trpc";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { toast } from "sonner";
 import { Clock, Flame, Volume2, VolumeX, X, Trophy, Lightbulb, Music2 } from "lucide-react";
-import Celebration, { type CelebrationLevel } from "@/components/Celebration";
+
 import { usePaused } from "@/lib/pauseState";
 import {
   AlertDialog,
@@ -65,7 +65,6 @@ export default function Gameplay() {
   const [roundStartTime, setRoundStartTime] = useState<number>(Date.now());
   const [showScoreFlash, setShowScoreFlash] = useState<number | null>(null);
   const [hasSubmitted, setHasSubmitted] = useState(false);
-  const [celebrationLevel, setCelebrationLevel] = useState<CelebrationLevel>(0);
   const [muted, setMuted] = useState(() => localStorage.getItem("lyricpro_muted") === "true");
   const [buzzedPlayerIndex, setBuzzedPlayerIndex] = useState<number | null>(null);
   const [hintData, setHintData] = useState<Record<string, { firstLetter?: string; narrowedRange?: [number, number] } | null>>({});
@@ -114,15 +113,8 @@ export default function Gameplay() {
       // Pull fresh player score so the top-bar trophy total animates to the
       // new value while the score flash is flying toward it.
       refetchRoom();
-      const cnt = result.correctCount ?? 0;
-      // Celebration requires real accuracy: 1 out of 4 isn't worth celebrating.
-      // 2 correct = subtle particles, 3 = confetti, all 4 = fireworks.
-      const lvl = (cnt >= 4 ? 3 : cnt >= 3 ? 2 : cnt >= 2 ? 1 : 0) as CelebrationLevel;
-      if (lvl > 0) {
-        setTimeout(() => setCelebrationLevel(lvl), 600);
-      } else {
-        navigate(`/results/round/${roomCode}`);
-      }
+      // Navigate to results — celebration plays there on "Next Round" click
+      setTimeout(() => navigate(`/results/round/${roomCode}`), 600);
     },
     onError: (e) => { toast.error(e.message); setHasSubmitted(false); },
   });
@@ -390,16 +382,6 @@ export default function Gameplay() {
 
       {/* Countdown tick is synthesized via Web Audio API — see
           playCountdownTick. No audio element needed. */}
-
-      {/* Celebration */}
-      <Celebration
-        level={celebrationLevel}
-        muted={muted}
-        onComplete={() => {
-          setCelebrationLevel(0);
-          navigate(`/results/round/${roomCode}`);
-        }}
-      />
 
       {/* Top bar */}
       <div className="glass border-b border-border/50 sticky top-0 z-40">

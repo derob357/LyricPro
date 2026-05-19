@@ -11,6 +11,7 @@ import {
   Youtube, Globe, Trophy, Flame, Zap, SkipForward, Home,
   MicVocal
 } from "lucide-react";
+import Celebration, { type CelebrationLevel } from "@/components/Celebration";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -39,6 +40,8 @@ type RoundResult = {
   correctLyric: string;
   correctArtist: string;
   correctYear: number;
+  correctCount?: number;
+  celebrationCount?: number;
   difficulty?: string;
   commentary?: string | null;
   song: {
@@ -59,6 +62,8 @@ export default function RoundResults() {
   const guestToken = localStorage.getItem("lyricpro_guest_token");
   const [result, setResult] = useState<RoundResult | null>(null);
   const [isAdvancing, setIsAdvancing] = useState(false);
+  const [celebrationLevel, setCelebrationLevel] = useState<CelebrationLevel>(0);
+  const muted = localStorage.getItem("lyricpro_muted") === "true";
 
   const { data: room } = trpc.game.getRoom.useQuery(
     { roomCode: roomCode ?? "" },
@@ -87,6 +92,16 @@ export default function RoundResults() {
   }, [roomCode]);
 
   const handleNext = () => {
+    const cnt = result?.celebrationCount ?? result?.correctCount ?? 0;
+    const lvl = (cnt >= 4 ? 3 : cnt >= 3 ? 2 : cnt >= 2 ? 1 : 0) as CelebrationLevel;
+    if (lvl > 0) {
+      setCelebrationLevel(lvl);
+    } else {
+      advanceRound();
+    }
+  };
+
+  const advanceRound = () => {
     setIsAdvancing(true);
     nextRoundMutation.mutate({ roomCode: roomCode ?? "", guestToken: guestToken ?? undefined });
   };
@@ -156,6 +171,14 @@ export default function RoundResults() {
 
   return (
     <div className="min-h-screen text-foreground pb-8">
+      <Celebration
+        level={celebrationLevel}
+        muted={muted}
+        onComplete={() => {
+          setCelebrationLevel(0);
+          advanceRound();
+        }}
+      />
       {/* Header */}
       <div className="glass border-b border-border/50 sticky top-0 z-40">
         <div className="container flex items-center justify-between h-14">
