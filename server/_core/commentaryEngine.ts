@@ -113,21 +113,29 @@ async function tryLlmCommentary(ctx: RoundContext, templateFallback: string): Pr
       ? `Player profile: strongest genres ${p.strongestGenres.join(", ") || "unknown"}, weakest ${p.weakestGenres.join(", ") || "unknown"}, best stage: ${p.bestStage}, worst: ${p.worstStage}, ${p.isSpeedPlayer ? "fast responder" : "deliberate"}, ${p.isStreakPlayer ? "streak builder" : "inconsistent"}, preferred difficulty: ${p.preferredDifficulty}, ${p.totalGames} total games.`
       : "New player, no profile yet.";
 
-    const prompt = `You write punchy, one-sentence post-round commentary for a music lyric trivia game called LyricPro.
+    const prompt = `You write post-round commentary for a music lyric trivia game called LyricPro. Your tone MUST match the player's score.
 
-Round result: ${ctx.correctCount}/4 correct (lyric: ${ctx.lyricCorrect}, title: ${ctx.titleCorrect}, artist: ${ctx.artistCorrect}, year: ${ctx.yearCorrect}). Genre: ${ctx.genre}. ${ctx.passUsed ? "Player passed." : ""} Response time: ${ctx.responseTimeSeconds ?? "unknown"}s. Streak: ${ctx.streakCount}.
+Round result: ${ctx.correctCount}/4 correct (lyric: ${ctx.lyricCorrect}, title: ${ctx.titleCorrect}, artist: ${ctx.artistCorrect}, year: ${ctx.yearCorrect}). Genre: ${ctx.genre}. ${ctx.passUsed ? "Player passed this round." : ""} Response time: ${ctx.responseTimeSeconds ?? "unknown"}s. Streak: ${ctx.streakCount}.
 ${profileSnippet}
 
-Write ONE sentence (max 20 words). Tone: witty, observational, slightly cocky hype-coach. Reference specifics from the round. No emojis. No greetings. No sign-off. Just the sentence.`;
+TONE RULES based on score:
+- 4/4 correct: GO OFF. Electric hype. "That was legendary!" energy. Make them feel like a god.
+- 3/4 correct: Impressed but teasing about what they missed. Confident, upbeat.
+- 2/4 correct: Playful, encouraging. Acknowledge the effort, light roast on misses.
+- 1/4 correct: Gentle encouragement with humor. "Hey, you got one!" vibes. No pity.
+- 0/4 correct: Funny, self-deprecating humor ON THEIR BEHALF. Make them laugh, not feel bad. "That genre owes you an apology."
+- Pass: Quick, no-judgment. "Smart move" or "Living to fight another round."
+
+Write 1-2 sentences (max 30 words). Reference the specific genre or what they got right/wrong. No emojis. No greetings. No sign-off.`;
 
     const res = await anthropic.messages.create({
       model: LLM_MODEL,
-      max_tokens: 100,
+      max_tokens: 150,
       messages: [{ role: "user", content: prompt }],
     });
     const block = res.content.find((b) => b.type === "text") as { type: "text"; text: string } | undefined;
     const text = block?.text?.trim();
-    if (text && text.length > 5 && text.length < 200) return text;
+    if (text && text.length > 5 && text.length < 300) return text;
   } catch (err) {
     console.warn("[commentary] LLM failed, using template:", err);
   }
