@@ -8,7 +8,7 @@ import { Label } from "@/components/ui/label";
 import { trpc } from "@/lib/trpc";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { toast } from "sonner";
-import { ArrowLeft, Users, User, UsersRound, Wifi, Clock, Layers, BarChart3, Music, Music2, Calendar, ChevronRight, ChevronDown, Mic, Star, Crown, Trophy, LogOut } from "lucide-react";
+import { ArrowLeft, Users, User, UsersRound, Video, Wifi, Clock, Layers, BarChart3, Music, Music2, Calendar, ChevronRight, ChevronDown, Mic, Star, Crown, Trophy, LogOut } from "lucide-react";
 import { getLoginUrl, getSignUpUrl } from "@/const";
 import type { GameMode, Difficulty } from "@/contexts/GameContext";
 
@@ -101,6 +101,16 @@ export default function GameSetup() {
     },
   });
 
+  const createLiveRoomMutation = trpc.liveRoom.createLiveRoom.useMutation({
+    onSuccess: (data) => {
+      navigate(`/lobby/live/${data.inviteCode}`);
+    },
+    onError: (err) => {
+      toast.error(err.message || "Failed to create live room");
+      setIsCreating(false);
+    },
+  });
+
   const toggleGenre = (genre: string) => {
     setSelectedGenres(prev =>
       prev.includes(genre) ? prev.filter(g => g !== genre) : [...prev, genre]
@@ -126,13 +136,28 @@ export default function GameSetup() {
     const prefs = { mode, genres: selectedGenres, decades: selectedDecades, difficulty, timerSeconds, rounds, explicitFilter };
 
     // Persist prefs (fire-and-forget — don't block createRoom)
-    if (isAuthenticated) {
-      savePrefsMutation.mutate(prefs);
-    } else {
-      try { localStorage.setItem("lyricpro_game_prefs", JSON.stringify(prefs)); } catch {}
+    // remote_live uses its own mutation; skip room-prefs save for that mode
+    if (mode !== "remote_live") {
+      if (isAuthenticated) {
+        savePrefsMutation.mutate(prefs as Parameters<typeof savePrefsMutation.mutate>[0]);
+      } else {
+        try { localStorage.setItem("lyricpro_game_prefs", JSON.stringify(prefs)); } catch {}
+      }
     }
 
     setIsCreating(true);
+    if (mode === "remote_live") {
+      createLiveRoomMutation.mutate({
+        selectedGenres,
+        selectedDecades,
+        difficulty,
+        maxPlayers: 8,
+        timerSeconds,
+        roundsTotal: rounds,
+        explicitFilter,
+      });
+      return;
+    }
     createRoomMutation.mutate({
       mode,
       genres: selectedGenres,
@@ -151,6 +176,7 @@ export default function GameSetup() {
     { value: "solo", icon: User, label: "Solo", desc: "Play alone", disabled: false },
     { value: "multiplayer", icon: Users, label: "Multiplayer", desc: "Coming soon", disabled: true },
     { value: "team", icon: UsersRound, label: "Team Mode", desc: "Coming soon", disabled: true },
+    { value: "remote_live", icon: Video, label: "Remote Live", desc: "Live video lobby (2-8 players)", disabled: false },
   ];
 
   const difficultyOptions = [
@@ -202,7 +228,7 @@ export default function GameSetup() {
               <div className="min-w-0">
                 <p className="text-sm text-muted-foreground">Last settings restored</p>
                 <p className="text-xs text-muted-foreground truncate">
-                  {mode === "solo" ? "Solo" : mode === "multiplayer" ? "Multiplayer" : "Team"} · {difficulty} · {rounds} rounds · {timerSeconds}s
+                  {mode === "solo" ? "Solo" : mode === "multiplayer" ? "Multiplayer" : mode === "team" ? "Team Mode" : "Remote Live"} · {difficulty} · {rounds} rounds · {timerSeconds}s
                 </p>
               </div>
               <Button
@@ -210,7 +236,7 @@ export default function GameSetup() {
                 onClick={handleStart}
                 disabled={isCreating || selectedGenres.length === 0 || selectedDecades.length === 0}
               >
-                {isCreating ? "Creating…" : (mode === "solo" ? "Start Game" : "Create Room")}
+                {isCreating ? "Creating…" : (mode === "solo" ? "Start Game" : mode === "remote_live" ? "Create Live Room" : "Create Room")}
                 <ChevronRight className="w-4 h-4 ml-1" />
               </Button>
             </div>
@@ -480,10 +506,10 @@ export default function GameSetup() {
             <div className="grid grid-cols-2 gap-3">
               {/* Game Mode */}
               <div className="flex items-center gap-2.5 bg-white/5 rounded-xl px-3 py-2.5">
-                {mode === "solo" ? <User className="w-4 h-4 text-primary shrink-0" /> : mode === "multiplayer" ? <Users className="w-4 h-4 text-primary shrink-0" /> : <UsersRound className="w-4 h-4 text-primary shrink-0" />}
+                {mode === "solo" ? <User className="w-4 h-4 text-primary shrink-0" /> : mode === "multiplayer" ? <Users className="w-4 h-4 text-primary shrink-0" /> : mode === "team" ? <UsersRound className="w-4 h-4 text-primary shrink-0" /> : <Video className="w-4 h-4 text-primary shrink-0" />}
                 <div className="min-w-0">
                   <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Mode</p>
-                  <p className="text-sm font-medium text-foreground truncate">{mode === "solo" ? "Solo" : mode === "multiplayer" ? "Multiplayer" : "Team Mode"}</p>
+                  <p className="text-sm font-medium text-foreground truncate">{mode === "solo" ? "Solo" : mode === "multiplayer" ? "Multiplayer" : mode === "team" ? "Team Mode" : "Remote Live"}</p>
                 </div>
               </div>
               {/* Difficulty */}
@@ -550,7 +576,7 @@ export default function GameSetup() {
             >
               {isCreating ? "Creating Game..." : (
                 <>
-                  {mode === "solo" ? "Start Game" : "Create Room"}
+                  {mode === "solo" ? "Start Game" : mode === "remote_live" ? "Create Live Room" : "Create Room"}
                   <ChevronRight className="w-5 h-5 ml-2" />
                 </>
               )}

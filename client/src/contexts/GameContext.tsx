@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useCallback } from "react";
 
-export type GameMode = "solo" | "multiplayer" | "team";
+export type GameMode = "solo" | "multiplayer" | "team" | "remote_live";
 export type RankingMode = "total_points" | "speed_bonus" | "streak_bonus";
 export type Difficulty = "low" | "medium" | "high";
 
