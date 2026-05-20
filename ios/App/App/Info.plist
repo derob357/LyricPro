@@ -49,6 +49,8 @@
 	<true/>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>LyricPro Ai uses your microphone when you choose voice-answer input on a lyric prompt.</string>
+	<key>NSCameraUsageDescription</key>
+	<string>LyricPro uses your camera for the Remote Live multiplayer video lobby.</string>
 	<key>CFBundleURLTypes</key>
 	<array>
 		<dict>
