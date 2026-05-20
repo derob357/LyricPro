@@ -44,11 +44,25 @@ export default function VideoLobby() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [inviteCode, permissionsGranted]);
 
-  const { participants, status, error } = useLiveKitRoom({
+  const { room, participants, status, error } = useLiveKitRoom({
     livekitUrl: creds?.livekitUrl ?? "",
     token: creds?.token ?? "",
     autoConnect: !!creds,
   });
+
+  // Publish mic + camera once connected. Tracks were already requested by
+  // PermissionGate (so the browser permission prompt is past); this just tells
+  // LiveKit to acquire and publish them to the room.
+  useEffect(() => {
+    if (room && status === "connected") {
+      void room.localParticipant.setMicrophoneEnabled(true).catch((err) => {
+        console.warn("[lobby] failed to enable mic:", err);
+      });
+      void room.localParticipant.setCameraEnabled(true).catch((err) => {
+        console.warn("[lobby] failed to enable camera:", err);
+      });
+    }
+  }, [room, status]);
 
   if (!permissionsGranted) {
     return (

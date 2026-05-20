@@ -76,6 +76,8 @@ export function useLiveKitRoom(
       .on(RoomEvent.ParticipantDisconnected, () => refreshParticipants(room))
       .on(RoomEvent.TrackSubscribed, () => refreshParticipants(room))
       .on(RoomEvent.TrackUnsubscribed, () => refreshParticipants(room))
+      .on(RoomEvent.LocalTrackPublished, () => refreshParticipants(room))
+      .on(RoomEvent.LocalTrackUnpublished, () => refreshParticipants(room))
       .on(RoomEvent.ConnectionStateChanged, (state) => {
         if (state === ConnectionState.Connected) setStatus("connected");
         else if (state === ConnectionState.Connecting) setStatus("connecting");
