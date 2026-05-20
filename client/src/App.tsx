@@ -7,6 +7,7 @@ import { ThemeProvider } from "./contexts/ThemeContext";
 import Home from "./pages/Home";
 import GameSetup from "./pages/GameSetup";
 import Lobby from "./pages/Lobby";
+import VideoLobby from "./pages/VideoLobby";
 import Gameplay from "./pages/Gameplay";
 import RoundResults from "./pages/RoundResults";
 import FinalResults from "./pages/FinalResults";
@@ -41,6 +42,7 @@ function Router() {
     <Switch>
       <Route path="/" component={Home} />
       <Route path="/setup" component={GameSetup} />
+      <Route path="/lobby/live/:inviteCode" component={VideoLobby} />
       <Route path="/lobby/:roomCode" component={Lobby} />
       <Route path="/play/:roomCode" component={GameplayWithKey} />
       <Route path="/results/round/:roomCode" component={RoundResults} />
