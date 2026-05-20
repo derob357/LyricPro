@@ -40,6 +40,7 @@ export const gameModeEnum = pgEnum("game_mode", [
   "solo",
   "multiplayer",
   "team",
+  "remote_live",
 ]);
 export const rankingModeEnum = pgEnum("ranking_mode", [
   "total_points",
@@ -463,6 +464,10 @@ export const gameRooms = pgTable("game_rooms", {
   currentSongId: integer("currentSongId"),
   usedSongIds: text("usedSongIds"), // JSON array as text, nullable
   customPackSongIds: jsonb("customPackSongIds").$type<number[]>(),
+  isVideoRoom: boolean("isVideoRoom").default(false).notNull(),
+  videoRoomName: text("videoRoomName"),
+  maxPlayers: integer("maxPlayers").default(8).notNull(),
+  turnOrder: jsonb("turnOrder").$type<number[] | null>(),
   streakInsurance: boolean("streakInsurance").default(false).notNull(),
   createdAt: createdAtColumn(),
   updatedAt: updatedAtColumn(),
