@@ -13,6 +13,15 @@ ALTER TABLE game_rooms ADD COLUMN IF NOT EXISTS "videoRoomName" TEXT;
 ALTER TABLE game_rooms ADD COLUMN IF NOT EXISTS "maxPlayers" INTEGER NOT NULL DEFAULT 8;
 ALTER TABLE game_rooms ADD COLUMN IF NOT EXISTS "turnOrder" JSONB;
 
+-- 5. Add invite code columns for shareable room links.
+ALTER TABLE game_rooms ADD COLUMN IF NOT EXISTS "inviteCode" VARCHAR(16);
+ALTER TABLE game_rooms ADD COLUMN IF NOT EXISTS "inviteExpiresAt" TIMESTAMPTZ;
+
+-- 6. Unique index on inviteCode (when set).
+CREATE UNIQUE INDEX IF NOT EXISTS game_rooms_invite_code_idx
+  ON game_rooms ("inviteCode")
+  WHERE "inviteCode" IS NOT NULL;
+
 -- 3. Constrain maxPlayers to the 2-8 range allowed by the spec.
 ALTER TABLE game_rooms DROP CONSTRAINT IF EXISTS game_rooms_max_players_check;
 ALTER TABLE game_rooms ADD CONSTRAINT game_rooms_max_players_check

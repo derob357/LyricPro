@@ -17,6 +17,7 @@ import { adminUsageRouter } from "./routers/adminUsage";
 import { adminSuggestionsRouter } from "./routers/adminSuggestions";
 import { adminGenresRouter } from "./routers/adminGenres";
 import { bannersRouter } from "./routers/banners";
+import { liveRoomRouter } from "./routers/liveRoom";
 import { getDb } from "./db";
 import { z } from "zod";
 import { eq } from "drizzle-orm";
@@ -310,6 +311,7 @@ export const appRouter = router({
       }),
   }),
   game: gameRouter,
+  liveRoom: liveRoomRouter,
   monetization: monetizationRouter,
   monetizationIntegration: monetizationIntegrationRouter,
   referral: referralRouter,

@@ -468,6 +468,8 @@ export const gameRooms = pgTable("game_rooms", {
   videoRoomName: text("videoRoomName"),
   maxPlayers: integer("maxPlayers").default(8).notNull(),
   turnOrder: jsonb("turnOrder").$type<number[] | null>(),
+  inviteCode: varchar("inviteCode", { length: 16 }),
+  inviteExpiresAt: timestamp("inviteExpiresAt", { withTimezone: true }),
   streakInsurance: boolean("streakInsurance").default(false).notNull(),
   createdAt: createdAtColumn(),
   updatedAt: updatedAtColumn(),

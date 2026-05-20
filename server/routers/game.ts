@@ -40,7 +40,7 @@ function generateRoomCode(): string {
   return nanoid(6).toUpperCase();
 }
 
-function generateInviteCode(): string {
+export function generateInviteCode(): string {
   const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
   let code = "";
   for (let i = 0; i < 6; i++) {
