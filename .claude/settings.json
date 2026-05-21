@@ -35,7 +35,20 @@
       "Bash(node scripts/verify-phase0-migration.mjs)",
       "Bash(pnpm tsx *)",
       "Bash(pnpm test:server)",
-      "Bash(git tag *)"
+      "Bash(git tag *)",
+      "WebFetch(domain:www.videosdk.live)",
+      "WebFetch(domain:www.daily.co)",
+      "Read(//Users/drob/.claude/plugins/cache/claude-plugins-official/superpowers/5.1.0/skills/subagent-driven-development/**)",
+      "Bash(pnpm test:server -- livekit.test)",
+      "Bash(pnpm test:server -- livekit.test --reporter=verbose)",
+      "Bash(pnpm test:server -- liveRoom.test)",
+      "Bash(node --loader tsx/esm -e \"import\\('./server/routers/liveRoom.ts'\\).then\\(m => console.log\\('OK', Object.keys\\(m\\)\\)\\).catch\\(e => console.error\\('FAIL:', e.message\\)\\)\")",
+      "Bash(pnpm test:client -- livekit/VideoTile livekit/VideoGrid)",
+      "Bash(git -C /Users/drob/Documents/myWork/CCS/LyricPro/lyricpro-ai-2.0 add client/src/components/livekit/)",
+      "Bash(git -C /Users/drob/Documents/myWork/CCS/LyricPro/lyricpro-ai-2.0 commit -m \"feat\\(remote-live\\): VideoTile + VideoGrid components\")",
+      "Bash(git -C /Users/drob/Documents/myWork/CCS/LyricPro/lyricpro-ai-2.0 add client/src/contexts/GameContext.tsx client/src/pages/GameSetup.tsx)",
+      "Bash(git -C /Users/drob/Documents/myWork/CCS/LyricPro/lyricpro-ai-2.0 commit -m 'feat\\(remote-live\\): wire '\\\\''Remote Live'\\\\'' mode into GameSetup \\(4th mode, fully enabled\\)')",
+      "Bash(awk -F= '/^LIVEKIT_URL=/ { *)"
     ],
     "additionalDirectories": [
       "/private/tmp"
