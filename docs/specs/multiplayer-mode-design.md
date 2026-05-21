@@ -144,13 +144,81 @@ A real-time multiplayer mode where a host creates a video conference room with g
 - Cons: Complex, need TURN infrastructure, quality varies
 
 **Option B: Third-Party SDK (Recommended for MVP)**
-- Daily.co, Livekit, or Agora SDK embedded in React
+
+- LiveKit Cloud, Daily.co, Agora, or VideoSDK.live embedded in React
 - Room creation via server-side API call
 - Client-side SDK handles video grid, muting, screen management
 - Pros: Fast to ship, reliable, built-in TURN/quality optimization
-- Cons: Per-minute cost (~$0.004-0.01/participant/min)
+- Cons: Per-minute cost (~$0.001–$0.01/participant/min depending on vendor and audio vs video)
 
-**Recommendation:** Start with Daily.co or Livekit for MVP. Migrate to self-hosted WebRTC later if costs justify it.
+#### Vendor Comparison (researched 2026-05-20)
+
+**✅ LiveKit Cloud — chosen**
+
+- Free tier (permanent): 5K participant-min + 50 GB egress / month
+- Audio-only: ~$0.40–$0.50 / 1K min (cheapest)
+- Video HD: ~$0.50 / 1K min + egress
+- Capacitor iOS: ⚠️ AVAudioSession pre-warm needed
+- Open-source escape hatch: ✅ Apache 2.0 self-host (same SFU)
+- DX: strong, modern
+- Differentiator: cheapest at scale + no lock-in
+- Main risk: self-host TURN is real ops work (Cloud avoids this)
+
+**Daily.co**
+
+- Free tier: 10K participant-min / month
+- Audio-only: $0.99 / 1K min
+- Video HD: $4.00 / 1K min (no upcharge for HD)
+- Capacitor iOS: ⚠️ permission re-prompt fix needed
+- Open-source: ❌
+- DX: 🥇 simplest onboarding in category
+- Differentiator: bundled features (chat, recording, transcription, AI/Pipecat first-party)
+- Main risk: US-centric infrastructure
+
+**Agora**
+
+- Free tier: 10K participant-min / month
+- Audio-only: $0.99 / 1K min
+- Video HD: $3.99 / 1K min
+- Capacitor iOS: ❌ Agora explicitly does NOT recommend Web SDK on iOS WKWebView
+- Open-source: ❌
+- DX: 😬 recurring documentation-quality complaints
+- Differentiator: Asia/SEA infrastructure (<400ms global)
+- Main risk: iOS WebView reliability for our exact stack
+
+**VideoSDK.live**
+
+- Free tier: 10K participant-min / month + $20 signup credit
+- Audio-only: $0.60–$1.00 / 1K min
+- Video HD: $2.99 / 1K min (cheapest video)
+- Capacitor iOS: ⚠️ JS SDK works in WebView; no official Capacitor plugin; weak TS types
+- Open-source: ❌
+- DX: OK; weak TypeScript types are a recurring complaint
+- Differentiator: cheapest video HD
+- Main risk: smaller community; billing/invoice mismatches reported on G2/Capterra
+
+**Est. monthly cost at MVP scale (audio-only mix):**
+
+| Volume                | LiveKit Cloud                  | Daily | Agora | VideoSDK |
+| --------------------- | ------------------------------ | ----- | ----- | -------- |
+| 30K min/mo (1K/day)   | **~$15** (often free on Build) | ~$20  | ~$20  | ~$20     |
+| 300K min/mo (10K/day) | **~$200–$300**                 | ~$273 | ~$287 | ~$290    |
+
+**Decision: LiveKit Cloud (Build → Ship tier).**
+
+- ~Half Daily's per-minute audio rate, materially cheaper at higher MVP scale.
+- Apache 2.0 escape hatch: if LiveKit changes pricing or quality degrades, we self-host the exact same SFU with no app rewrite.
+- Free tier (5K min + 50 GB egress) realistically covers alpha at $0.
+- Capacitor iOS friction is solvable with a small AVAudioSession pre-warm shim — comparable effort to Daily's permission-persistence workaround.
+
+**Watch-outs to address in implementation:**
+
+- iOS WKWebView audio cold-start glitch → pre-activate AVAudioSession from native layer.
+- Downstream bandwidth fan-out grows with room size (each speaker → N-1 receivers). Audio-only stays well within egress budget; if we add video, the included 50 GB is consumed faster than expected.
+- Do not self-host TURN until we're past ~500 concurrent rooms or have a dedicated infra engineer.
+- Token TTL must be short (15 min, server-side refresh); API secret stays server-side only.
+
+**Migration path:** Cloud Build (free) → Cloud Ship ($50/mo) when first paying customer signs up → Cloud Scale ($500/mo) for production SLAs → self-host only if economics justify the ops cost.
 
 ### Game State Synchronization
 
