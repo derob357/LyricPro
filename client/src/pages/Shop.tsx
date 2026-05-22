@@ -4,7 +4,6 @@ import { getRankTier } from "@/lib/scoring";
 import { trpc } from "@/lib/trpc";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import { Music2, Music, Gift, History, Check, Globe } from "lucide-react";
 import { CAN_PURCHASE } from "@/lib/platform";
@@ -367,27 +366,6 @@ export default function Shop() {
               </div>
             </div>
           ))}
-        </div>
-
-        {/* ── Partner promo strip ── */}
-        <div
-          className="glass rounded-2xl border border-border/50 p-5 mb-12 flex items-center gap-4"
-          style={{ borderColor: "rgba(245,158,11,0.2)" }}
-        >
-          <div className="w-10 h-10 rounded-full bg-gradient-to-br from-red-500 to-pink-600 flex items-center justify-center shrink-0">
-            <span className="text-white font-bold text-xs">iHR</span>
-          </div>
-          <div className="flex-1 min-w-0">
-            <div className="font-display font-semibold text-foreground text-sm">
-              iHeartRadio Premium Members
-            </div>
-            <div className="text-xs text-muted-foreground">
-              Premium members get 5 free Golden Notes monthly
-            </div>
-          </div>
-          <Badge className="bg-amber-500/15 text-amber-400 border-amber-500/30 shrink-0">
-            Partner
-          </Badge>
         </div>
 
         {/* ── Recent activity ── */}
