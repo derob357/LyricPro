@@ -5,7 +5,13 @@
 
 ---
 
-## 🚨 Just-surfaced follow-ups (2026-05-21 — post-Remote-Live)
+## 🚨 Just-surfaced follow-ups (post-Remote-Live + post-Shop cleanup)
+
+### 2026-05-22
+
+- [ ] **Vercel bot-protection challenge intercepts `curl`.** Sometime today, Vercel started serving a "Vercel Security Checkpoint" challenge page to non-browser User-Agents on `www.playlyricpro.com`. Browsers are unaffected. Impact: smoke tests / monitoring / health checks based on `curl`/`fetch` against the production HTML or static assets now fail or get HTML challenge content instead of the SPA. Decide: (a) keep the protection and switch smoke checks to authenticated requests (Vercel deployment-protection bypass token via header `x-vercel-protection-bypass`); (b) exempt the apex/www aliases from protection in Vercel → Project Settings → Deployment Protection; (c) add a `/healthz` lambda endpoint with deployment-protection disabled for that route. Recommend (c) so monitoring stays separable from main-site protection.
+
+### 2026-05-21
 
 - [ ] **Rotate LiveKit Cloud API key + secret.** During the Remote Live ship audit, a tool-output grep of `.env` echoed the real `LIVEKIT_API_KEY` and `LIVEKIT_API_SECRET` into the chat transcript. Treat as exposed. Rotate at LiveKit Cloud → Project Settings → Keys → "Roll keys", then update local `.env` AND Vercel Production env (Settings → Environment Variables) with the new values. Trigger a redeploy. Do not echo new values in chat.
 - [ ] **Drizzle journal drift cleanup.** Audit found that migrations `0008_player_profiles`, `0009_suggestion_rules_commentary`, `0010_genres`, `0011_banners`, and `0012_remote-live-mode` are physically applied to prod but not recorded in `__drizzle_migrations` or in `drizzle/meta/_journal.json`. No runtime impact; pure ledger drift. Fix plan: (1) delete orphan files `drizzle/0006_song_displays.sql` and `drizzle/0007_lyric_variants.sql` (content already applied); (2) regenerate `_journal.json` entries + `_snapshot.json` files for idx 8–12; (3) backfill `__drizzle_migrations` rows with the SHA-256 hashes from `/tmp/lyricpro-audit-db.md`. Single maintenance-window transaction. Sequence and hashes documented in `/tmp/lyricpro-audit-db.md` (Steps 1-3a).

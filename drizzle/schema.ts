@@ -199,6 +199,18 @@ const updatedAtColumn = () =>
 const createdAtColumn = () =>
   timestamp("createdAt", { withTimezone: true }).defaultNow().notNull();
 
+// Snake_case variants — for tables whose migrations declared `created_at` /
+// `updated_at` (genres, banners, suggestion_rules, commentary_templates).
+// Without this mapping, `db.select().from(<table>)` issues SQL referencing
+// `"createdAt"` and the query 500s because the actual column is `created_at`.
+const createdAtSnakeColumn = () =>
+  timestamp("created_at", { withTimezone: true }).defaultNow().notNull();
+const updatedAtSnakeColumn = () =>
+  timestamp("updated_at", { withTimezone: true })
+    .defaultNow()
+    .notNull()
+    .$onUpdate(() => new Date());
+
 // ─── Users ────────────────────────────────────────────────────────────────────
 export const users = pgTable("users", {
   id: serial("id").primaryKey(),
@@ -280,7 +292,7 @@ export const genres = pgTable("genres", {
   parentId: integer("parent_id"),
   isActive: boolean("is_active").default(true).notNull(),
   sortOrder: integer("sort_order").default(100).notNull(),
-  createdAt: createdAtColumn(),
+  createdAt: createdAtSnakeColumn(),
 });
 
 export type Genre = typeof genres.$inferSelect;
@@ -579,8 +591,8 @@ export const suggestionRules = pgTable("suggestion_rules", {
   action: varchar("action", { length: 256 }).notNull(),
   priority: integer("priority").default(100).notNull(),
   isActive: boolean("is_active").default(true).notNull(),
-  createdAt: createdAtColumn(),
-  updatedAt: updatedAtColumn(),
+  createdAt: createdAtSnakeColumn(),
+  updatedAt: updatedAtSnakeColumn(),
 });
 
 export type SuggestionRule = typeof suggestionRules.$inferSelect;
@@ -592,8 +604,8 @@ export const commentaryTemplates = pgTable("commentary_templates", {
   text: text("text").notNull(),
   priority: integer("priority").default(100).notNull(),
   isActive: boolean("is_active").default(true).notNull(),
-  createdAt: createdAtColumn(),
-  updatedAt: updatedAtColumn(),
+  createdAt: createdAtSnakeColumn(),
+  updatedAt: updatedAtSnakeColumn(),
 });
 
 export type CommentaryTemplate = typeof commentaryTemplates.$inferSelect;
@@ -617,8 +629,8 @@ export const banners = pgTable("banners", {
   isActive: boolean("is_active").default(true).notNull(),
   startsAt: timestamp("starts_at", { withTimezone: true }),
   endsAt: timestamp("ends_at", { withTimezone: true }),
-  createdAt: createdAtColumn(),
-  updatedAt: updatedAtColumn(),
+  createdAt: createdAtSnakeColumn(),
+  updatedAt: updatedAtSnakeColumn(),
 });
 
 export type Banner = typeof banners.$inferSelect;
