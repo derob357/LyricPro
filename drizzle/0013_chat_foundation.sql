@@ -204,3 +204,127 @@ CREATE TABLE chat_friends_read_state (
   last_read_seq    BIGINT NOT NULL DEFAULT 0,
   last_read_at     TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+-- ─── Helper: is_chat_banned(user_id, scope, room_id?) ───────────────────────
+CREATE OR REPLACE FUNCTION is_chat_banned(p_user_id INTEGER, p_scope chat_ban_scope, p_room_id INTEGER DEFAULT NULL)
+RETURNS BOOLEAN AS $$
+  SELECT EXISTS (
+    SELECT 1 FROM chat_bans
+    WHERE user_id = p_user_id
+      AND action = 'ban'
+      AND revoked_at IS NULL
+      AND (expires_at IS NULL OR expires_at > NOW())
+      AND (
+        (scope = 'global') OR
+        (scope = 'room' AND p_scope = 'room' AND room_id = p_room_id)
+      )
+  );
+$$ LANGUAGE SQL STABLE;
+
+-- ─── Helper: is_admin(user_id) ──────────────────────────────────────────────
+CREATE OR REPLACE FUNCTION is_chat_admin(p_user_id INTEGER)
+RETURNS BOOLEAN AS $$
+  SELECT EXISTS (SELECT 1 FROM users WHERE id = p_user_id AND role = 'admin');
+$$ LANGUAGE SQL STABLE;
+
+-- ─── Helper: current_chat_user_id() — extracts users.id from JWT sub ────────
+-- Maps Supabase auth.uid() to public.users.id via the "openId" column.
+-- Confirmed at server/_core/supabase-auth.ts: openId stores the Supabase auth UUID.
+CREATE OR REPLACE FUNCTION current_chat_user_id()
+RETURNS INTEGER AS $$
+  SELECT id FROM users WHERE "openId" = auth.uid()::text LIMIT 1;
+$$ LANGUAGE SQL STABLE;
+
+-- ─── RLS on chat_messages ───────────────────────────────────────────────────
+ALTER TABLE chat_messages ENABLE ROW LEVEL SECURITY;
+
+-- SELECT policy
+CREATE POLICY chat_messages_select ON chat_messages FOR SELECT TO authenticated
+  USING (
+    -- Soft-deleted: only admin or author sees the row
+    (deleted_at IS NULL OR author_id = current_chat_user_id() OR is_chat_admin(current_chat_user_id()))
+    AND
+    -- Shadow-banned: only admin or author sees the row
+    (NOT posted_while_shadow_banned OR author_id = current_chat_user_id() OR is_chat_admin(current_chat_user_id()))
+    AND
+    -- Scope-specific visibility
+    (
+      (scope = 'global' AND NOT is_chat_banned(current_chat_user_id(), 'global'))
+      OR
+      (scope = 'tournament' AND EXISTS (
+        SELECT 1 FROM tournament_members tm
+        WHERE tm.tournament_id = (SELECT t.id FROM tournaments t WHERE t.chat_room_id = chat_messages.room_id)
+          AND tm.user_id = current_chat_user_id()
+          AND tm.left_at IS NULL
+      ))
+      OR
+      (scope = 'friends' AND (
+        author_id = current_chat_user_id()
+        OR EXISTS (
+          SELECT 1 FROM user_favorites uf
+          WHERE uf.follower_id = current_chat_user_id() AND uf.favorite_id = chat_messages.author_id
+        )
+      ))
+      OR
+      is_chat_admin(current_chat_user_id())
+    )
+  );
+
+-- INSERT policy — defensive; tRPC mutations are the canonical write path.
+CREATE POLICY chat_messages_insert ON chat_messages FOR INSERT TO authenticated
+  WITH CHECK (
+    author_id = current_chat_user_id()
+    AND NOT is_chat_banned(current_chat_user_id(), 'global')
+    AND (room_id IS NULL OR NOT is_chat_banned(current_chat_user_id(), 'room', room_id))
+  );
+
+-- UPDATE policy — admins only (edit/delete message). Authors cannot edit their own messages.
+CREATE POLICY chat_messages_update ON chat_messages FOR UPDATE TO authenticated
+  USING (is_chat_admin(current_chat_user_id()))
+  WITH CHECK (is_chat_admin(current_chat_user_id()));
+
+-- No DELETE policy: deletion is exclusively via soft-delete (UPDATE deleted_at).
+-- Retention sweep cron uses service_role which bypasses RLS.
+
+-- ─── RLS on chat_bans ───────────────────────────────────────────────────────
+ALTER TABLE chat_bans ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY chat_bans_select_admin ON chat_bans FOR SELECT TO authenticated
+  USING (is_chat_admin(current_chat_user_id()) OR user_id = current_chat_user_id());
+
+CREATE POLICY chat_bans_write_admin ON chat_bans FOR ALL TO authenticated
+  USING (is_chat_admin(current_chat_user_id()))
+  WITH CHECK (is_chat_admin(current_chat_user_id()));
+
+-- ─── RLS on chat_audit_log — admin SELECT only; INSERT via service_role ─────
+ALTER TABLE chat_audit_log ENABLE ROW LEVEL SECURITY;
+CREATE POLICY chat_audit_log_select_admin ON chat_audit_log FOR SELECT TO authenticated
+  USING (is_chat_admin(current_chat_user_id()));
+
+-- ─── RLS on realtime.messages (private-channel authorization) ───────────────
+-- Topic format: chat:global | chat:tournament:<id> | chat:user:<id>:feed | chat:moderation
+CREATE POLICY realtime_chat_channel_join ON realtime.messages FOR SELECT TO authenticated
+  USING (
+    -- Global
+    (realtime.topic() = 'chat:global'
+      AND NOT is_chat_banned(current_chat_user_id(), 'global'))
+    OR
+    -- Per-tournament
+    (realtime.topic() LIKE 'chat:tournament:%'
+      AND EXISTS (
+        SELECT 1 FROM tournament_members tm
+        JOIN tournaments t ON t.id = tm.tournament_id
+        WHERE tm.user_id = current_chat_user_id()
+          AND tm.left_at IS NULL
+          AND ('chat:tournament:' || t.chat_room_id::text) = realtime.topic()
+      )
+      AND NOT is_chat_banned(current_chat_user_id(), 'global'))
+    OR
+    -- Personal feed (Friends + moderation events targeting self)
+    (realtime.topic() = ('chat:user:' || current_chat_user_id()::text || ':feed')
+      AND NOT is_chat_banned(current_chat_user_id(), 'global'))
+    OR
+    -- Admin moderation channel
+    (realtime.topic() = 'chat:moderation'
+      AND is_chat_admin(current_chat_user_id()))
+  );
