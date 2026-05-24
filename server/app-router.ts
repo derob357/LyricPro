@@ -20,6 +20,7 @@ import { bannersRouter } from "./routers/banners";
 import { chatRouter } from "./routers/chat";
 import { favoritesRouter } from "./routers/favorites";
 import { liveRoomRouter } from "./routers/liveRoom";
+import { tournamentsRouter } from "./routers/tournaments";
 import { getDb } from "./db";
 import { z } from "zod";
 import { eq } from "drizzle-orm";
@@ -331,6 +332,7 @@ export const appRouter = router({
   banners: bannersRouter,
   chat: chatRouter,
   favorites: favoritesRouter,
+  tournaments: tournamentsRouter,
 });
 
 export type AppRouter = typeof appRouter;
