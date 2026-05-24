@@ -5,6 +5,7 @@ import { useChatChannel } from "@/lib/chat/useChatChannel";
 import { useChatMessages, upsertMessage } from "@/lib/chat/chatStore";
 import { ChatMessageList } from "./ChatMessageList";
 import { ChatComposer } from "./ChatComposer";
+import { ModerationActionModal, type ModerationAction, type ModerationActionResult } from "./ModerationActionModal";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { toast } from "sonner";
 
@@ -155,6 +156,9 @@ export function ChatTabs() {
   const postMutation = trpc.chat.postMessage.useMutation();
   const deleteMutation = trpc.chat.admin.deleteMessage.useMutation();
   const banMutation = trpc.chat.admin.banAuthor.useMutation();
+  const editMutation = trpc.chat.admin.editMessage.useMutation();
+  const muteMutation = trpc.chat.admin.muteAuthor.useMutation();
+  const [pendingAction, setPendingAction] = useState<ModerationAction | null>(null);
 
   const handleSend = async (body: string) => {
     try {
@@ -196,27 +200,48 @@ export function ChatTabs() {
     }
   };
 
-  const handleAdminDelete = async (messageId: number) => {
-    const reason = prompt("Reason for deletion?");
-    if (!reason) return;
+  const handleAdminAction = (action: ModerationAction) => {
+    setPendingAction(action);
+  };
+
+  const performAction = async (result: ModerationActionResult) => {
     try {
-      await deleteMutation.mutateAsync({ messageId, reason });
-      toast.success("Message deleted");
+      if (result.kind === "delete") {
+        await deleteMutation.mutateAsync({ messageId: result.messageId, reason: result.reason });
+        toast.success("Message deleted");
+      } else if (result.kind === "edit") {
+        await editMutation.mutateAsync({ messageId: result.messageId, newBody: result.newBody, reason: result.reason });
+        toast.success("Message edited");
+      } else if (result.kind === "ban") {
+        await banMutation.mutateAsync({
+          userId: result.userId,
+          scope: result.scope,
+          roomId: result.roomId,
+          expiresAt: result.expiresAt,
+          reason: result.reason,
+        });
+        toast.success(`User #${result.userId} banned`);
+      } else {
+        await muteMutation.mutateAsync({
+          userId: result.userId,
+          scope: result.scope,
+          roomId: result.roomId,
+          flavor: result.flavor,
+          expiresAt: result.expiresAt,
+          reason: result.reason,
+        });
+        toast.success(`User #${result.userId} muted (${result.flavor})`);
+      }
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Delete failed");
+      toast.error(err instanceof Error ? err.message : "Action failed");
+      throw err;
     }
   };
 
-  const handleAdminBan = async (authorId: number) => {
-    const reason = prompt(`Reason for banning user #${authorId} globally?`);
-    if (!reason) return;
-    try {
-      await banMutation.mutateAsync({ userId: authorId, scope: "global", reason });
-      toast.success(`User #${authorId} banned`);
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Ban failed");
-    }
-  };
+  const contextRoomId =
+    tab === "global" ? GLOBAL_ROOM_ID
+    : tab === "tournament" ? (activeTournamentId ?? undefined)
+    : undefined;
 
   return (
     <Tabs
@@ -234,8 +259,7 @@ export function ChatTabs() {
           messages={orderedGlobal}
           viewerId={user?.id ?? null}
           viewerRole={user?.role ?? null}
-          onAdminDelete={handleAdminDelete}
-          onAdminBan={handleAdminBan}
+          onAdminAction={handleAdminAction}
         />
         <ChatComposer
           onSend={handleSend}
@@ -261,8 +285,7 @@ export function ChatTabs() {
               messages={friendsForDisplay}
               viewerId={user?.id ?? null}
               viewerRole={user?.role ?? null}
-              onAdminDelete={handleAdminDelete}
-              onAdminBan={handleAdminBan}
+              onAdminAction={handleAdminAction}
             />
             <ChatComposer
               onSend={handleSend}
@@ -304,8 +327,7 @@ export function ChatTabs() {
               messages={tournamentForDisplay}
               viewerId={user?.id ?? null}
               viewerRole={user?.role ?? null}
-              onAdminDelete={handleAdminDelete}
-              onAdminBan={handleAdminBan}
+              onAdminAction={handleAdminAction}
             />
             <ChatComposer
               onSend={handleSend}
@@ -314,6 +336,12 @@ export function ChatTabs() {
           </>
         )}
       </TabsContent>
+      <ModerationActionModal
+        action={pendingAction}
+        contextRoomId={contextRoomId}
+        onClose={() => setPendingAction(null)}
+        onSubmit={performAction}
+      />
     </Tabs>
   );
 }

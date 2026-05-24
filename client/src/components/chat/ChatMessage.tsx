@@ -7,21 +7,20 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Button } from "@/components/ui/button";
+import { type ModerationAction } from "./ModerationActionModal";
 
 interface Props {
   message: ChatMessageShape;
   viewerId: number | null;
   viewerRole: "user" | "admin" | null;
-  onAdminDelete?: (messageId: number) => void;
-  onAdminBan?: (authorId: number) => void;
+  onAdminAction?: (action: ModerationAction) => void;
 }
 
 export function ChatMessage({
   message,
   viewerId,
   viewerRole,
-  onAdminDelete,
-  onAdminBan,
+  onAdminAction,
 }: Props) {
   const isMine = viewerId != null && message.authorId === viewerId;
   const isAdmin = viewerRole === "admin";
@@ -59,14 +58,20 @@ export function ChatMessage({
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align={isMine ? "end" : "start"}>
-              <DropdownMenuItem onClick={() => onAdminDelete?.(message.id)}>
+              <DropdownMenuItem onClick={() => onAdminAction?.({ kind: "delete", messageId: message.id })}>
                 Delete message
               </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => onAdminAction?.({ kind: "edit", messageId: message.id, currentBody: message.body })}>
+                Edit message
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => onAdminAction?.({ kind: "mute", userId: message.authorId })}>
+                Mute author
+              </DropdownMenuItem>
               <DropdownMenuItem
-                onClick={() => onAdminBan?.(message.authorId)}
+                onClick={() => onAdminAction?.({ kind: "ban", userId: message.authorId })}
                 className="text-destructive"
               >
-                Ban author (global)
+                Ban author
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>

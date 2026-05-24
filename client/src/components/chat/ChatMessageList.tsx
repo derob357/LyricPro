@@ -10,8 +10,7 @@ interface Props {
   viewerRole: "user" | "admin" | null;
   onLoadOlder?: () => void;
   hasMoreOlder?: boolean;
-  onAdminDelete?: (messageId: number) => void;
-  onAdminBan?: (authorId: number) => void;
+  onAdminAction?: (action: import("./ModerationActionModal").ModerationAction) => void;
 }
 
 export function ChatMessageList({
@@ -20,8 +19,7 @@ export function ChatMessageList({
   viewerRole,
   onLoadOlder,
   hasMoreOlder,
-  onAdminDelete,
-  onAdminBan,
+  onAdminAction,
 }: Props) {
   const scrollableRef = useRef<HTMLDivElement | null>(null);
   const [showNewPill, setShowNewPill] = useState(false);
@@ -71,8 +69,7 @@ export function ChatMessageList({
               message={m}
               viewerId={viewerId}
               viewerRole={viewerRole}
-              onAdminDelete={onAdminDelete}
-              onAdminBan={onAdminBan}
+              onAdminAction={onAdminAction}
             />
           ))}
         </StickToBottom.Content>
