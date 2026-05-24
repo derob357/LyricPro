@@ -335,19 +335,25 @@ CREATE POLICY realtime_chat_channel_join ON realtime.messages FOR SELECT TO auth
   );
 
 -- ─── Trigger: broadcast new chat_messages to per-room topics ────────────────
+-- realtime.broadcast_changes signature (verified against live DB):
+--   (topic_name text, event_name text, operation text,
+--    table_name text, table_schema text,
+--    new record, old record, level text DEFAULT 'ROW')
+-- The new/old args MUST be the trigger's NEW/OLD record values directly,
+-- NOT cast to jsonb. table_name/table_schema must come BEFORE the records.
 CREATE OR REPLACE FUNCTION chat_messages_broadcast() RETURNS TRIGGER AS $$
 DECLARE
   follower_id INTEGER;
 BEGIN
   IF NEW.scope = 'global' THEN
-    PERFORM realtime.broadcast_changes('chat:global', 'message_inserted', 'INSERT', NEW.id::text, NULL, to_jsonb(NEW), NULL);
+    PERFORM realtime.broadcast_changes('chat:global', 'message_inserted', 'INSERT', 'chat_messages', 'public', NEW, NULL);
 
   ELSIF NEW.scope = 'tournament' THEN
-    PERFORM realtime.broadcast_changes('chat:tournament:' || NEW.room_id::text, 'message_inserted', 'INSERT', NEW.id::text, NULL, to_jsonb(NEW), NULL);
+    PERFORM realtime.broadcast_changes('chat:tournament:' || NEW.room_id::text, 'message_inserted', 'INSERT', 'chat_messages', 'public', NEW, NULL);
 
   ELSIF NEW.scope = 'friends' THEN
     -- Author always sees their own message
-    PERFORM realtime.broadcast_changes('chat:user:' || NEW.author_id::text || ':feed', 'message_inserted', 'INSERT', NEW.id::text, NULL, to_jsonb(NEW), NULL);
+    PERFORM realtime.broadcast_changes('chat:user:' || NEW.author_id::text || ':feed', 'message_inserted', 'INSERT', 'chat_messages', 'public', NEW, NULL);
 
     IF NOT NEW.posted_while_shadow_banned THEN
       -- Fan out to every follower of the author
@@ -355,12 +361,12 @@ BEGIN
         SELECT uf.follower_id FROM user_favorites uf
         WHERE uf.favorite_id = NEW.author_id
       LOOP
-        PERFORM realtime.broadcast_changes('chat:user:' || follower_id::text || ':feed', 'message_inserted', 'INSERT', NEW.id::text, NULL, to_jsonb(NEW), NULL);
+        PERFORM realtime.broadcast_changes('chat:user:' || follower_id::text || ':feed', 'message_inserted', 'INSERT', 'chat_messages', 'public', NEW, NULL);
       END LOOP;
     END IF;
 
     -- Admins always see all friends messages via the moderation channel
-    PERFORM realtime.broadcast_changes('chat:moderation', 'message_inserted', 'INSERT', NEW.id::text, NULL, to_jsonb(NEW), NULL);
+    PERFORM realtime.broadcast_changes('chat:moderation', 'message_inserted', 'INSERT', 'chat_messages', 'public', NEW, NULL);
   END IF;
 
   RETURN NEW;
@@ -381,16 +387,16 @@ BEGIN
      OR (NEW.flag_status != OLD.flag_status)
   THEN
     IF NEW.scope = 'global' THEN
-      PERFORM realtime.broadcast_changes('chat:global', 'message_updated', 'UPDATE', NEW.id::text, to_jsonb(OLD), to_jsonb(NEW), NULL);
+      PERFORM realtime.broadcast_changes('chat:global', 'message_updated', 'UPDATE', 'chat_messages', 'public', NEW, OLD);
     ELSIF NEW.scope = 'tournament' THEN
-      PERFORM realtime.broadcast_changes('chat:tournament:' || NEW.room_id::text, 'message_updated', 'UPDATE', NEW.id::text, to_jsonb(OLD), to_jsonb(NEW), NULL);
+      PERFORM realtime.broadcast_changes('chat:tournament:' || NEW.room_id::text, 'message_updated', 'UPDATE', 'chat_messages', 'public', NEW, OLD);
     ELSIF NEW.scope = 'friends' THEN
       -- Friends scope: notify the author only. Followers reconcile the
       -- updated/deleted state by message id on next fetch. A future
       -- enhancement can fan out the update to followers explicitly;
       -- not required for Phase 1's deletion-propagation guarantee
       -- (Phase 5 admin delete also re-broadcasts via its own path).
-      PERFORM realtime.broadcast_changes('chat:user:' || NEW.author_id::text || ':feed', 'message_updated', 'UPDATE', NEW.id::text, to_jsonb(OLD), to_jsonb(NEW), NULL);
+      PERFORM realtime.broadcast_changes('chat:user:' || NEW.author_id::text || ':feed', 'message_updated', 'UPDATE', 'chat_messages', 'public', NEW, OLD);
     END IF;
   END IF;
   RETURN NEW;
@@ -418,10 +424,10 @@ BEGIN
     'chat:user:' || NEW.user_id::text || ':feed',
     event_name,
     TG_OP,
-    NEW.id::text,
-    CASE WHEN TG_OP = 'UPDATE' THEN to_jsonb(OLD) END,
-    to_jsonb(NEW),
-    NULL
+    'chat_bans',
+    'public',
+    NEW,
+    CASE WHEN TG_OP = 'UPDATE' THEN OLD ELSE NULL END
   );
   RETURN NEW;
 END;
