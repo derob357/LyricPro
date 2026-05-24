@@ -14,7 +14,7 @@ import {
   type ChatMessage as ChatMessageRow,
 } from "../../drizzle/schema";
 import { getActiveBan } from "../_core/chatBans";
-import { enforceChatRateLimit } from "../_core/chatRateLimit";
+import { rateLimit } from "../_core/rateLimit";
 import { assessProfanity } from "../_core/profanityFilter";
 import { recordChatAction } from "../_core/chatAudit";
 
@@ -45,8 +45,11 @@ export const chatRouter = router({
       const db = await getDb();
       if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "DB unavailable" });
 
-      // 1. Rate limit (no-op if UPSTASH env not set)
-      await enforceChatRateLimit(`chat:post:${ctx.user.id}`);
+      // 1. Rate limit. Per-Lambda in-process bucket — matches the project's
+      // established pattern (auth.me, magic-link send, etc.). Documented
+      // upgrade trigger to a Redis-backed limiter is ~50-100 RPS sustained
+      // per the security baseline scan.
+      rateLimit("chat.postMessage", ctx.user.id, { max: 10, windowMs: 10_000 });
 
       // 2. Ban/mute check (global + per-room)
       await ensureNotGloballyBanned(ctx.user.id);
