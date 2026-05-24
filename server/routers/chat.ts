@@ -11,6 +11,7 @@ import {
   chatRoomMembers,
   chatFriendsReadState,
   chatAuditLog,
+  userFavorites,
   type ChatMessage as ChatMessageRow,
 } from "../../drizzle/schema";
 import { getActiveBan } from "../_core/chatBans";
@@ -30,6 +31,17 @@ async function ensureNotGloballyBanned(userId: number): Promise<void> {
     throw new TRPCError({ code: "FORBIDDEN", message: "You can't post here." });
   }
   // mute_shadow falls through — caller handles it specially when inserting.
+}
+
+function friendsVisibilityClause(viewerId: number) {
+  // author_id IN (SELECT favorite_id FROM user_favorites WHERE follower_id = viewer UNION ALL SELECT viewer)
+  return sql`(
+    ${chatMessages.authorId} = ${viewerId}
+    OR ${chatMessages.authorId} IN (
+      SELECT ${userFavorites.favoriteId} FROM ${userFavorites}
+      WHERE ${userFavorites.followerId} = ${viewerId}
+    )
+  )`;
 }
 
 export const chatRouter = router({
@@ -114,7 +126,9 @@ export const chatRouter = router({
         eq(chatMessages.scope, input.scope),
         isNull(chatMessages.deletedAt),
       ];
-      if (input.scope !== "friends" && input.roomId != null) {
+      if (input.scope === "friends") {
+        where.push(friendsVisibilityClause(ctx.user.id));
+      } else if (input.roomId != null) {
         where.push(eq(chatMessages.roomId, input.roomId));
       }
 
@@ -150,7 +164,9 @@ export const chatRouter = router({
         isNull(chatMessages.deletedAt),
         lt(chatMessages.id, input.beforeId),
       ];
-      if (input.scope !== "friends" && input.roomId != null) {
+      if (input.scope === "friends") {
+        where.push(friendsVisibilityClause(ctx.user.id));
+      } else if (input.roomId != null) {
         where.push(eq(chatMessages.roomId, input.roomId));
       }
 
@@ -182,7 +198,9 @@ export const chatRouter = router({
         isNull(chatMessages.deletedAt),
         gt(chatMessages.id, input.lastSeenSeq),
       ];
-      if (input.scope !== "friends" && input.roomId != null) {
+      if (input.scope === "friends") {
+        where.push(friendsVisibilityClause(ctx.user.id));
+      } else if (input.roomId != null) {
         where.push(eq(chatMessages.roomId, input.roomId));
       }
 

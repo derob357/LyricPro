@@ -13,8 +13,8 @@ vi.mock("stripe", () => {
 
 import { appRouter } from "../app-router";
 import { getDb } from "../db";
-import { chatMessages, chatBans, chatRoomMembers, chatAuditLog, users } from "../../drizzle/schema";
-import { and, eq, isNull } from "drizzle-orm";
+import { chatMessages, chatBans, chatRoomMembers, chatAuditLog, users, userFavorites } from "../../drizzle/schema";
+import { and, eq, isNull, inArray } from "drizzle-orm";
 
 const DB_URL =
   process.env.SUPABASE_SESSION_POOLER_STRING ??
@@ -396,5 +396,69 @@ liveDescribe("chat.admin actions", () => {
       .from(chatAuditLog)
       .where(and(eq(chatAuditLog.actorId, adminId), eq(chatAuditLog.action, "ban")));
     expect(audit.length).toBeGreaterThanOrEqual(1);
+  });
+});
+
+liveDescribe("chat fetch — friends-scope visibility", () => {
+  let viewerId: number;
+  let favoritedId: number;
+  let strangerId: number;
+
+  beforeAll(async () => {
+    const db = await getDb();
+    const ts = `${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+    const seeded = await db!.insert(users).values([
+      { openId: `friends-viewer-${ts}`, email: `friends-viewer-${ts}@example.com`, loginMethod: "vitest", role: "user" },
+      { openId: `friends-fav-${ts}`, email: `friends-fav-${ts}@example.com`, loginMethod: "vitest", role: "user" },
+      { openId: `friends-stranger-${ts}`, email: `friends-stranger-${ts}@example.com`, loginMethod: "vitest", role: "user" },
+    ]).returning();
+    viewerId = seeded[0].id;
+    favoritedId = seeded[1].id;
+    strangerId = seeded[2].id;
+
+    // Viewer favorites favoritedId. Does NOT favorite strangerId.
+    await db!.insert(userFavorites).values({ followerId: viewerId, favoriteId: favoritedId });
+
+    // Three friends-scope messages: one from viewer, one from favoritedId, one from strangerId.
+    await db!.insert(chatMessages).values([
+      { scope: "friends", authorId: viewerId, body: "my own friends post" },
+      { scope: "friends", authorId: favoritedId, body: "from someone I favorited" },
+      { scope: "friends", authorId: strangerId, body: "from a stranger" },
+    ]);
+  });
+
+  afterAll(async () => {
+    const db = await getDb();
+    await db!.delete(chatMessages).where(inArray(chatMessages.authorId, [viewerId, favoritedId, strangerId]));
+    await db!.delete(userFavorites).where(eq(userFavorites.followerId, viewerId));
+  });
+
+  const callerFor = (id: number) =>
+    appRouter.createCaller({
+      user: { id, role: "user", email: `${id}@example.com` },
+      req: { ip: "127.0.0.1" } as never,
+      ip: "127.0.0.1",
+      userAgent: "vitest",
+    } as never);
+
+  it("fetchInitial friends returns only own + favorited authors' messages", async () => {
+    const result = await callerFor(viewerId).chat.fetchInitial({ scope: "friends", limit: 50 });
+    const bodies = result.messages.map((m) => m.body);
+    expect(bodies).toContain("my own friends post");
+    expect(bodies).toContain("from someone I favorited");
+    expect(bodies).not.toContain("from a stranger");
+  });
+
+  it("fetchOlder friends respects the visibility filter", async () => {
+    const initial = await callerFor(viewerId).chat.fetchInitial({ scope: "friends", limit: 1 });
+    if (initial.messages.length === 0) return; // no messages, nothing to paginate
+    const older = await callerFor(viewerId).chat.fetchOlder({
+      scope: "friends",
+      beforeId: initial.messages[initial.messages.length - 1].id,
+      limit: 50,
+    });
+    for (const m of older) {
+      expect(m.authorId === viewerId || m.authorId === favoritedId).toBe(true);
+    }
   });
 });
