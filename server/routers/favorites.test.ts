@@ -139,3 +139,84 @@ liveDescribe("favoritesRouter", () => {
     await callerFor(aliceId).favorites.add({ userId: carolId });
   }, 60000);
 });
+
+liveDescribe("favorites.admin overrides", () => {
+  let adminId: number;
+  let aliceId: number;
+  let bobId: number;
+
+  beforeAll(async () => {
+    const db = await getDb();
+    const ts = `${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+    const seeded = await db!.insert(users).values([
+      { openId: `fav-admin-${ts}`, email: `fav-admin-${ts}@example.com`, loginMethod: "vitest", role: "admin" },
+      { openId: `fav-alice2-${ts}`, email: `fav-alice2-${ts}@example.com`, loginMethod: "vitest", role: "user" },
+      { openId: `fav-bob2-${ts}`, email: `fav-bob2-${ts}@example.com`, loginMethod: "vitest", role: "user" },
+    ]).returning();
+    adminId = seeded[0].id;
+    aliceId = seeded[1].id;
+    bobId = seeded[2].id;
+  });
+
+  afterAll(async () => {
+    const db = await getDb();
+    await db!.delete(userFavorites).where(
+      or(
+        inArray(userFavorites.followerId, [adminId, aliceId, bobId]),
+        inArray(userFavorites.favoriteId, [adminId, aliceId, bobId]),
+      ),
+    );
+    await db!.delete(users).where(inArray(users.id, [bobId]));
+    // admin (actor_id FK) + alice (target_user_id FK) left behind:
+    // chat_audit_log is immutable, so we cannot delete the rows that
+    // reference them. Bob is only referenced via metadata JSONB (no FK)
+    // so he is safe to delete.
+  });
+
+  const adminCaller = () =>
+    appRouter.createCaller({
+      user: { id: adminId, role: "admin", email: "fav-admin@example.com" },
+      req: { ip: "127.0.0.1" } as never,
+      ip: "127.0.0.1",
+      userAgent: "vitest",
+    } as never);
+
+  const userCaller = (id: number) =>
+    appRouter.createCaller({
+      user: { id, role: "user", email: `${id}@example.com` },
+      req: { ip: "127.0.0.1" } as never,
+      ip: "127.0.0.1",
+      userAgent: "vitest",
+    } as never);
+
+  it("admin.addFor makes alice follow bob on alice's behalf", async () => {
+    const r = await adminCaller().favorites.admin.addFor({
+      ownerId: aliceId,
+      favoriteId: bobId,
+      reason: "moderator override",
+    });
+    expect(r.added).toBe(true);
+
+    // Confirm alice's list now contains bob
+    const aliceList = await userCaller(aliceId).favorites.list();
+    expect(aliceList.map((f) => f.favoriteId)).toContain(bobId);
+  });
+
+  it("admin.removeFor removes the edge and writes audit log", async () => {
+    const r = await adminCaller().favorites.admin.removeFor({
+      ownerId: aliceId,
+      favoriteId: bobId,
+      reason: "harassment cleanup",
+    });
+    expect(r.removed).toBe(true);
+    const aliceList = await userCaller(aliceId).favorites.list();
+    expect(aliceList.map((f) => f.favoriteId)).not.toContain(bobId);
+  });
+
+  it("non-admin cannot call admin overrides", async () => {
+    await expect(
+      // @ts-expect-error: non-admin caller should be denied at runtime
+      userCaller(aliceId).favorites.admin.addFor({ ownerId: bobId, favoriteId: aliceId, reason: "x" }),
+    ).rejects.toThrow();
+  });
+});

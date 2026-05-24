@@ -5,11 +5,75 @@
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import { and, eq, sql } from "drizzle-orm";
-import { router, protectedProcedure } from "../_core/trpc";
+import { router, protectedProcedure, adminProcedure } from "../_core/trpc";
 import { getDb } from "../db";
 import { userFavorites } from "../../drizzle/schema";
+import { recordChatAction } from "../_core/chatAudit";
 
 const FAVORITES_CAP = 100;
+
+const adminSubRouter = router({
+  addFor: adminProcedure
+    .input(z.object({ ownerId: z.number().int(), favoriteId: z.number().int(), reason: z.string().min(1) }))
+    .mutation(async ({ input, ctx }) => {
+      if (input.ownerId === input.favoriteId) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "Cannot self-favorite." });
+      }
+      const db = await getDb();
+      if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "DB unavailable" });
+
+      const result = await db.transaction(async (tx) => {
+        const ins = await tx
+          .insert(userFavorites)
+          .values({ followerId: input.ownerId, favoriteId: input.favoriteId })
+          .onConflictDoNothing()
+          .returning({ id: userFavorites.id });
+        await recordChatAction({
+          tx,
+          actorId: ctx.user.id,
+          actorRole: "admin",
+          action: "favorite_added",
+          targetUserId: input.ownerId,
+          reason: input.reason,
+          metadata: { affected_user: input.favoriteId },
+        });
+        return { added: ins.length > 0 };
+      });
+
+      return result;
+    }),
+
+  removeFor: adminProcedure
+    .input(z.object({ ownerId: z.number().int(), favoriteId: z.number().int(), reason: z.string().min(1) }))
+    .mutation(async ({ input, ctx }) => {
+      const db = await getDb();
+      if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "DB unavailable" });
+
+      const result = await db.transaction(async (tx) => {
+        const del = await tx
+          .delete(userFavorites)
+          .where(
+            and(
+              eq(userFavorites.followerId, input.ownerId),
+              eq(userFavorites.favoriteId, input.favoriteId),
+            ),
+          )
+          .returning({ id: userFavorites.id });
+        await recordChatAction({
+          tx,
+          actorId: ctx.user.id,
+          actorRole: "admin",
+          action: "favorite_removed",
+          targetUserId: input.ownerId,
+          reason: input.reason,
+          metadata: { affected_user: input.favoriteId },
+        });
+        return { removed: del.length > 0 };
+      });
+
+      return result;
+    }),
+});
 
 export const favoritesRouter = router({
   add: protectedProcedure
@@ -95,4 +159,6 @@ export const favoritesRouter = router({
       .where(eq(userFavorites.favoriteId, ctx.user.id));
     return { count };
   }),
+
+  admin: adminSubRouter,
 });
