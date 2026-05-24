@@ -13,8 +13,8 @@ vi.mock("stripe", () => {
 
 import { appRouter } from "../app-router";
 import { getDb } from "../db";
-import { chatMessages, chatBans, chatRoomMembers, users } from "../../drizzle/schema";
-import { and, eq } from "drizzle-orm";
+import { chatMessages, chatBans, chatRoomMembers, chatAuditLog, users } from "../../drizzle/schema";
+import { and, eq, isNull } from "drizzle-orm";
 
 const DB_URL =
   process.env.SUPABASE_SESSION_POOLER_STRING ??
@@ -284,5 +284,117 @@ liveDescribe("chat.markRead + unreadCounts", () => {
     expect(counts.global).toBeDefined();
     expect(typeof counts.global).toBe("number");
     expect(counts.global).toBeGreaterThanOrEqual(0);
+  });
+});
+
+liveDescribe("chat.admin actions", () => {
+  let adminId: number;
+  let posterId: number;
+  let messageId: number;
+
+  beforeAll(async () => {
+    const db = await getDb();
+    const ts = `${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+    const [a] = await db!.insert(users).values({
+      openId: `chat-admin-action-${ts}`,
+      email: `chat-admin-action-${ts}@example.com`,
+      loginMethod: "vitest",
+      role: "admin",
+    }).returning();
+    adminId = a.id;
+    const [p] = await db!.insert(users).values({
+      openId: `chat-admin-poster-${ts}`,
+      email: `chat-admin-poster-${ts}@example.com`,
+      loginMethod: "vitest",
+      role: "user",
+    }).returning();
+    posterId = p.id;
+
+    const [m] = await db!.insert(chatMessages).values({
+      scope: "global",
+      roomId: 1,
+      authorId: posterId,
+      body: "to be deleted",
+    }).returning();
+    messageId = m.id;
+  });
+
+  afterAll(async () => {
+    const db = await getDb();
+    // Note: the soft-deleted message is referenced by an immutable audit-log
+    // row, so we can't DELETE it (FK + deny-change trigger). Leave it + the
+    // audit row behind, matching the existing "audit rows are left behind"
+    // pattern used by the chat.postMessage suite above.
+    await db!.delete(chatMessages).where(
+      and(eq(chatMessages.authorId, posterId), isNull(chatMessages.deletedAt)),
+    );
+    await db!.delete(chatBans).where(eq(chatBans.userId, posterId));
+  });
+
+  const adminCaller = () =>
+    appRouter.createCaller({
+      user: { id: adminId, role: "admin", email: `admin@example.com` },
+      req: { ip: "127.0.0.1" } as never,
+      ip: "127.0.0.1",
+      userAgent: "vitest",
+    } as never);
+
+  const userCaller = () =>
+    appRouter.createCaller({
+      user: { id: posterId, role: "user", email: `poster@example.com` },
+      req: { ip: "127.0.0.1" } as never,
+      ip: "127.0.0.1",
+      userAgent: "vitest",
+    } as never);
+
+  it("admin.deleteMessage soft-deletes the row and writes an audit log entry", async () => {
+    const caller = adminCaller();
+    const result = await caller.chat.admin.deleteMessage({
+      messageId,
+      reason: "spam",
+    });
+    expect(result.success).toBe(true);
+
+    const db = await getDb();
+    const [row] = await db!.select().from(chatMessages).where(eq(chatMessages.id, messageId));
+    expect(row.deletedAt).not.toBeNull();
+    expect(row.deletedBy).toBe(adminId);
+    expect(row.deletedReason).toBe("spam");
+
+    const audit = await db!
+      .select()
+      .from(chatAuditLog)
+      .where(and(eq(chatAuditLog.actorId, adminId), eq(chatAuditLog.action, "message_delete")));
+    expect(audit.length).toBeGreaterThanOrEqual(1);
+  });
+
+  it("non-admin cannot call admin.deleteMessage", async () => {
+    const caller = userCaller();
+    await expect(
+      // @ts-expect-error: non-admin caller should be denied at runtime
+      caller.chat.admin.deleteMessage({ messageId, reason: "x" }),
+    ).rejects.toThrow();
+  });
+
+  it("admin.banAuthor creates a chat_bans row and writes audit log", async () => {
+    const caller = adminCaller();
+    const result = await caller.chat.admin.banAuthor({
+      userId: posterId,
+      scope: "global",
+      reason: "repeated spam",
+    });
+    expect(result.banId).toBeGreaterThan(0);
+
+    const db = await getDb();
+    const [ban] = await db!.select().from(chatBans).where(eq(chatBans.id, result.banId));
+    expect(ban.action).toBe("ban");
+    expect(ban.scope).toBe("global");
+    expect(ban.createdBy).toBe(adminId);
+
+    const audit = await db!
+      .select()
+      .from(chatAuditLog)
+      .where(and(eq(chatAuditLog.actorId, adminId), eq(chatAuditLog.action, "ban")));
+    expect(audit.length).toBeGreaterThanOrEqual(1);
   });
 });

@@ -229,6 +229,90 @@ export const chatRouter = router({
       return { success: true as const };
     }),
 
+  admin: router({
+    deleteMessage: adminProcedure
+      .input(z.object({ messageId: z.number().int(), reason: z.string().min(1) }))
+      .mutation(async ({ input, ctx }) => {
+        const db = await getDb();
+        if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "DB unavailable" });
+
+        await db.transaction(async (tx) => {
+          const [updated] = await tx
+            .update(chatMessages)
+            .set({
+              deletedAt: new Date(),
+              deletedBy: ctx.user.id,
+              deletedReason: input.reason,
+            })
+            .where(eq(chatMessages.id, input.messageId))
+            .returning();
+          if (!updated) {
+            throw new TRPCError({ code: "NOT_FOUND", message: "Message not found" });
+          }
+          await recordChatAction({
+            tx,
+            actorId: ctx.user.id,
+            actorRole: "admin",
+            action: "message_delete",
+            targetMessageId: input.messageId,
+            targetUserId: updated.authorId,
+            scope: updated.scope,
+            roomId: updated.roomId ?? undefined,
+            reason: input.reason,
+          });
+        });
+
+        return { success: true as const };
+      }),
+
+    banAuthor: adminProcedure
+      .input(
+        z.object({
+          userId: z.number().int(),
+          scope: z.enum(["global", "room"]),
+          roomId: z.number().int().optional(),
+          expiresAt: z.string().datetime().optional(),
+          reason: z.string().min(1),
+        }),
+      )
+      .mutation(async ({ input, ctx }) => {
+        const db = await getDb();
+        if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "DB unavailable" });
+        if (input.scope === "room" && input.roomId == null) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "roomId required for room-scope ban" });
+        }
+
+        const banId = await db.transaction(async (tx) => {
+          const [ban] = await tx
+            .insert(chatBans)
+            .values({
+              userId: input.userId,
+              scope: input.scope,
+              roomId: input.scope === "room" ? input.roomId! : null,
+              action: "ban",
+              reason: input.reason,
+              createdBy: ctx.user.id,
+              expiresAt: input.expiresAt ? new Date(input.expiresAt) : null,
+            })
+            .returning({ id: chatBans.id });
+          await recordChatAction({
+            tx,
+            actorId: ctx.user.id,
+            actorRole: "admin",
+            action: "ban",
+            targetUserId: input.userId,
+            scope: input.scope,
+            roomId: input.roomId ?? undefined,
+            reason: input.reason,
+            metadata: { expiresAt: input.expiresAt ?? null },
+          });
+          return ban.id;
+        });
+
+        return { banId };
+      }),
+  }),
+
   unreadCounts: protectedProcedure.query(async ({ ctx }) => {
     const db = await getDb();
     if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "DB unavailable" });
