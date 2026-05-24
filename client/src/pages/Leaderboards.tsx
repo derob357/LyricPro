@@ -9,6 +9,7 @@ import { getRankTier } from "@/lib/scoring";
 import { ArrowLeft, Trophy, Crown, Medal, CalendarDays, CalendarRange, Globe, Music, Users, User, UsersRound, Play, Search, X } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { UserAvatar } from "@/components/UserAvatar";
+import { FavoriteButton } from "@/components/FavoriteButton";
 
 const GENRES = ["R&B", "Hip Hop", "Pop", "Rock", "Country", "Gospel", "Soul", "Jazz", "Blues", "Alternative", "Reggae"];
 const DECADES = ["1940–1950", "1950–1960", "1960–1970", "1970–1980", "1980–1990", "1990–2000", "2000–2010", "2010–2020", "2020–Present"];
@@ -18,6 +19,14 @@ type GameMode = "solo" | "multiplayer" | "team";
 export default function Leaderboards() {
   const [, navigate] = useLocation();
   const { user, isAuthenticated } = useAuth();
+
+  const favoritesList = trpc.favorites.list.useQuery(undefined, {
+    enabled: isAuthenticated,
+    staleTime: 60_000,
+  });
+  const favoritedIds = new Set<number>(
+    (favoritesList.data ?? []).map((f) => f.favoriteId),
+  );
 
   const [selectedMode, setSelectedMode] = useState<GameMode | undefined>(undefined);
   const [selectedGenre, setSelectedGenre] = useState<string | undefined>(undefined);
@@ -293,6 +302,13 @@ export default function Leaderboards() {
                           {entry.mode && <span className="text-muted-foreground text-xs capitalize">· {entry.mode}</span>}
                         </div>
                       </div>
+                      {isAuthenticated && entry.userId != null && !isMe && (
+                        <FavoriteButton
+                          targetUserId={entry.userId}
+                          initialFavorited={favoritedIds.has(entry.userId)}
+                          className="opacity-70 hover:opacity-100"
+                        />
+                      )}
                       <div className="text-right shrink-0">
                         <div className={`font-display font-bold text-lg ${
                           idx === 0 ? "text-yellow-400" : isMe ? "text-primary" : "text-foreground"
