@@ -139,3 +139,99 @@ liveDescribe("chat.postMessage", () => {
         ?? (result as Record<string, unknown>).posted_while_shadow_banned).toBe(true);
   });
 });
+
+liveDescribe("chat fetch queries", () => {
+  let readerId: number;
+  let posterId: number;
+
+  beforeAll(async () => {
+    const db = await getDb();
+    const ts = `${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+    const [r] = await db!.insert(users).values({
+      openId: `chat-fetch-reader-${ts}`,
+      email: `chat-fetch-reader-${ts}@example.com`,
+      loginMethod: "vitest",
+      role: "user",
+    }).returning();
+    readerId = r.id;
+    const [p] = await db!.insert(users).values({
+      openId: `chat-fetch-poster-${ts}`,
+      email: `chat-fetch-poster-${ts}@example.com`,
+      loginMethod: "vitest",
+      role: "user",
+    }).returning();
+    posterId = p.id;
+
+    // Seed 5 messages in the global room
+    for (let i = 1; i <= 5; i++) {
+      await db!.insert(chatMessages).values({
+        scope: "global",
+        roomId: 1,
+        authorId: posterId,
+        body: `fetch-test message ${i}`,
+      });
+    }
+  });
+
+  afterAll(async () => {
+    const db = await getDb();
+    await db!.delete(chatMessages).where(eq(chatMessages.authorId, posterId));
+  });
+
+  const callerFor = (id: number) =>
+    appRouter.createCaller({
+      user: { id, role: "user", email: `${id}@example.com` },
+      req: { ip: "127.0.0.1" } as never,
+      ip: "127.0.0.1",
+      userAgent: "vitest",
+    } as never);
+
+  it("fetchInitial returns the most-recent messages (descending by id)", async () => {
+    const caller = callerFor(readerId);
+    const result = await caller.chat.fetchInitial({ scope: "global", roomId: 1, limit: 10 });
+    expect(result.messages.length).toBeGreaterThanOrEqual(5);
+    // Descending id (newest first)
+    for (let i = 0; i < result.messages.length - 1; i++) {
+      expect(result.messages[i].id).toBeGreaterThanOrEqual(result.messages[i + 1].id);
+    }
+    expect(result.lastSeenSeq).toBe(result.messages[0]?.id ?? 0);
+  });
+
+  it("fetchOlder paginates correctly with beforeId", async () => {
+    const caller = callerFor(readerId);
+    const first = await caller.chat.fetchInitial({ scope: "global", roomId: 1, limit: 2 });
+    const second = await caller.chat.fetchOlder({
+      scope: "global",
+      roomId: 1,
+      beforeId: first.messages[first.messages.length - 1].id,
+      limit: 2,
+    });
+    expect(second.length).toBeGreaterThan(0);
+    // All returned messages must have id < the oldest from `first`
+    for (const m of second) {
+      expect(m.id).toBeLessThan(first.messages[first.messages.length - 1].id);
+    }
+  });
+
+  it("fetchSince returns only messages newer than lastSeenSeq", async () => {
+    const caller = callerFor(readerId);
+    const initial = await caller.chat.fetchInitial({ scope: "global", roomId: 1, limit: 1 });
+    const newerOnly = await caller.chat.fetchSince({
+      scope: "global",
+      roomId: 1,
+      lastSeenSeq: initial.messages[0]?.id ?? 0,
+    });
+    // Expect 0 because we just took the newest; nothing newer exists
+    expect(newerOnly.length).toBe(0);
+
+    // Post one more and re-check
+    const posterCaller = callerFor(posterId);
+    await posterCaller.chat.postMessage({ scope: "global", roomId: 1, body: "another one" });
+    const afterPost = await caller.chat.fetchSince({
+      scope: "global",
+      roomId: 1,
+      lastSeenSeq: initial.messages[0]?.id ?? 0,
+    });
+    expect(afterPost.length).toBeGreaterThanOrEqual(1);
+  });
+});

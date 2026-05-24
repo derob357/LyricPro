@@ -93,4 +93,103 @@ export const chatRouter = router({
 
       return inserted;
     }),
+
+  fetchInitial: protectedProcedure
+    .input(
+      z.object({
+        scope: ScopeEnum,
+        roomId: z.number().int().optional(),
+        limit: z.number().int().min(1).max(100).default(50),
+      }),
+    )
+    .query(async ({ input, ctx }) => {
+      const db = await getDb();
+      if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "DB unavailable" });
+      await ensureNotGloballyBanned(ctx.user.id);
+
+      const where = [
+        eq(chatMessages.scope, input.scope),
+        isNull(chatMessages.deletedAt),
+      ];
+      if (input.scope !== "friends" && input.roomId != null) {
+        where.push(eq(chatMessages.roomId, input.roomId));
+      }
+
+      const messages = await db
+        .select()
+        .from(chatMessages)
+        .where(and(...where))
+        .orderBy(desc(chatMessages.id))
+        .limit(input.limit);
+
+      return {
+        messages,
+        lastSeenSeq: messages[0]?.id ?? 0,
+      };
+    }),
+
+  fetchOlder: protectedProcedure
+    .input(
+      z.object({
+        scope: ScopeEnum,
+        roomId: z.number().int().optional(),
+        beforeId: z.number().int(),
+        limit: z.number().int().min(1).max(100).default(50),
+      }),
+    )
+    .query(async ({ input, ctx }) => {
+      const db = await getDb();
+      if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "DB unavailable" });
+      await ensureNotGloballyBanned(ctx.user.id);
+
+      const where = [
+        eq(chatMessages.scope, input.scope),
+        isNull(chatMessages.deletedAt),
+        lt(chatMessages.id, input.beforeId),
+      ];
+      if (input.scope !== "friends" && input.roomId != null) {
+        where.push(eq(chatMessages.roomId, input.roomId));
+      }
+
+      const messages = await db
+        .select()
+        .from(chatMessages)
+        .where(and(...where))
+        .orderBy(desc(chatMessages.id))
+        .limit(input.limit);
+
+      return messages;
+    }),
+
+  fetchSince: protectedProcedure
+    .input(
+      z.object({
+        scope: ScopeEnum,
+        roomId: z.number().int().optional(),
+        lastSeenSeq: z.number().int(),
+      }),
+    )
+    .query(async ({ input, ctx }) => {
+      const db = await getDb();
+      if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "DB unavailable" });
+      await ensureNotGloballyBanned(ctx.user.id);
+
+      const where = [
+        eq(chatMessages.scope, input.scope),
+        isNull(chatMessages.deletedAt),
+        gt(chatMessages.id, input.lastSeenSeq),
+      ];
+      if (input.scope !== "friends" && input.roomId != null) {
+        where.push(eq(chatMessages.roomId, input.roomId));
+      }
+
+      const messages = await db
+        .select()
+        .from(chatMessages)
+        .where(and(...where))
+        .orderBy(desc(chatMessages.id))
+        .limit(200);
+
+      return messages;
+    }),
 });
