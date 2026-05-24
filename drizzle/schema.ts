@@ -1283,3 +1283,78 @@ export const tournamentMembers = pgTable(
 );
 
 export type TournamentMember = typeof tournamentMembers.$inferSelect;
+
+// ─── Chat: bans ────────────────────────────────────────────────────────────
+export const chatBanScopeEnum = pgEnum("chat_ban_scope", ["global", "room"]);
+export const chatBanActionEnum = pgEnum("chat_ban_action", [
+  "ban",
+  "mute_visible",
+  "mute_shadow",
+]);
+
+export const chatBans = pgTable("chat_bans", {
+  id: serial("id").primaryKey(),
+  userId: integer("user_id")
+    .notNull()
+    .references(() => users.id, { onDelete: "cascade" }),
+  scope: chatBanScopeEnum("scope").notNull(),
+  roomId: integer("room_id").references(() => chatRooms.id, { onDelete: "cascade" }),
+  action: chatBanActionEnum("action").notNull(),
+  reason: text("reason").notNull(),
+  createdBy: integer("created_by")
+    .notNull()
+    .references(() => users.id),
+  createdAt: createdAtColumn(),
+  expiresAt: timestamp("expires_at", { withTimezone: true }),
+  revokedAt: timestamp("revoked_at", { withTimezone: true }),
+  revokedBy: integer("revoked_by").references(() => users.id),
+});
+
+export type ChatBan = typeof chatBans.$inferSelect;
+
+// ─── Chat: audit log (append-only — never UPDATE or DELETE through Drizzle) ──
+export const chatAuditLog = pgTable("chat_audit_log", {
+  id: bigserial("id", { mode: "number" }).primaryKey(),
+  actorId: integer("actor_id")
+    .notNull()
+    .references(() => users.id),
+  actorRole: varchar("actor_role", { length: 32 }).notNull(),
+  action: varchar("action", { length: 64 }).notNull(),
+  targetUserId: integer("target_user_id").references(() => users.id),
+  targetMessageId: integer("target_message_id"),
+  targetTournamentId: integer("target_tournament_id").references(() => tournaments.id),
+  scope: varchar("scope", { length: 32 }),
+  roomId: integer("room_id").references(() => chatRooms.id),
+  reason: text("reason"),
+  metadata: jsonb("metadata"),
+  ip: varchar("ip", { length: 64 }),
+  userAgent: text("user_agent"),
+  createdAt: createdAtColumn(),
+});
+
+export type ChatAuditLogEntry = typeof chatAuditLog.$inferSelect;
+
+// ─── Chat: room membership + read state ────────────────────────────────────
+export const chatRoomMembers = pgTable(
+  "chat_room_members",
+  {
+    userId: integer("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    roomId: integer("room_id")
+      .notNull()
+      .references(() => chatRooms.id, { onDelete: "cascade" }),
+    lastReadSeq: bigint("last_read_seq", { mode: "number" }).notNull().default(0),
+    lastReadAt: timestamp("last_read_at", { withTimezone: true }).notNull().defaultNow(),
+    notificationsEnabled: boolean("notifications_enabled").notNull().default(true),
+  },
+  (t) => ({ pk: primaryKey({ columns: [t.userId, t.roomId] }) }),
+);
+
+export const chatFriendsReadState = pgTable("chat_friends_read_state", {
+  userId: integer("user_id")
+    .primaryKey()
+    .references(() => users.id, { onDelete: "cascade" }),
+  lastReadSeq: bigint("last_read_seq", { mode: "number" }).notNull().default(0),
+  lastReadAt: timestamp("last_read_at", { withTimezone: true }).notNull().defaultNow(),
+});

@@ -120,3 +120,87 @@ CREATE TABLE tournament_members (
 CREATE INDEX tournament_members_user
   ON tournament_members (user_id)
   WHERE left_at IS NULL;
+
+-- ─── chat_bans ──────────────────────────────────────────────────────────────
+CREATE TYPE chat_ban_scope AS ENUM ('global', 'room');
+CREATE TYPE chat_ban_action AS ENUM ('ban', 'mute_visible', 'mute_shadow');
+
+CREATE TABLE chat_bans (
+  id            SERIAL PRIMARY KEY,
+  user_id       INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  scope         chat_ban_scope NOT NULL,
+  room_id       INTEGER REFERENCES chat_rooms(id) ON DELETE CASCADE,
+  action        chat_ban_action NOT NULL,
+  reason        TEXT NOT NULL,
+  created_by    INTEGER NOT NULL REFERENCES users(id),
+  "createdAt"   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  expires_at    TIMESTAMPTZ,
+  revoked_at    TIMESTAMPTZ,
+  revoked_by    INTEGER REFERENCES users(id),
+  CONSTRAINT chat_bans_room_required CHECK (
+    (scope = 'room' AND room_id IS NOT NULL) OR
+    (scope = 'global' AND room_id IS NULL)
+  )
+);
+CREATE INDEX chat_bans_active
+  ON chat_bans (user_id, scope, expires_at)
+  WHERE revoked_at IS NULL AND (expires_at IS NULL OR expires_at > NOW());
+
+-- ─── chat_audit_log (immutable, append-only) ────────────────────────────────
+CREATE TABLE chat_audit_log (
+  id                    BIGSERIAL PRIMARY KEY,
+  actor_id              INTEGER NOT NULL REFERENCES users(id),
+  actor_role            VARCHAR(32) NOT NULL,
+  action                VARCHAR(64) NOT NULL,
+  target_user_id        INTEGER REFERENCES users(id),
+  target_message_id     BIGINT REFERENCES chat_messages(id),
+  target_tournament_id  INTEGER REFERENCES tournaments(id),
+  scope                 VARCHAR(32),
+  room_id               INTEGER REFERENCES chat_rooms(id),
+  reason                TEXT,
+  metadata              JSONB,
+  ip                    VARCHAR(64),
+  user_agent            TEXT,
+  "createdAt"           TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX chat_audit_log_actor ON chat_audit_log (actor_id, "createdAt" DESC);
+CREATE INDEX chat_audit_log_target_user
+  ON chat_audit_log (target_user_id, "createdAt" DESC)
+  WHERE target_user_id IS NOT NULL;
+CREATE INDEX chat_audit_log_action ON chat_audit_log (action, "createdAt" DESC);
+
+-- Hard-immutability: revoke + deny-change trigger (service_role bypasses RLS,
+-- so a privilege-revoke alone isn't enough; the trigger catches everything).
+REVOKE UPDATE, DELETE, TRUNCATE ON chat_audit_log FROM PUBLIC;
+
+CREATE OR REPLACE FUNCTION chat_audit_log_deny_change()
+RETURNS TRIGGER AS $$
+BEGIN
+  RAISE EXCEPTION 'chat_audit_log rows are immutable (table is append-only)';
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER chat_audit_log_no_update
+  BEFORE UPDATE ON chat_audit_log
+  FOR EACH ROW EXECUTE FUNCTION chat_audit_log_deny_change();
+
+CREATE TRIGGER chat_audit_log_no_delete
+  BEFORE DELETE ON chat_audit_log
+  FOR EACH ROW EXECUTE FUNCTION chat_audit_log_deny_change();
+
+-- ─── chat_room_members (last_read tracking) ────────────────────────────────
+CREATE TABLE chat_room_members (
+  user_id                  INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  room_id                  INTEGER NOT NULL REFERENCES chat_rooms(id) ON DELETE CASCADE,
+  last_read_seq            BIGINT NOT NULL DEFAULT 0,
+  last_read_at             TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  notifications_enabled    BOOLEAN NOT NULL DEFAULT TRUE,
+  PRIMARY KEY (user_id, room_id)
+);
+
+-- ─── chat_friends_read_state ────────────────────────────────────────────────
+CREATE TABLE chat_friends_read_state (
+  user_id          INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+  last_read_seq    BIGINT NOT NULL DEFAULT 0,
+  last_read_at     TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
