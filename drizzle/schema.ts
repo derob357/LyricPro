@@ -1211,3 +1211,75 @@ export const chatMessages = pgTable("chat_messages", {
 
 export type ChatMessage = typeof chatMessages.$inferSelect;
 export type InsertChatMessage = typeof chatMessages.$inferInsert;
+
+// ─── Chat: user favorites ──────────────────────────────────────────────────
+export const userFavorites = pgTable("user_favorites", {
+  id: serial("id").primaryKey(),
+  followerId: integer("follower_id")
+    .notNull()
+    .references(() => users.id, { onDelete: "cascade" }),
+  favoriteId: integer("favorite_id")
+    .notNull()
+    .references(() => users.id, { onDelete: "cascade" }),
+  createdAt: createdAtColumn(),
+});
+
+export type UserFavorite = typeof userFavorites.$inferSelect;
+
+// ─── Chat: tournaments ─────────────────────────────────────────────────────
+export const tournamentStatusEnum = pgEnum("tournament_status", [
+  "draft",
+  "open",
+  "in_progress",
+  "completed",
+  "cancelled",
+]);
+
+export const tournaments = pgTable("tournaments", {
+  id: serial("id").primaryKey(),
+  name: varchar("name", { length: 128 }).notNull(),
+  description: text("description"),
+  entryCostGn: integer("entry_cost_gn").notNull().default(0),
+  capacity: integer("capacity"),
+  startsAt: timestamp("starts_at", { withTimezone: true }).notNull(),
+  endsAt: timestamp("ends_at", { withTimezone: true }).notNull(),
+  chatRoomId: integer("chat_room_id").references(() => chatRooms.id),
+  status: tournamentStatusEnum("status").notNull().default("draft"),
+  prizePoolId: integer("prize_pool_id").references(() => prizePools.id),
+  createdBy: integer("created_by")
+    .notNull()
+    .references(() => users.id),
+  createdAt: createdAtColumn(),
+  updatedAt: updatedAtColumn(),
+});
+
+export type Tournament = typeof tournaments.$inferSelect;
+export type InsertTournament = typeof tournaments.$inferInsert;
+
+// ─── Chat: tournament members ──────────────────────────────────────────────
+export const tournamentEntryMethodEnum = pgEnum("tournament_entry_method", [
+  "paid",
+  "admin_invited",
+  "comp",
+]);
+
+export const tournamentMembers = pgTable(
+  "tournament_members",
+  {
+    tournamentId: integer("tournament_id")
+      .notNull()
+      .references(() => tournaments.id, { onDelete: "cascade" }),
+    userId: integer("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    entryMethod: tournamentEntryMethodEnum("entry_method").notNull(),
+    gnSpent: integer("gn_spent").notNull().default(0),
+    joinedAt: timestamp("joined_at", { withTimezone: true }).notNull().defaultNow(),
+    leftAt: timestamp("left_at", { withTimezone: true }),
+  },
+  (t) => ({
+    pk: primaryKey({ columns: [t.tournamentId, t.userId] }),
+  }),
+);
+
+export type TournamentMember = typeof tournamentMembers.$inferSelect;
