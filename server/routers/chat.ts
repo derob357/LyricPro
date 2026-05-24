@@ -517,6 +517,103 @@ export const chatRouter = router({
 
         return { success: true as const };
       }),
+
+    flaggedMessages: adminProcedure
+      .input(z.object({ limit: z.number().int().min(1).max(200).default(50) }))
+      .query(async ({ input }) => {
+        const db = await getDb();
+        if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "DB unavailable" });
+        const rows = await db
+          .select()
+          .from(chatMessages)
+          .where(
+            and(
+              isNull(chatMessages.deletedAt),
+              sql`${chatMessages.flagStatus} IN ('flagged', 'flagged_high_confidence')`,
+            ),
+          )
+          .orderBy(desc(chatMessages.id))
+          .limit(input.limit);
+        return rows;
+      }),
+
+    recentBans: adminProcedure
+      .input(z.object({ limit: z.number().int().min(1).max(200).default(100) }))
+      .query(async ({ input }) => {
+        const db = await getDb();
+        if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "DB unavailable" });
+        const rows = await db
+          .select()
+          .from(chatBans)
+          .where(isNull(chatBans.revokedAt))
+          .orderBy(desc(chatBans.createdAt))
+          .limit(input.limit);
+        return rows;
+      }),
+
+    auditLog: adminProcedure
+      .input(
+        z.object({
+          actorId: z.number().int().optional(),
+          action: z.string().optional(),
+          targetUserId: z.number().int().optional(),
+          beforeId: z.number().int().optional(),
+          limit: z.number().int().min(1).max(200).default(50),
+        }),
+      )
+      .query(async ({ input }) => {
+        const db = await getDb();
+        if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "DB unavailable" });
+        const where = [] as ReturnType<typeof sql>[];
+        if (input.actorId != null) where.push(sql`actor_id = ${input.actorId}`);
+        if (input.action) where.push(sql`action = ${input.action}`);
+        if (input.targetUserId != null) where.push(sql`target_user_id = ${input.targetUserId}`);
+        if (input.beforeId != null) where.push(sql`id < ${input.beforeId}`);
+        const whereClause = where.length ? sql`WHERE ${sql.join(where, sql` AND `)}` : sql``;
+        const result = await db.execute(sql`
+          SELECT * FROM chat_audit_log
+          ${whereClause}
+          ORDER BY id DESC
+          LIMIT ${input.limit}
+        `);
+        const rows = ((result as unknown as { rows?: unknown[] }).rows
+          ?? (Array.isArray(result) ? (result as unknown[]) : [])) as Array<Record<string, unknown>>;
+        return { rows };
+      }),
+
+    userLookup: adminProcedure
+      .input(z.object({ query: z.string().min(1).max(128) }))
+      .query(async ({ input }) => {
+        const db = await getDb();
+        if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "DB unavailable" });
+        const result = await db.execute(sql`
+          SELECT
+            u.id, u."openId", u.email, u."firstName", u."lastName", u.role,
+            (
+              SELECT COUNT(*)::int FROM chat_bans b
+              WHERE b.user_id = u.id
+                AND b.revoked_at IS NULL
+                AND (b.expires_at IS NULL OR b.expires_at > NOW())
+            ) AS "activeBanCount"
+          FROM users u
+          WHERE u.email ILIKE ${"%" + input.query + "%"}
+             OR u."firstName" ILIKE ${"%" + input.query + "%"}
+             OR u."lastName" ILIKE ${"%" + input.query + "%"}
+          ORDER BY u.id DESC
+          LIMIT 25
+        `);
+        const userRows = ((result as unknown as { rows?: unknown[] }).rows
+          ?? (Array.isArray(result) ? (result as unknown[]) : [])) as Array<{
+          id: number;
+          openId: string;
+          email: string | null;
+          firstName: string | null;
+          lastName: string | null;
+          role: string;
+          activeBanCount: number;
+        }>;
+        return { users: userRows };
+      }),
   }),
 
   unreadCounts: protectedProcedure.query(async ({ ctx }) => {

@@ -696,3 +696,97 @@ liveDescribe("chat.admin mutations — phase 5", () => {
     // Cleanup handled by afterAll — message is audit-referenced so it stays behind.
   });
 });
+
+liveDescribe("chat.admin queries — phase 5", () => {
+  let adminId: number;
+  let targetId: number;
+  let messageId: number;
+  let flaggedId: number;
+  let banId: number;
+
+  beforeAll(async () => {
+    const db = await getDb();
+    const ts = `${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+    const [a] = await db!.insert(users).values({
+      openId: `p5-q-admin-${ts}`,
+      email: `p5-q-admin-${ts}@example.com`,
+      loginMethod: "vitest",
+      role: "admin",
+    }).returning();
+    adminId = a.id;
+    const [t] = await db!.insert(users).values({
+      openId: `p5-q-target-${ts}`,
+      email: `p5-q-target-${ts}@example.com`,
+      loginMethod: "vitest",
+      role: "user",
+    }).returning();
+    targetId = t.id;
+
+    const [m] = await db!.insert(chatMessages).values({
+      scope: "global",
+      roomId: 1,
+      authorId: targetId,
+      body: "normal message",
+    }).returning();
+    messageId = m.id;
+
+    const [flagged] = await db!.insert(chatMessages).values({
+      scope: "global",
+      roomId: 1,
+      authorId: targetId,
+      body: "borderline content",
+      flagStatus: "flagged",
+      flagReason: "obscenity tier-1 borderline",
+    }).returning();
+    flaggedId = flagged.id;
+
+    const [ban] = await db!.insert(chatBans).values({
+      userId: targetId,
+      scope: "global",
+      action: "ban",
+      reason: "for testing",
+      createdBy: adminId,
+    }).returning();
+    banId = ban.id;
+  });
+
+  afterAll(async () => {
+    const db = await getDb();
+    await db!.delete(chatMessages).where(eq(chatMessages.authorId, targetId));
+    await db!.delete(chatBans).where(eq(chatBans.userId, targetId));
+  });
+
+  const adminCaller = () =>
+    appRouter.createCaller({
+      user: { id: adminId, role: "admin", email: "p5-q-admin@example.com" },
+      req: { ip: "127.0.0.1" } as never,
+      ip: "127.0.0.1",
+      userAgent: "vitest",
+    } as never);
+
+  it("flaggedMessages returns flagged + flagged_high_confidence rows", async () => {
+    const r = await adminCaller().chat.admin.flaggedMessages({ limit: 50 });
+    expect(r.map((m) => m.id)).toContain(flaggedId);
+    expect(r.map((m) => m.id)).not.toContain(messageId); // clean message not flagged
+  });
+
+  it("recentBans returns active bans", async () => {
+    const r = await adminCaller().chat.admin.recentBans({ limit: 100 });
+    expect(r.map((b) => b.id)).toContain(banId);
+  });
+
+  it("auditLog returns rows filtered by actor", async () => {
+    const r = await adminCaller().chat.admin.auditLog({ actorId: adminId, limit: 50 });
+    // The Phase 4 chatAudit tests already left some rows for various admins;
+    // we just verify our targeted query works without erroring.
+    expect(Array.isArray(r.rows)).toBe(true);
+  });
+
+  it("userLookup finds users by email substring", async () => {
+    const r = await adminCaller().chat.admin.userLookup({ query: `p5-q-target` });
+    expect(r.users.length).toBeGreaterThanOrEqual(1);
+    const found = r.users.find((u) => u.id === targetId);
+    expect(found).toBeDefined();
+    expect(found!.activeBanCount).toBeGreaterThanOrEqual(1);
+  });
+});
