@@ -17,6 +17,7 @@ import { adminUsageRouter } from "./routers/adminUsage";
 import { adminSuggestionsRouter } from "./routers/adminSuggestions";
 import { adminGenresRouter } from "./routers/adminGenres";
 import { bannersRouter } from "./routers/banners";
+import { chatRouter } from "./routers/chat";
 import { liveRoomRouter } from "./routers/liveRoom";
 import { getDb } from "./db";
 import { z } from "zod";
@@ -327,6 +328,7 @@ export const appRouter = router({
   adminSuggestions: adminSuggestionsRouter,
   adminGenres: adminGenresRouter,
   banners: bannersRouter,
+  chat: chatRouter,
 });
 
 export type AppRouter = typeof appRouter;
