@@ -19,6 +19,9 @@ import { AdminDashboard } from "./pages/AdminDashboard";
 import SongsList from "./pages/admin/SongsList";
 import SongEdit from "./pages/admin/SongEdit";
 import SongNew from "./pages/admin/SongNew";
+import TournamentsList from "@/pages/admin/TournamentsList";
+import TournamentNew from "@/pages/admin/TournamentNew";
+import TournamentEdit from "@/pages/admin/TournamentEdit";
 import SignIn from "./pages/SignIn";
 import AuthCallback from "./pages/AuthCallback";
 import AccountSecurity from "./pages/AccountSecurity";
@@ -62,6 +65,9 @@ function Router() {
       <Route path="/admin/songs" component={SongsList} />
       <Route path="/admin/songs/new" component={SongNew} />
       <Route path="/admin/songs/:id" component={SongEdit} />
+      <Route path="/admin/tournaments" component={TournamentsList} />
+      <Route path="/admin/tournaments/new" component={TournamentNew} />
+      <Route path="/admin/tournaments/:id" component={TournamentEdit} />
       <Route path="/admin/usage">{() => <Redirect to="/admin?tab=usage" />}</Route>
       <Route path="/signin" component={SignIn} />
       <Route path="/auth/callback" component={AuthCallback} />
