@@ -26,6 +26,7 @@ import PasswordReset from "./pages/PasswordReset";
 import Shop from "./pages/Shop";
 import Avatars from "./pages/Avatars";
 import ChatPage from "./pages/Chat";
+import TournamentsPage from "@/pages/Tournaments";
 // import JoinInvite from "./pages/JoinInvite"; // Disabled - invite codes removed
 import { PersistentHeader } from "./components/PersistentHeader";
 import { NotificationContainer } from "./components/NotificationToast";
@@ -55,6 +56,7 @@ function Router() {
       <Route path="/profile" component={Profile} />
       <Route path="/profile/complete" component={ProfileCompletion} />
       <Route path="/leaderboards" component={Leaderboards} />
+      <Route path="/tournaments" component={TournamentsPage} />
       <Route path="/dashboard" component={UserDashboard} />
       <Route path="/admin" component={AdminDashboard} />
       <Route path="/admin/songs" component={SongsList} />
