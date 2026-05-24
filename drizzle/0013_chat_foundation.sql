@@ -328,3 +328,104 @@ CREATE POLICY realtime_chat_channel_join ON realtime.messages FOR SELECT TO auth
     (realtime.topic() = 'chat:moderation'
       AND is_chat_admin(current_chat_user_id()))
   );
+
+-- ─── Trigger: broadcast new chat_messages to per-room topics ────────────────
+CREATE OR REPLACE FUNCTION chat_messages_broadcast() RETURNS TRIGGER AS $$
+DECLARE
+  follower_id INTEGER;
+BEGIN
+  IF NEW.scope = 'global' THEN
+    PERFORM realtime.broadcast_changes('chat:global', 'message_inserted', 'INSERT', NEW.id::text, NULL, to_jsonb(NEW), NULL);
+
+  ELSIF NEW.scope = 'tournament' THEN
+    PERFORM realtime.broadcast_changes('chat:tournament:' || NEW.room_id::text, 'message_inserted', 'INSERT', NEW.id::text, NULL, to_jsonb(NEW), NULL);
+
+  ELSIF NEW.scope = 'friends' THEN
+    -- Author always sees their own message
+    PERFORM realtime.broadcast_changes('chat:user:' || NEW.author_id::text || ':feed', 'message_inserted', 'INSERT', NEW.id::text, NULL, to_jsonb(NEW), NULL);
+
+    IF NOT NEW.posted_while_shadow_banned THEN
+      -- Fan out to every follower of the author
+      FOR follower_id IN
+        SELECT uf.follower_id FROM user_favorites uf
+        WHERE uf.favorite_id = NEW.author_id
+      LOOP
+        PERFORM realtime.broadcast_changes('chat:user:' || follower_id::text || ':feed', 'message_inserted', 'INSERT', NEW.id::text, NULL, to_jsonb(NEW), NULL);
+      END LOOP;
+    END IF;
+
+    -- Admins always see all friends messages via the moderation channel
+    PERFORM realtime.broadcast_changes('chat:moderation', 'message_inserted', 'INSERT', NEW.id::text, NULL, to_jsonb(NEW), NULL);
+  END IF;
+
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER chat_messages_after_insert
+  AFTER INSERT ON chat_messages
+  FOR EACH ROW EXECUTE FUNCTION chat_messages_broadcast();
+
+-- ─── Trigger: broadcast message updates (edit / soft-delete) ────────────────
+CREATE OR REPLACE FUNCTION chat_messages_broadcast_update() RETURNS TRIGGER AS $$
+BEGIN
+  -- Only broadcast updates that change user-visible state.
+  IF (NEW.deleted_at IS DISTINCT FROM OLD.deleted_at)
+     OR (NEW.body != OLD.body)
+     OR (NEW.edited_at IS DISTINCT FROM OLD.edited_at)
+     OR (NEW.flag_status != OLD.flag_status)
+  THEN
+    IF NEW.scope = 'global' THEN
+      PERFORM realtime.broadcast_changes('chat:global', 'message_updated', 'UPDATE', NEW.id::text, to_jsonb(OLD), to_jsonb(NEW), NULL);
+    ELSIF NEW.scope = 'tournament' THEN
+      PERFORM realtime.broadcast_changes('chat:tournament:' || NEW.room_id::text, 'message_updated', 'UPDATE', NEW.id::text, to_jsonb(OLD), to_jsonb(NEW), NULL);
+    ELSIF NEW.scope = 'friends' THEN
+      -- Friends scope: notify the author only. Followers reconcile the
+      -- updated/deleted state by message id on next fetch. A future
+      -- enhancement can fan out the update to followers explicitly;
+      -- not required for Phase 1's deletion-propagation guarantee
+      -- (Phase 5 admin delete also re-broadcasts via its own path).
+      PERFORM realtime.broadcast_changes('chat:user:' || NEW.author_id::text || ':feed', 'message_updated', 'UPDATE', NEW.id::text, to_jsonb(OLD), to_jsonb(NEW), NULL);
+    END IF;
+  END IF;
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER chat_messages_after_update
+  AFTER UPDATE ON chat_messages
+  FOR EACH ROW EXECUTE FUNCTION chat_messages_broadcast_update();
+
+-- ─── Trigger: broadcast ban applied/revoked to affected user ────────────────
+CREATE OR REPLACE FUNCTION chat_bans_broadcast() RETURNS TRIGGER AS $$
+DECLARE
+  event_name TEXT;
+BEGIN
+  IF TG_OP = 'INSERT' THEN
+    event_name := 'ban_applied';
+  ELSIF NEW.revoked_at IS NOT NULL AND OLD.revoked_at IS NULL THEN
+    event_name := 'ban_revoked';
+  ELSE
+    RETURN NEW;
+  END IF;
+
+  PERFORM realtime.broadcast_changes(
+    'chat:user:' || NEW.user_id::text || ':feed',
+    event_name,
+    TG_OP,
+    NEW.id::text,
+    CASE WHEN TG_OP = 'UPDATE' THEN to_jsonb(OLD) END,
+    to_jsonb(NEW),
+    NULL
+  );
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER chat_bans_after_insert
+  AFTER INSERT ON chat_bans
+  FOR EACH ROW EXECUTE FUNCTION chat_bans_broadcast();
+
+CREATE TRIGGER chat_bans_after_update
+  AFTER UPDATE ON chat_bans
+  FOR EACH ROW EXECUTE FUNCTION chat_bans_broadcast();
