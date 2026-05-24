@@ -338,14 +338,14 @@ export const chatRouter = router({
     const db = await getDb();
     if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "DB unavailable" });
 
-    // Global: messages with id > last_read_seq for the (user, room=1) tuple.
+    // Global — messages with id > last_read_seq for (user, room=1)
     const [globalRow] = await db
       .select({ lastSeq: chatRoomMembers.lastReadSeq })
       .from(chatRoomMembers)
       .where(and(eq(chatRoomMembers.userId, ctx.user.id), eq(chatRoomMembers.roomId, 1)));
     const globalLastSeq = globalRow?.lastSeq ?? 0;
 
-    const globalCountRows = await db.execute(sql`
+    const globalRes = await db.execute(sql`
       SELECT COUNT(*)::int AS count
       FROM chat_messages
       WHERE scope = 'global'
@@ -354,13 +354,37 @@ export const chatRouter = router({
         AND deleted_at IS NULL
         AND NOT (posted_while_shadow_banned AND author_id != ${ctx.user.id})
     `);
-    const globalRows = (globalCountRows as unknown as { rows?: Array<{ count: number }> }).rows
-      ?? (Array.isArray(globalCountRows) ? (globalCountRows as unknown as Array<{ count: number }>) : []);
+    const globalCount = ((globalRes as unknown as { rows?: Array<{ count: number }> }).rows
+      ?? (Array.isArray(globalRes) ? (globalRes as unknown as Array<{ count: number }>) : []))[0]?.count ?? 0;
+
+    // Friends — messages in scope='friends' with author IN {self ∪ favorites(self)}, id > last_read_seq
+    const [friendsRow] = await db
+      .select({ lastSeq: chatFriendsReadState.lastReadSeq })
+      .from(chatFriendsReadState)
+      .where(eq(chatFriendsReadState.userId, ctx.user.id));
+    const friendsLastSeq = friendsRow?.lastSeq ?? 0;
+
+    const friendsRes = await db.execute(sql`
+      SELECT COUNT(*)::int AS count
+      FROM chat_messages
+      WHERE scope = 'friends'
+        AND id > ${friendsLastSeq}
+        AND deleted_at IS NULL
+        AND NOT (posted_while_shadow_banned AND author_id != ${ctx.user.id})
+        AND (
+          author_id = ${ctx.user.id}
+          OR author_id IN (
+            SELECT favorite_id FROM user_favorites WHERE follower_id = ${ctx.user.id}
+          )
+        )
+    `);
+    const friendsCount = ((friendsRes as unknown as { rows?: Array<{ count: number }> }).rows
+      ?? (Array.isArray(friendsRes) ? (friendsRes as unknown as Array<{ count: number }>) : []))[0]?.count ?? 0;
 
     return {
-      global: globalRows[0]?.count ?? 0,
-      friends: 0,         // Phase 3 will fill in
-      tournaments: {} as Record<number, number>,  // Phase 4 will fill in
+      global: globalCount,
+      friends: friendsCount,
+      tournaments: {} as Record<number, number>,  // Phase 4 fills this in
     };
   }),
 });

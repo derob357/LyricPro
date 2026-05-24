@@ -285,6 +285,36 @@ liveDescribe("chat.markRead + unreadCounts", () => {
     expect(typeof counts.global).toBe("number");
     expect(counts.global).toBeGreaterThanOrEqual(0);
   });
+
+  it("unreadCounts.friends reflects messages from favorited authors and self", async () => {
+    const db = await getDb();
+    const ts = `${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+    const [favAuthor] = await db!.insert(users).values({
+      openId: `unread-friends-author-${ts}`,
+      email: `unread-friends-author-${ts}@example.com`,
+      loginMethod: "vitest",
+      role: "user",
+    }).returning();
+
+    try {
+      // userId (already created in this describe) favorites favAuthor
+      await db!.insert(userFavorites).values({ followerId: userId, favoriteId: favAuthor.id });
+      // favAuthor posts in friends-scope
+      await db!.insert(chatMessages).values({
+        scope: "friends",
+        authorId: favAuthor.id,
+        body: "for the feed",
+      });
+
+      const caller = callerFor(userId);
+      const counts = await caller.chat.unreadCounts();
+      expect(counts.friends).toBeGreaterThanOrEqual(1);
+    } finally {
+      await db!.delete(chatMessages).where(eq(chatMessages.authorId, favAuthor.id));
+      await db!.delete(userFavorites).where(eq(userFavorites.followerId, userId));
+      await db!.delete(users).where(eq(users.id, favAuthor.id));
+    }
+  });
 });
 
 liveDescribe("chat.admin actions", () => {
