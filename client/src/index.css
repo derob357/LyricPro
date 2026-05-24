@@ -216,3 +216,22 @@
   animation-play-state: paused !important;
   transition: none !important;
 }
+
+:root {
+  /* Updated by useKeyboardHeight on @capacitor/keyboard events. */
+  --kb-height: 0px;
+}
+
+/* Utility for any input bar that should clear the on-screen keyboard
+   AND the home indicator / gesture bar. */
+.chat-safe-area-bottom {
+  padding-bottom: calc(env(safe-area-inset-bottom, 0px) + var(--kb-height, 0px));
+}
+
+/* Chat container utility — use 100dvh so the viewport accounts for the
+   keyboard. Capacitor's `resize: 'native'` already shrinks the WebView,
+   but combining 100dvh with the inset utility makes the layout robust
+   on Android 15+ where edge-to-edge has known issues. */
+.chat-viewport-height {
+  height: 100dvh;
+}

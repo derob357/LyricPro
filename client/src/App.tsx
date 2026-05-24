@@ -31,6 +31,7 @@ import { NotificationContainer } from "./components/NotificationToast";
 import FeedbackWidget from "./components/FeedbackWidget";
 import { AdminPauseButton } from "./components/AdminPauseButton";
 import { useRealtimeAuth } from "./lib/supabase/realtimeClient";
+import { useKeyboardHeight } from "./lib/capacitor/useKeyboardHeight";
 
 // Wrapper that keys Gameplay on the ?round= param so it fully remounts each round
 function GameplayWithKey() {
@@ -76,6 +77,11 @@ function App() {
   // App root: useAuth() also subscribes to the same supabase singleton and
   // is not wrapped in a provider.
   useRealtimeAuth();
+
+  // Reflect the on-screen keyboard height into a --kb-height CSS variable
+  // so input bars / safe-area utilities can stay above the keyboard. No-op
+  // on web; only fires inside the Capacitor native shell.
+  useKeyboardHeight();
 
   return (
     <ErrorBoundary>
