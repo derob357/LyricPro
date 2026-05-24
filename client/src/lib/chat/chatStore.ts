@@ -24,6 +24,23 @@ type Topic = string;
 const subscribers = new Map<Topic, Set<() => void>>();
 const messages = new Map<Topic, Map<number, ChatMessageShape>>();
 
+// Memoized snapshot per topic. useSyncExternalStore requires getSnapshot to
+// return the SAME reference between renders unless the underlying data
+// changed — otherwise React schedules an infinite re-render (React error #185).
+// We rebuild the snapshot only when upsertMessage / clearTopic mutates the
+// topic's data; getMessages just returns the cached snapshot.
+const snapshots = new Map<Topic, ChatMessageShape[]>();
+const EMPTY: ChatMessageShape[] = [];
+
+function rebuildSnapshot(topic: Topic): void {
+  const m = messages.get(topic);
+  if (!m || m.size === 0) {
+    snapshots.set(topic, EMPTY);
+    return;
+  }
+  snapshots.set(topic, Array.from(m.values()).sort((a, b) => a.id - b.id));
+}
+
 function notify(topic: Topic): void {
   const subs = subscribers.get(topic);
   if (!subs) return;
@@ -33,6 +50,7 @@ function notify(topic: Topic): void {
 export function upsertMessage(topic: Topic, msg: ChatMessageShape): void {
   if (!messages.has(topic)) messages.set(topic, new Map());
   messages.get(topic)!.set(msg.id, msg);
+  rebuildSnapshot(topic);
   notify(topic);
 }
 
@@ -41,9 +59,12 @@ export function applyMessageUpdate(topic: Topic, msg: ChatMessageShape): void {
 }
 
 export function getMessages(topic: Topic): ChatMessageShape[] {
-  const m = messages.get(topic);
-  if (!m) return [];
-  return Array.from(m.values()).sort((a, b) => a.id - b.id);
+  const cached = snapshots.get(topic);
+  if (cached !== undefined) return cached;
+  // First read of an unknown topic — cache the shared EMPTY sentinel so the
+  // next call returns the same reference.
+  snapshots.set(topic, EMPTY);
+  return EMPTY;
 }
 
 export function subscribe(topic: Topic, cb: () => void): () => void {
@@ -64,5 +85,6 @@ export function useChatMessages(topic: Topic): ChatMessageShape[] {
 
 export function clearTopic(topic: Topic): void {
   messages.delete(topic);
+  snapshots.delete(topic);
   notify(topic);
 }
