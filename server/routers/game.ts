@@ -7,7 +7,7 @@ import { rateLimit } from "../_core/rateLimit";
 import { getDb } from "../db";
 import {
   songs, gameRooms, roomPlayers, teams, gameSessions, roundResults,
-  guestSessions, leaderboardEntries, artistMetadata, users, avatars,
+  guestSessions, leaderboardEntries, artistMetadata, users,
   goldenNoteBalances, goldenNoteTransactions,
   songDisplays,
   lyricSectionTypeEnum,
@@ -1518,32 +1518,82 @@ export const gameRouter = router({
       const db = await getDb();
       if (!db) return [];
 
-      const conditions = [];
-      if (input.mode) conditions.push(eq(leaderboardEntries.mode, input.mode));
-      if (input.genre) conditions.push(eq(leaderboardEntries.genre, input.genre));
-      if (input.decade) conditions.push(eq(leaderboardEntries.decade, input.decade));
+      // Build filter fragments for the CTE. Composed via sql.join so the
+      // tagged-template parameter binding stays intact (no string concat).
+      const filters: ReturnType<typeof sql>[] = [];
+      if (input.mode) filters.push(sql`mode = ${input.mode}`);
+      if (input.genre) filters.push(sql`genre = ${input.genre}`);
+      if (input.decade) filters.push(sql`decade = ${input.decade}`);
       if (input.timeframe === "weekly") {
         const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
-        conditions.push(sql`${leaderboardEntries.createdAt} >= ${weekAgo}`);
+        filters.push(sql`"createdAt" >= ${weekAgo}`);
       } else if (input.timeframe === "monthly") {
         const monthAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
-        conditions.push(sql`${leaderboardEntries.createdAt} >= ${monthAgo}`);
+        filters.push(sql`"createdAt" >= ${monthAgo}`);
       }
+      const whereClause = filters.length
+        ? sql`WHERE ${sql.join(filters, sql` AND `)}`
+        : sql``;
 
-      const rows = await db
-        .select({
-          entry: leaderboardEntries,
-          equippedAvatarSlug: avatars.slug,
-        })
-        .from(leaderboardEntries)
-        .leftJoin(users, eq(leaderboardEntries.userId, users.id))
-        .leftJoin(avatars, eq(users.equippedAvatarId, avatars.id))
-        .where(conditions.length > 0 ? and(...conditions) : undefined)
-        .orderBy(sql`${leaderboardEntries.score} DESC`)
-        .limit(input.limit);
+      // DISTINCT ON keeps only the highest-scoring row per identity within
+      // the active filters. Authed users dedupe on userId; guests dedupe on
+      // guestName. The 'u:' / 'g:' prefix prevents a numeric-looking guest
+      // name from colliding with a numeric userId.
+      const result = await db.execute(sql`
+        WITH best_per_player AS (
+          SELECT DISTINCT ON (
+            CASE
+              WHEN "userId" IS NOT NULL THEN 'u:' || "userId"::text
+              WHEN "guestName" IS NOT NULL THEN 'g:' || "guestName"
+              ELSE 'e:' || id::text
+            END
+          ) *
+          FROM leaderboard_entries
+          ${whereClause}
+          ORDER BY
+            CASE
+              WHEN "userId" IS NOT NULL THEN 'u:' || "userId"::text
+              WHEN "guestName" IS NOT NULL THEN 'g:' || "guestName"
+              ELSE 'e:' || id::text
+            END,
+            score DESC,
+            "createdAt" ASC
+        )
+        SELECT
+          bpp.id                  AS "id",
+          bpp."userId"            AS "userId",
+          bpp."guestName"         AS "guestName",
+          bpp."displayName"       AS "displayName",
+          bpp.score               AS "score",
+          bpp.mode                AS "mode",
+          bpp.genre               AS "genre",
+          bpp.decade              AS "decade",
+          bpp."rankingMode"       AS "rankingMode",
+          bpp."createdAt"         AS "createdAt",
+          av.slug                 AS "equippedAvatarSlug"
+        FROM best_per_player bpp
+        LEFT JOIN users u   ON bpp."userId" = u.id
+        LEFT JOIN avatars av ON u."equippedAvatarId" = av.id
+        ORDER BY bpp.score DESC
+        LIMIT ${input.limit}
+      `);
 
-      return rows.map((row) => ({
-        ...row.entry,
+      const rows = (result as { rows?: unknown[] }).rows
+        ?? (Array.isArray(result) ? (result as unknown[]) : []);
+      return (rows as Array<{
+        id: number;
+        userId: number | null;
+        guestName: string | null;
+        displayName: string;
+        score: number;
+        mode: "solo" | "multiplayer" | "team";
+        genre: string | null;
+        decade: string | null;
+        rankingMode: string;
+        createdAt: Date;
+        equippedAvatarSlug: string | null;
+      }>).map((row) => ({
+        ...row,
         equippedAvatarSlug: row.equippedAvatarSlug ?? null,
       }));
     }),
