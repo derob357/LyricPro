@@ -192,4 +192,70 @@ export const chatRouter = router({
 
       return messages;
     }),
+
+  markRead: protectedProcedure
+    .input(
+      z.object({
+        scope: ScopeEnum,
+        roomId: z.number().int().optional(),
+        seq: z.number().int().min(0),
+      }),
+    )
+    .mutation(async ({ input, ctx }) => {
+      const db = await getDb();
+      if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "DB unavailable" });
+
+      if (input.scope === "friends") {
+        await db
+          .insert(chatFriendsReadState)
+          .values({ userId: ctx.user.id, lastReadSeq: input.seq })
+          .onConflictDoUpdate({
+            target: chatFriendsReadState.userId,
+            set: { lastReadSeq: input.seq, lastReadAt: new Date() },
+          });
+      } else {
+        if (input.roomId == null) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "roomId required for this scope" });
+        }
+        await db
+          .insert(chatRoomMembers)
+          .values({ userId: ctx.user.id, roomId: input.roomId, lastReadSeq: input.seq })
+          .onConflictDoUpdate({
+            target: [chatRoomMembers.userId, chatRoomMembers.roomId],
+            set: { lastReadSeq: input.seq, lastReadAt: new Date() },
+          });
+      }
+
+      return { success: true as const };
+    }),
+
+  unreadCounts: protectedProcedure.query(async ({ ctx }) => {
+    const db = await getDb();
+    if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "DB unavailable" });
+
+    // Global: messages with id > last_read_seq for the (user, room=1) tuple.
+    const [globalRow] = await db
+      .select({ lastSeq: chatRoomMembers.lastReadSeq })
+      .from(chatRoomMembers)
+      .where(and(eq(chatRoomMembers.userId, ctx.user.id), eq(chatRoomMembers.roomId, 1)));
+    const globalLastSeq = globalRow?.lastSeq ?? 0;
+
+    const globalCountRows = await db.execute(sql`
+      SELECT COUNT(*)::int AS count
+      FROM chat_messages
+      WHERE scope = 'global'
+        AND room_id = 1
+        AND id > ${globalLastSeq}
+        AND deleted_at IS NULL
+        AND NOT (posted_while_shadow_banned AND author_id != ${ctx.user.id})
+    `);
+    const globalRows = (globalCountRows as unknown as { rows?: Array<{ count: number }> }).rows
+      ?? (Array.isArray(globalCountRows) ? (globalCountRows as unknown as Array<{ count: number }>) : []);
+
+    return {
+      global: globalRows[0]?.count ?? 0,
+      friends: 0,         // Phase 3 will fill in
+      tournaments: {} as Record<number, number>,  // Phase 4 will fill in
+    };
+  }),
 });

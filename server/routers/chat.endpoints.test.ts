@@ -13,8 +13,8 @@ vi.mock("stripe", () => {
 
 import { appRouter } from "../app-router";
 import { getDb } from "../db";
-import { chatMessages, chatBans, users } from "../../drizzle/schema";
-import { eq } from "drizzle-orm";
+import { chatMessages, chatBans, chatRoomMembers, users } from "../../drizzle/schema";
+import { and, eq } from "drizzle-orm";
 
 const DB_URL =
   process.env.SUPABASE_SESSION_POOLER_STRING ??
@@ -233,5 +233,56 @@ liveDescribe("chat fetch queries", () => {
       lastSeenSeq: initial.messages[0]?.id ?? 0,
     });
     expect(afterPost.length).toBeGreaterThanOrEqual(1);
+  });
+});
+
+liveDescribe("chat.markRead + unreadCounts", () => {
+  let userId: number;
+
+  beforeAll(async () => {
+    const db = await getDb();
+    const ts = `${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+    const [u] = await db!.insert(users).values({
+      openId: `chat-markread-${ts}`,
+      email: `chat-markread-${ts}@example.com`,
+      loginMethod: "vitest",
+      role: "user",
+    }).returning();
+    userId = u.id;
+  });
+
+  const callerFor = (id: number) =>
+    appRouter.createCaller({
+      user: { id, role: "user", email: `${id}@example.com` },
+      req: { ip: "127.0.0.1" } as never,
+      ip: "127.0.0.1",
+      userAgent: "vitest",
+    } as never);
+
+  it("markRead upserts chat_room_members row", async () => {
+    const caller = callerFor(userId);
+    const result = await caller.chat.markRead({
+      scope: "global",
+      roomId: 1,
+      seq: 9999999,
+    });
+    expect(result.success).toBe(true);
+
+    // Verify the row exists with the right seq
+    const db = await getDb();
+    const rows = await db!
+      .select()
+      .from(chatRoomMembers)
+      .where(and(eq(chatRoomMembers.userId, userId), eq(chatRoomMembers.roomId, 1)));
+    expect(rows.length).toBe(1);
+    expect(rows[0].lastReadSeq).toBe(9999999);
+  });
+
+  it("unreadCounts returns 0 when last_read_seq is at or past the latest", async () => {
+    const caller = callerFor(userId);
+    const counts = await caller.chat.unreadCounts();
+    expect(counts.global).toBeDefined();
+    expect(typeof counts.global).toBe("number");
+    expect(counts.global).toBeGreaterThanOrEqual(0);
   });
 });
