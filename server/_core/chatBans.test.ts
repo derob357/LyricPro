@@ -18,13 +18,18 @@ liveDescribe("getActiveBan", () => {
     const db = await getDb();
     if (!db) throw new Error("DB not available");
     // Seed: create one regular user + one admin.
+    const stamp = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     const [u] = await db.insert(users).values({
-      email: "chatbans-test@example.com",
+      openId: `chatbans-test-user-${stamp}`,
+      email: `chatbans-test-${stamp}@example.com`,
+      loginMethod: "vitest",
       role: "user",
     }).returning();
     testUserId = u.id;
     const [a] = await db.insert(users).values({
-      email: "chatbans-admin@example.com",
+      openId: `chatbans-test-admin-${stamp}`,
+      email: `chatbans-admin-${stamp}@example.com`,
+      loginMethod: "vitest",
       role: "admin",
     }).returning();
     adminId = a.id;
