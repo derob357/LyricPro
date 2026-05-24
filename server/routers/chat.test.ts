@@ -23,7 +23,7 @@ describe("chatRouter", () => {
     expect(appRouter._def.record).toHaveProperty("chat");
   });
 
-  it("exports an empty router (no procedures yet — Phase 2 adds endpoints)", () => {
-    expect(Object.keys(chatRouter._def.record)).toEqual([]);
+  it("exposes the Phase 2 postMessage procedure", () => {
+    expect(Object.keys(chatRouter._def.record)).toContain("postMessage");
   });
 });
