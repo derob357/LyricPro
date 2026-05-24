@@ -30,6 +30,7 @@ import { PersistentHeader } from "./components/PersistentHeader";
 import { NotificationContainer } from "./components/NotificationToast";
 import FeedbackWidget from "./components/FeedbackWidget";
 import { AdminPauseButton } from "./components/AdminPauseButton";
+import { useRealtimeAuth } from "./lib/supabase/realtimeClient";
 
 // Wrapper that keys Gameplay on the ?round= param so it fully remounts each round
 function GameplayWithKey() {
@@ -70,6 +71,12 @@ function Router() {
 }
 
 function App() {
+  // Keep the Supabase Realtime WS in sync with the latest JWT so channels
+  // don't silently stop delivering after token refresh. Safe to call at the
+  // App root: useAuth() also subscribes to the same supabase singleton and
+  // is not wrapped in a provider.
+  useRealtimeAuth();
+
   return (
     <ErrorBoundary>
       <ThemeProvider defaultTheme="dark">
