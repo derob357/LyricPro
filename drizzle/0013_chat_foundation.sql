@@ -142,9 +142,14 @@ CREATE TABLE chat_bans (
     (scope = 'global' AND room_id IS NULL)
   )
 );
+-- Partial index predicate cannot contain non-IMMUTABLE functions, so the
+-- `expires_at > NOW()` check happens at query time in is_chat_banned()
+-- and in the chatBans.ts helper. Indexing on (user_id, scope, expires_at)
+-- with the revoked_at IS NULL predicate still narrows the working set to
+-- non-revoked bans, and the per-row expires_at comparison is cheap.
 CREATE INDEX chat_bans_active
   ON chat_bans (user_id, scope, expires_at)
-  WHERE revoked_at IS NULL AND (expires_at IS NULL OR expires_at > NOW());
+  WHERE revoked_at IS NULL;
 
 -- ─── chat_audit_log (immutable, append-only) ────────────────────────────────
 CREATE TABLE chat_audit_log (
