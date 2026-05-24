@@ -332,6 +332,191 @@ export const chatRouter = router({
 
         return { banId };
       }),
+
+    muteAuthor: adminProcedure
+      .input(
+        z.object({
+          userId: z.number().int(),
+          scope: z.enum(["global", "room"]),
+          roomId: z.number().int().optional(),
+          flavor: z.enum(["visible", "shadow"]).default("visible"),
+          expiresAt: z.string().datetime().optional(),
+          reason: z.string().min(1),
+        }),
+      )
+      .mutation(async ({ input, ctx }) => {
+        const db = await getDb();
+        if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "DB unavailable" });
+        if (input.scope === "room" && input.roomId == null) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "roomId required for room-scope mute" });
+        }
+
+        const action = input.flavor === "shadow" ? "mute_shadow" : "mute_visible";
+
+        const banId = await db.transaction(async (tx) => {
+          const [ban] = await tx
+            .insert(chatBans)
+            .values({
+              userId: input.userId,
+              scope: input.scope,
+              roomId: input.scope === "room" ? input.roomId! : null,
+              action,
+              reason: input.reason,
+              createdBy: ctx.user.id,
+              expiresAt: input.expiresAt ? new Date(input.expiresAt) : null,
+            })
+            .returning({ id: chatBans.id });
+          await recordChatAction({
+            tx,
+            actorId: ctx.user.id,
+            actorRole: "admin",
+            action,
+            targetUserId: input.userId,
+            scope: input.scope,
+            roomId: input.roomId ?? undefined,
+            reason: input.reason,
+            metadata: { expiresAt: input.expiresAt ?? null, flavor: input.flavor },
+          });
+          return ban.id;
+        });
+        return { banId };
+      }),
+
+    revokeBan: adminProcedure
+      .input(z.object({ banId: z.number().int(), reason: z.string().min(1) }))
+      .mutation(async ({ input, ctx }) => {
+        const db = await getDb();
+        if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "DB unavailable" });
+
+        await db.transaction(async (tx) => {
+          const [existing] = await tx
+            .select()
+            .from(chatBans)
+            .where(eq(chatBans.id, input.banId));
+          if (!existing) throw new TRPCError({ code: "NOT_FOUND", message: "Ban not found" });
+          if (existing.revokedAt != null) {
+            throw new TRPCError({ code: "BAD_REQUEST", message: "Already revoked" });
+          }
+
+          await tx
+            .update(chatBans)
+            .set({ revokedAt: new Date(), revokedBy: ctx.user.id })
+            .where(eq(chatBans.id, input.banId));
+
+          const auditAction =
+            existing.action === "ban" ? "unban" : "unmute";
+          await recordChatAction({
+            tx,
+            actorId: ctx.user.id,
+            actorRole: "admin",
+            action: auditAction,
+            targetUserId: existing.userId,
+            scope: existing.scope,
+            roomId: existing.roomId ?? undefined,
+            reason: input.reason,
+            metadata: { ban_id: input.banId, original_action: existing.action },
+          });
+        });
+
+        return { success: true as const };
+      }),
+
+    editMessage: adminProcedure
+      .input(
+        z.object({
+          messageId: z.number().int(),
+          newBody: z.string().min(1).max(1000),
+          reason: z.string().min(1),
+        }),
+      )
+      .mutation(async ({ input, ctx }) => {
+        const db = await getDb();
+        if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "DB unavailable" });
+
+        await db.transaction(async (tx) => {
+          const [existing] = await tx
+            .select()
+            .from(chatMessages)
+            .where(eq(chatMessages.id, input.messageId));
+          if (!existing) throw new TRPCError({ code: "NOT_FOUND", message: "Message not found" });
+
+          await tx
+            .update(chatMessages)
+            .set({
+              body: input.newBody,
+              editedAt: new Date(),
+              editedBy: ctx.user.id,
+            })
+            .where(eq(chatMessages.id, input.messageId));
+
+          await recordChatAction({
+            tx,
+            actorId: ctx.user.id,
+            actorRole: "admin",
+            action: "message_edit",
+            targetMessageId: input.messageId,
+            targetUserId: existing.authorId,
+            scope: existing.scope,
+            roomId: existing.roomId ?? undefined,
+            reason: input.reason,
+            metadata: { previous_body: existing.body, new_body: input.newBody },
+          });
+        });
+
+        return { success: true as const };
+      }),
+
+    markFlaggedReviewed: adminProcedure
+      .input(
+        z.object({
+          messageId: z.number().int(),
+          outcome: z.enum(["clean", "delete"]),
+          reason: z.string().min(1),
+        }),
+      )
+      .mutation(async ({ input, ctx }) => {
+        const db = await getDb();
+        if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "DB unavailable" });
+
+        await db.transaction(async (tx) => {
+          const [existing] = await tx
+            .select()
+            .from(chatMessages)
+            .where(eq(chatMessages.id, input.messageId));
+          if (!existing) throw new TRPCError({ code: "NOT_FOUND", message: "Message not found" });
+
+          if (input.outcome === "clean") {
+            await tx
+              .update(chatMessages)
+              .set({ flagStatus: "reviewed_clean" })
+              .where(eq(chatMessages.id, input.messageId));
+          } else {
+            await tx
+              .update(chatMessages)
+              .set({
+                deletedAt: new Date(),
+                deletedBy: ctx.user.id,
+                deletedReason: input.reason,
+              })
+              .where(eq(chatMessages.id, input.messageId));
+          }
+
+          await recordChatAction({
+            tx,
+            actorId: ctx.user.id,
+            actorRole: "admin",
+            action: input.outcome === "clean" ? "message_edit" : "message_delete",
+            targetMessageId: input.messageId,
+            targetUserId: existing.authorId,
+            scope: existing.scope,
+            roomId: existing.roomId ?? undefined,
+            reason: input.reason,
+            metadata: { flag_review_outcome: input.outcome, original_flag_status: existing.flagStatus },
+          });
+        });
+
+        return { success: true as const };
+      }),
   }),
 
   unreadCounts: protectedProcedure.query(async ({ ctx }) => {

@@ -14,7 +14,7 @@ vi.mock("stripe", () => {
 import { appRouter } from "../app-router";
 import { getDb } from "../db";
 import { chatMessages, chatBans, chatRoomMembers, chatAuditLog, users, userFavorites, tournaments, tournamentMembers, chatRooms } from "../../drizzle/schema";
-import { and, eq, isNull, inArray } from "drizzle-orm";
+import { and, eq, isNull, inArray, sql } from "drizzle-orm";
 
 const DB_URL =
   process.env.SUPABASE_SESSION_POOLER_STRING ??
@@ -543,5 +543,156 @@ liveDescribe("chat fetch — friends-scope visibility", () => {
     for (const m of older) {
       expect(m.authorId === viewerId || m.authorId === favoritedId).toBe(true);
     }
+  });
+});
+
+liveDescribe("chat.admin mutations — phase 5", () => {
+  let adminId: number;
+  let posterId: number;
+  let messageId: number;
+
+  beforeAll(async () => {
+    const db = await getDb();
+    const ts = `${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+    const [a] = await db!.insert(users).values({
+      openId: `p5-admin-${ts}`,
+      email: `p5-admin-${ts}@example.com`,
+      loginMethod: "vitest",
+      role: "admin",
+    }).returning();
+    adminId = a.id;
+    const [p] = await db!.insert(users).values({
+      openId: `p5-poster-${ts}`,
+      email: `p5-poster-${ts}@example.com`,
+      loginMethod: "vitest",
+      role: "user",
+    }).returning();
+    posterId = p.id;
+    const [m] = await db!.insert(chatMessages).values({
+      scope: "global",
+      roomId: 1,
+      authorId: posterId,
+      body: "original body",
+    }).returning();
+    messageId = m.id;
+  });
+
+  afterAll(async () => {
+    const db = await getDb();
+    // Delete only chat_messages rows that aren't audit-referenced; leave the rest
+    // (along with their audit rows + user rows) behind — immutable + FK by design.
+    await db!.execute(sql`
+      DELETE FROM chat_messages
+      WHERE author_id = ${posterId}
+        AND id NOT IN (
+          SELECT target_message_id FROM chat_audit_log
+          WHERE target_message_id IS NOT NULL
+        )
+    `);
+    await db!.delete(chatBans).where(eq(chatBans.userId, posterId));
+  });
+
+  const adminCaller = () =>
+    appRouter.createCaller({
+      user: { id: adminId, role: "admin", email: "p5-admin@example.com" },
+      req: { ip: "127.0.0.1" } as never,
+      ip: "127.0.0.1",
+      userAgent: "vitest",
+    } as never);
+
+  it("muteAuthor visible inserts mute_visible ban + audit log", async () => {
+    const r = await adminCaller().chat.admin.muteAuthor({
+      userId: posterId,
+      scope: "global",
+      flavor: "visible",
+      reason: "rude",
+    });
+    expect(r.banId).toBeGreaterThan(0);
+    const db = await getDb();
+    const [row] = await db!.select().from(chatBans).where(eq(chatBans.id, r.banId));
+    expect(row.action).toBe("mute_visible");
+  });
+
+  it("muteAuthor shadow inserts mute_shadow ban", async () => {
+    const r = await adminCaller().chat.admin.muteAuthor({
+      userId: posterId,
+      scope: "global",
+      flavor: "shadow",
+      reason: "sockpuppet history",
+    });
+    expect(r.banId).toBeGreaterThan(0);
+    const db = await getDb();
+    const [row] = await db!.select().from(chatBans).where(eq(chatBans.id, r.banId));
+    expect(row.action).toBe("mute_shadow");
+  });
+
+  it("revokeBan sets revoked_at + revoked_by + audit log", async () => {
+    const db = await getDb();
+    const [activeBan] = await db!
+      .insert(chatBans)
+      .values({
+        userId: posterId,
+        scope: "global",
+        action: "ban",
+        reason: "test",
+        createdBy: adminId,
+      })
+      .returning();
+    const r = await adminCaller().chat.admin.revokeBan({
+      banId: activeBan.id,
+      reason: "appeal accepted",
+    });
+    expect(r.success).toBe(true);
+
+    const [updated] = await db!.select().from(chatBans).where(eq(chatBans.id, activeBan.id));
+    expect(updated.revokedAt).not.toBeNull();
+    expect(updated.revokedBy).toBe(adminId);
+  });
+
+  it("editMessage replaces body, sets edited_at/by, snapshots previous_body in audit log", async () => {
+    const r = await adminCaller().chat.admin.editMessage({
+      messageId,
+      newBody: "redacted body",
+      reason: "PII removal",
+    });
+    expect(r.success).toBe(true);
+
+    const db = await getDb();
+    const [updated] = await db!.select().from(chatMessages).where(eq(chatMessages.id, messageId));
+    expect(updated.body).toBe("redacted body");
+    expect(updated.editedAt).not.toBeNull();
+    expect(updated.editedBy).toBe(adminId);
+
+    const audit = await db!
+      .select()
+      .from(chatAuditLog)
+      .where(and(eq(chatAuditLog.actorId, adminId), eq(chatAuditLog.action, "message_edit")));
+    const matching = audit.find((row) => row.targetMessageId === messageId);
+    expect(matching).toBeDefined();
+    expect((matching!.metadata as { previous_body?: string } | null)?.previous_body).toBe("original body");
+  });
+
+  it("markFlaggedReviewed flips flag_status to reviewed_clean", async () => {
+    const db = await getDb();
+    const [flagged] = await db!
+      .insert(chatMessages)
+      .values({
+        scope: "global",
+        roomId: 1,
+        authorId: posterId,
+        body: "ambiguous content",
+        flagStatus: "flagged",
+        flagReason: "borderline",
+      })
+      .returning();
+    const r = await adminCaller().chat.admin.markFlaggedReviewed({
+      messageId: flagged.id,
+      outcome: "clean",
+      reason: "false positive",
+    });
+    expect(r.success).toBe(true);
+    const [updated] = await db!.select().from(chatMessages).where(eq(chatMessages.id, flagged.id));
+    expect(updated.flagStatus).toBe("reviewed_clean");
+    // Cleanup handled by afterAll — message is audit-referenced so it stays behind.
   });
 });
