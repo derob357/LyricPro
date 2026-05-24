@@ -25,11 +25,14 @@ import AccountSecurity from "./pages/AccountSecurity";
 import PasswordReset from "./pages/PasswordReset";
 import Shop from "./pages/Shop";
 import Avatars from "./pages/Avatars";
+import ChatPage from "./pages/Chat";
 // import JoinInvite from "./pages/JoinInvite"; // Disabled - invite codes removed
 import { PersistentHeader } from "./components/PersistentHeader";
 import { NotificationContainer } from "./components/NotificationToast";
 import FeedbackWidget from "./components/FeedbackWidget";
 import { AdminPauseButton } from "./components/AdminPauseButton";
+import { ChatPanel } from "./components/chat/ChatPanel";
+import { useChatPanelOpen } from "./lib/chat/chatPanelStore";
 import { useRealtimeAuth } from "./lib/supabase/realtimeClient";
 import { useKeyboardHeight } from "./lib/capacitor/useKeyboardHeight";
 
@@ -64,6 +67,7 @@ function Router() {
       <Route path="/account/security" component={AccountSecurity} />
       <Route path="/shop" component={Shop} />
       <Route path="/avatars" component={Avatars} />
+      <Route path="/chat" component={ChatPage} />
       {/* <Route path="/join" component={JoinInvite} /> */} {/* Disabled - invite codes removed */}
       <Route path="/404" component={NotFound} />
       <Route component={NotFound} />
@@ -83,6 +87,11 @@ function App() {
   // on web; only fires inside the Capacitor native shell.
   useKeyboardHeight();
 
+  // Module-scoped store wired into React so PersistentHeader can toggle the
+  // desktop ChatPanel slide-over without prop drilling. Mobile bypasses this
+  // and uses the /chat route directly.
+  const [chatOpen, setChatOpen] = useChatPanelOpen();
+
   return (
     <ErrorBoundary>
       <ThemeProvider defaultTheme="dark">
@@ -92,6 +101,7 @@ function App() {
           <NotificationContainer />
           <FeedbackWidget />
           <AdminPauseButton />
+          <ChatPanel open={chatOpen} onOpenChange={setChatOpen} />
           <div className="pt-16">
             <Router />
           </div>

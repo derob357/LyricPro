@@ -1,11 +1,12 @@
-import { Link } from "wouter";
-import { Music, Music2, ShoppingCart } from "lucide-react";
+import { Link, useLocation } from "wouter";
+import { MessageSquare, Music, Music2, ShoppingCart } from "lucide-react";
 import { trpc } from "@/lib/trpc";
 import { supabase } from "@/lib/supabase";
 import { Button } from "@/components/ui/button";
 import { getLoginUrl } from "@/const";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { UserAvatar } from "@/components/UserAvatar";
+import { useChatPanelOpen } from "@/lib/chat/chatPanelStore";
 
 export function PersistentHeader() {
   const { data: user } = trpc.auth.me.useQuery();
@@ -14,6 +15,33 @@ export function PersistentHeader() {
     enabled: !!user,
     refetchOnWindowFocus: false,
   });
+
+  // Chat icon wiring: desktop toggles a slide-over via the chatPanelStore;
+  // mobile navigates to the full /chat page. unreadCounts is a protected
+  // procedure, so gate the query on `user` to avoid 401s for anonymous
+  // visitors (this whole block only renders inside the authed branch
+  // below, but the hook itself must be unconditional).
+  const [, setChatOpen] = useChatPanelOpen();
+  const [, navigate] = useLocation();
+  const unread = trpc.chat.unreadCounts.useQuery(undefined, {
+    enabled: !!user,
+    refetchOnWindowFocus: true,
+    staleTime: 30_000,
+  });
+  const totalUnread =
+    (unread.data?.global ?? 0) +
+    (unread.data?.friends ?? 0) +
+    Object.values(unread.data?.tournaments ?? {}).reduce((a, b) => a + b, 0);
+  const handleChatClick = () => {
+    const isMobile =
+      typeof window !== "undefined" &&
+      window.matchMedia("(max-width: 767px)").matches;
+    if (isMobile) {
+      navigate("/chat");
+    } else {
+      setChatOpen(true);
+    }
+  };
 
   const handleLogout = async () => {
     // Sign out from BOTH places. The Supabase JWT (in localStorage) is
@@ -61,43 +89,60 @@ export function PersistentHeader() {
               >
                 <ShoppingCart className="w-4 h-4" />
               </Link>
-              {/* User Menu */}
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button variant="ghost" className="text-sm flex items-center gap-2 px-2">
-                    <UserAvatar size="sm" />
-                    <span className="hidden sm:inline">{user.firstName || "Player"}</span>
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end">
-                  <DropdownMenuItem asChild>
-                    <Link href="/dashboard">Dashboard</Link>
-                  </DropdownMenuItem>
-                  <DropdownMenuItem asChild>
-                    <Link href="/profile">Profile</Link>
-                  </DropdownMenuItem>
-                  <DropdownMenuItem asChild>
-                    <Link href="/leaderboards">Leaderboards</Link>
-                  </DropdownMenuItem>
-                  <DropdownMenuItem asChild>
-                    <Link href="/shop" className="flex items-center gap-2">
-                      <ShoppingCart className="w-4 h-4" />
-                      Shop (Golden Notes)
-                    </Link>
-                  </DropdownMenuItem>
-                  <DropdownMenuItem asChild>
-                    <Link href="/avatars">Avatars</Link>
-                  </DropdownMenuItem>
-                  <DropdownMenuItem asChild>
-                    <button
-                      onClick={handleLogout}
-                      className="w-full text-left text-red-400 hover:text-red-300"
-                    >
-                      Logout
-                    </button>
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
+              {/* Chat icon + avatar share a tighter gap-2 cluster */}
+              <div className="flex items-center gap-2">
+                {/* Chat icon: opens slide-over on desktop, navigates to /chat on mobile */}
+                <button
+                  type="button"
+                  onClick={handleChatClick}
+                  className="relative flex items-center justify-center h-9 w-9 rounded-full hover:bg-muted"
+                  aria-label="Open chat"
+                >
+                  <MessageSquare className="h-4 w-4" />
+                  {totalUnread > 0 && (
+                    <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] rounded-full bg-primary text-primary-foreground text-[10px] font-semibold flex items-center justify-center px-1">
+                      {totalUnread > 99 ? "99+" : totalUnread}
+                    </span>
+                  )}
+                </button>
+                {/* User Menu */}
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant="ghost" className="text-sm flex items-center gap-2 px-2">
+                      <UserAvatar size="sm" />
+                      <span className="hidden sm:inline">{user.firstName || "Player"}</span>
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end">
+                    <DropdownMenuItem asChild>
+                      <Link href="/dashboard">Dashboard</Link>
+                    </DropdownMenuItem>
+                    <DropdownMenuItem asChild>
+                      <Link href="/profile">Profile</Link>
+                    </DropdownMenuItem>
+                    <DropdownMenuItem asChild>
+                      <Link href="/leaderboards">Leaderboards</Link>
+                    </DropdownMenuItem>
+                    <DropdownMenuItem asChild>
+                      <Link href="/shop" className="flex items-center gap-2">
+                        <ShoppingCart className="w-4 h-4" />
+                        Shop (Golden Notes)
+                      </Link>
+                    </DropdownMenuItem>
+                    <DropdownMenuItem asChild>
+                      <Link href="/avatars">Avatars</Link>
+                    </DropdownMenuItem>
+                    <DropdownMenuItem asChild>
+                      <button
+                        onClick={handleLogout}
+                        className="w-full text-left text-red-400 hover:text-red-300"
+                      >
+                        Logout
+                      </button>
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </div>
             </>
           ) : (
             <>
