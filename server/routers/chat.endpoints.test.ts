@@ -13,7 +13,7 @@ vi.mock("stripe", () => {
 
 import { appRouter } from "../app-router";
 import { getDb } from "../db";
-import { chatMessages, chatBans, chatRoomMembers, chatAuditLog, users, userFavorites } from "../../drizzle/schema";
+import { chatMessages, chatBans, chatRoomMembers, chatAuditLog, users, userFavorites, tournaments, tournamentMembers, chatRooms } from "../../drizzle/schema";
 import { and, eq, isNull, inArray } from "drizzle-orm";
 
 const DB_URL =
@@ -313,6 +313,59 @@ liveDescribe("chat.markRead + unreadCounts", () => {
       await db!.delete(chatMessages).where(eq(chatMessages.authorId, favAuthor.id));
       await db!.delete(userFavorites).where(eq(userFavorites.followerId, userId));
       await db!.delete(users).where(eq(users.id, favAuthor.id));
+    }
+  });
+
+  it("unreadCounts.tournaments returns per-tournament counts for active memberships", async () => {
+    const db = await getDb();
+    const ts = `${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+
+    // Create a tournament FIRST with chatRoomId=NULL (non-deferrable CHECK constraint),
+    // then create the chat room referencing the tournament, then UPDATE the tournament.
+    const [t] = await db!.insert(tournaments).values({
+      name: `Unread Tournament ${ts}`,
+      entryCostGn: 0,
+      startsAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
+      endsAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+      chatRoomId: null,
+      status: "open",
+      createdBy: userId,
+    }).returning();
+    const [room] = await db!.insert(chatRooms).values({
+      kind: "tournament",
+      tournamentId: t.id,
+      retentionDays: 60,
+    }).returning();
+    await db!.update(tournaments).set({ chatRoomId: room.id }).where(eq(tournaments.id, t.id));
+
+    try {
+      // userId joins as admin_invited; lastReadSeq stays at 0
+      await db!.insert(tournamentMembers).values({
+        tournamentId: t.id,
+        userId: userId,
+        entryMethod: "admin_invited",
+        gnSpent: 0,
+      });
+      await db!.insert(chatRoomMembers).values({ userId, roomId: room.id, lastReadSeq: 0 });
+
+      // Post a tournament message
+      await db!.insert(chatMessages).values({
+        scope: "tournament",
+        roomId: room.id,
+        authorId: userId,
+        body: "tournament test message",
+      });
+
+      const counts = await callerFor(userId).chat.unreadCounts();
+      expect(counts.tournaments[t.id]).toBeGreaterThanOrEqual(1);
+    } finally {
+      await db!.delete(chatMessages).where(eq(chatMessages.roomId, room.id));
+      await db!.delete(chatRoomMembers).where(eq(chatRoomMembers.roomId, room.id));
+      await db!.delete(tournamentMembers).where(eq(tournamentMembers.tournamentId, t.id));
+      // Break the FK cycle before deleting either table
+      await db!.update(tournaments).set({ chatRoomId: null }).where(eq(tournaments.id, t.id));
+      await db!.delete(chatRooms).where(eq(chatRooms.id, room.id));
+      await db!.delete(tournaments).where(eq(tournaments.id, t.id));
     }
   });
 });

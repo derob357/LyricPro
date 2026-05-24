@@ -381,10 +381,40 @@ export const chatRouter = router({
     const friendsCount = ((friendsRes as unknown as { rows?: Array<{ count: number }> }).rows
       ?? (Array.isArray(friendsRes) ? (friendsRes as unknown as Array<{ count: number }>) : []))[0]?.count ?? 0;
 
+    // Tournaments — per-tournament unread count for the viewer's active memberships
+    const tournamentRows = await db.execute(sql`
+      SELECT t.id AS tournament_id, t.chat_room_id, COALESCE(crm.last_read_seq, 0) AS last_read_seq
+      FROM tournament_members tm
+      JOIN tournaments t ON t.id = tm.tournament_id
+      LEFT JOIN chat_room_members crm
+        ON crm.user_id = ${ctx.user.id} AND crm.room_id = t.chat_room_id
+      WHERE tm.user_id = ${ctx.user.id}
+        AND tm.left_at IS NULL
+        AND t.chat_room_id IS NOT NULL
+    `);
+    const tournamentMembershipRows = ((tournamentRows as unknown as { rows?: Array<{ tournament_id: number; chat_room_id: number; last_read_seq: number }> }).rows
+      ?? (Array.isArray(tournamentRows) ? (tournamentRows as unknown as Array<{ tournament_id: number; chat_room_id: number; last_read_seq: number }>) : []));
+
+    const tournamentCounts: Record<number, number> = {};
+    for (const row of tournamentMembershipRows) {
+      const countRes = await db.execute(sql`
+        SELECT COUNT(*)::int AS count
+        FROM chat_messages
+        WHERE scope = 'tournament'
+          AND room_id = ${row.chat_room_id}
+          AND id > ${row.last_read_seq}
+          AND deleted_at IS NULL
+          AND NOT (posted_while_shadow_banned AND author_id != ${ctx.user.id})
+      `);
+      const c = ((countRes as unknown as { rows?: Array<{ count: number }> }).rows
+        ?? (Array.isArray(countRes) ? (countRes as unknown as Array<{ count: number }>) : []))[0]?.count ?? 0;
+      if (c > 0) tournamentCounts[row.tournament_id] = c;
+    }
+
     return {
       global: globalCount,
       friends: friendsCount,
-      tournaments: {} as Record<number, number>,  // Phase 4 fills this in
+      tournaments: tournamentCounts,
     };
   }),
 });
