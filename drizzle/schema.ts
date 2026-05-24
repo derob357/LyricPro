@@ -1,5 +1,6 @@
 import {
   bigint,
+  bigserial,
   boolean,
   doublePrecision,
   index,
@@ -1167,3 +1168,46 @@ export const adminActionsRedactions = auditSchema.table(
     fields: text("fields").array().notNull(),
   },
 );
+
+// ─── Chat: rooms + messages ────────────────────────────────────────────────
+export const chatRoomKindEnum = pgEnum("chat_room_kind", ["global", "tournament"]);
+export const chatScopeEnum = pgEnum("chat_scope", ["global", "tournament", "friends"]);
+export const chatFlagStatusEnum = pgEnum("chat_flag_status", [
+  "clean",
+  "flagged",
+  "flagged_high_confidence",
+  "reviewed_clean",
+]);
+
+export const chatRooms = pgTable("chat_rooms", {
+  id: serial("id").primaryKey(),
+  kind: chatRoomKindEnum("kind").notNull(),
+  tournamentId: integer("tournament_id"), // FK added by migration once tournaments table exists
+  retentionDays: integer("retention_days").notNull().default(14),
+  createdAt: createdAtColumn(),
+  updatedAt: updatedAtColumn(),
+});
+
+export type ChatRoom = typeof chatRooms.$inferSelect;
+
+export const chatMessages = pgTable("chat_messages", {
+  id: bigserial("id", { mode: "number" }).primaryKey(),
+  scope: chatScopeEnum("scope").notNull(),
+  roomId: integer("room_id").references(() => chatRooms.id, { onDelete: "cascade" }),
+  authorId: integer("author_id")
+    .notNull()
+    .references(() => users.id, { onDelete: "set null" }),
+  body: varchar("body", { length: 1000 }).notNull(),
+  postedWhileShadowBanned: boolean("posted_while_shadow_banned").notNull().default(false),
+  flagStatus: chatFlagStatusEnum("flag_status").notNull().default("clean"),
+  flagReason: text("flag_reason"),
+  editedAt: timestamp("edited_at", { withTimezone: true }),
+  editedBy: integer("edited_by").references(() => users.id),
+  deletedAt: timestamp("deleted_at", { withTimezone: true }),
+  deletedBy: integer("deleted_by").references(() => users.id),
+  deletedReason: text("deleted_reason"),
+  createdAt: createdAtColumn(),
+});
+
+export type ChatMessage = typeof chatMessages.$inferSelect;
+export type InsertChatMessage = typeof chatMessages.$inferInsert;
