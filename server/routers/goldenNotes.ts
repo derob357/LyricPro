@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { and, eq, desc, gte, sql } from "drizzle-orm";
+import { eq, desc } from "drizzle-orm";
 import { TRPCError } from "@trpc/server";
 import { router, protectedProcedure } from "../_core/trpc";
 import { rateLimit } from "../_core/rateLimit";
@@ -188,53 +188,17 @@ export const goldenNotesRouter = router({
         input.kind.startsWith("spend_advanced_mode") ? "spend_advanced_mode" :
         "spend_extra_game";
 
-      // Ensure the balance row exists — insert with balance=0 if new.
-      await getOrCreateBalance(ctx.user.id);
-
-      // Race-safe decrement: the UPDATE only runs where balance >= cost.
-      // Two concurrent spends can't both succeed past a point where funds
-      // run out — Postgres serializes the UPDATEs and whichever finds
-      // insufficient balance returns 0 rows. This avoids the TOCTOU
-      // (time-of-check / time-of-use) race where a read-then-write in
-      // separate statements could double-spend.
+      const { spendGoldenNotes } = await import("../_core/goldenNotesLedger");
       const result = await db.transaction(async (tx) => {
-        const updated = await tx
-          .update(goldenNoteBalances)
-          .set({
-            balance: sql`${goldenNoteBalances.balance} - ${cost}`,
-            lifetimeSpent: sql`${goldenNoteBalances.lifetimeSpent} + ${cost}`,
-            updatedAt: new Date(),
-          })
-          .where(
-            and(
-              eq(goldenNoteBalances.userId, ctx.user.id),
-              gte(goldenNoteBalances.balance, cost)
-            )
-          )
-          .returning({ newBalance: goldenNoteBalances.balance });
-
-        if (updated.length === 0) {
-          const [cur] = await tx
-            .select({ balance: goldenNoteBalances.balance })
-            .from(goldenNoteBalances)
-            .where(eq(goldenNoteBalances.userId, ctx.user.id));
-          throw new TRPCError({
-            code: "BAD_REQUEST",
-            message: `Not enough Golden Notes. You need ${cost}, have ${cur?.balance ?? 0}.`,
-          });
-        }
-
-        const newBalance = updated[0].newBalance;
-        await tx.insert(goldenNoteTransactions).values({
-          userId: ctx.user.id,
-          amount: -cost,
-          kind: enumKind as "spend_extra_game" | "spend_tournament" | "spend_advanced_mode",
-          reason: input.reason ?? null,
-          balanceAfter: newBalance,
-        });
-        return newBalance;
+        return spendGoldenNotes(
+          tx,
+          ctx.user.id,
+          cost,
+          enumKind as "spend_extra_game" | "spend_tournament" | "spend_advanced_mode",
+          input.reason ?? null,
+        );
       });
 
-      return { newBalance: result };
+      return { newBalance: result.newBalance };
     }),
 });
