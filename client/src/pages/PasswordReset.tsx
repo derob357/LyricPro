@@ -110,7 +110,7 @@ export default function PasswordReset() {
         return;
       }
       toast.success("Password updated. You're signed in.");
-      navigate("/");
+      navigate("/welcome");
     } finally {
       setSubmitting(false);
     }

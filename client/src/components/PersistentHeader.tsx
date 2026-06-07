@@ -52,14 +52,14 @@ export function PersistentHeader() {
     // so the reload always lands on a logged-out home.
     try { await supabase.auth.signOut(); } catch {}
     try { await logoutMutation.mutateAsync(); } catch {}
-    window.location.href = "/";
+    window.location.href = "/welcome";
   };
 
   return (
     <header className="fixed top-0 left-0 right-0 z-50 bg-background border-b border-border">
       <div className="flex items-center justify-between h-16 px-4 max-w-7xl mx-auto w-full">
         {/* Logo - Links to Home */}
-        <Link href="/" className="flex items-center gap-2 hover:opacity-80 transition-opacity">
+        <Link href="/welcome" className="flex items-center gap-2 hover:opacity-80 transition-opacity">
           <Music className="w-6 h-6 text-purple-500" />
           <span className="font-bold text-lg bg-gradient-to-r from-purple-400 to-blue-400 bg-clip-text text-transparent">
             LyricPro Ai

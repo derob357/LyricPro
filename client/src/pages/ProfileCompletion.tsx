@@ -56,7 +56,7 @@ export default function ProfileCompletion() {
 
   // Redirect if not authenticated
   if (!loading && !isAuthenticated) {
-    navigate("/");
+    navigate("/welcome");
     return null;
   }
 

@@ -86,7 +86,7 @@ export default function SignIn() {
       }
       // Session is now set in the supabase client. Land on home and let
       // the auth context pick it up on next render.
-      navigate("/");
+      navigate("/welcome");
     } finally {
       setLoading(false);
     }
@@ -119,7 +119,7 @@ export default function SignIn() {
         toast.error("That code didn't work. Double-check the digits or request a fresh email.");
         return;
       }
-      navigate("/");
+      navigate("/welcome");
     } finally {
       setOtpVerifying(false);
     }

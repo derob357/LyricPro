@@ -78,7 +78,7 @@ export default function FinalResults() {
       {/* Header */}
       <div className="glass border-b border-border/50 sticky top-0 z-40">
         <div className="container flex items-center justify-between h-14">
-          <button onClick={() => navigate("/")} className="flex items-center gap-2 text-muted-foreground hover:text-foreground transition-colors">
+          <button onClick={() => navigate("/welcome")} className="flex items-center gap-2 text-muted-foreground hover:text-foreground transition-colors">
             <Home className="w-4 h-4" />
             <span className="text-sm">Home</span>
           </button>
@@ -262,7 +262,7 @@ export default function FinalResults() {
             <Button
               variant="outline"
               className="flex-1 border-border/50 py-5"
-              onClick={() => navigate("/")}
+              onClick={() => navigate("/welcome")}
             >
               <Home className="w-4 h-4 mr-2" /> Home
             </Button>

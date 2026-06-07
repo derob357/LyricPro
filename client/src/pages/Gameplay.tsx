@@ -358,7 +358,7 @@ export default function Gameplay() {
           )}
           <p className="text-muted-foreground">{loadingMsg}</p>
           {getNextSongMutation.isError && (
-            <Button variant="outline" onClick={() => navigate("/")}>Back to Home</Button>
+            <Button variant="outline" onClick={() => navigate("/welcome")}>Back to Home</Button>
           )}
           {room && room.status === "active" && !getNextSongMutation.isError && !getNextSongMutation.isPending && (
             <Button variant="outline" size="sm" onClick={() => getNextSongMutation.mutate({ roomCode: roomCode ?? "", guestToken: guestToken ?? undefined })}>

@@ -122,8 +122,8 @@ export default function AuthCallback() {
           setPhase("error");
           return;
         }
-        window.history.replaceState(null, "", "/");
-        navigate("/");
+        window.history.replaceState(null, "", "/welcome");
+        navigate("/welcome");
       })();
     } else {
       // Magic-link / recovery / OAuth-without-flag — show click-to-confirm.
@@ -149,8 +149,8 @@ export default function AuthCallback() {
             "If this keeps happening, the link may have already been used or expired — request a fresh one."
         );
       }
-      window.history.replaceState(null, "", "/");
-      navigate("/");
+      window.history.replaceState(null, "", "/welcome");
+      navigate("/welcome");
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Unknown error";
       console.error("[AuthCallback]", msg, e);
