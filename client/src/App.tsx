@@ -5,6 +5,7 @@ import { Route, Switch, Redirect, useSearch } from "wouter";
 import ErrorBoundary from "./components/ErrorBoundary";
 import { ThemeProvider } from "./contexts/ThemeContext";
 import Home from "./pages/Home";
+import Interstitial from "./pages/Interstitial";
 import GameSetup from "./pages/GameSetup";
 import Lobby from "./pages/Lobby";
 import VideoLobby from "./pages/VideoLobby";
@@ -50,7 +51,8 @@ function GameplayWithKey() {
 function Router() {
   return (
     <Switch>
-      <Route path="/" component={Home} />
+      <Route path="/" component={Interstitial} />
+      <Route path="/welcome" component={Home} />
       <Route path="/setup" component={GameSetup} />
       <Route path="/lobby/live/:inviteCode" component={VideoLobby} />
       <Route path="/lobby/:roomCode" component={Lobby} />
