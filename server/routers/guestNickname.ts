@@ -11,7 +11,8 @@ export function deriveGuestNickname(nickname?: string, email?: string): string {
 
 // Truncates to 64 *code points* (not UTF-16 code units) so we never split a
 // surrogate pair and hand Postgres an invalid UTF-8 sequence for the
-// varchar(64) nickname column.
+// varchar(64) nickname column. Array.from iterates by code point and (unlike
+// the spread operator) doesn't require the --downlevelIteration TS flag.
 function truncate64(s: string): string {
-  return [...s].slice(0, 64).join("");
+  return Array.from(s).slice(0, 64).join("");
 }
