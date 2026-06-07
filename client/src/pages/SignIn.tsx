@@ -29,7 +29,7 @@ export default function SignIn() {
   // what the user clicked to get here.
   const isSignUp = new URLSearchParams(search).get("mode") === "signup";
   const [mode, setMode] = useState<Mode>("magic");
-  const [email, setEmail] = useState("");
+  const [email, setEmail] = useState(() => new URLSearchParams(search).get("email") ?? "");
   const [password, setPassword] = useState("");
   const [magicSent, setMagicSent] = useState(false);
   const [resetSent, setResetSent] = useState(false);
