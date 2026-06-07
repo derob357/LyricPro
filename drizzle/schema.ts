@@ -261,6 +261,7 @@ export const guestSessions = pgTable("guest_sessions", {
   id: serial("id").primaryKey(),
   sessionToken: varchar("sessionToken", { length: 128 }).notNull().unique(),
   nickname: varchar("nickname", { length: 64 }).notNull(),
+  email: varchar("email", { length: 254 }), // nullable — lead capture from interstitial
   createdAt: createdAtColumn(),
 });
 

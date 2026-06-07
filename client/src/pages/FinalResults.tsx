@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { trpc } from "@/lib/trpc";
 import { useAuth } from "@/_core/hooks/useAuth";
-import { getLoginUrl } from "@/const";
+import { buildGuestSignupHref } from "./finalResultsSignup";
 import SocialShareButtons from "@/components/SocialShareButtons";
 import { getScoreShareContent } from "@/lib/shareUtils";
 import { Trophy, Crown, Medal, Star, RotateCcw, Home, User, Music, Share2, ListOrdered } from "lucide-react";
@@ -18,6 +18,7 @@ export default function FinalResults() {
   const [, navigate] = useLocation();
   const { user, isAuthenticated } = useAuth();
   const guestToken = localStorage.getItem("lyricpro_guest_token");
+  const guestEmail = localStorage.getItem("lyricpro_guest_email");
 
   const { data: results, isLoading } = trpc.game.getFinalResults.useQuery(
     { roomCode: roomCode ?? "" },
@@ -77,7 +78,7 @@ export default function FinalResults() {
       {/* Header */}
       <div className="glass border-b border-border/50 sticky top-0 z-40">
         <div className="container flex items-center justify-between h-14">
-          <button onClick={() => navigate("/")} className="flex items-center gap-2 text-muted-foreground hover:text-foreground transition-colors">
+          <button onClick={() => navigate("/welcome")} className="flex items-center gap-2 text-muted-foreground hover:text-foreground transition-colors">
             <Home className="w-4 h-4" />
             <span className="text-sm">Home</span>
           </button>
@@ -240,10 +241,17 @@ export default function FinalResults() {
                     Create a free account to save your stats, track your progress, and climb the leaderboards.
                   </p>
                   <Button asChild className="bg-primary text-primary-foreground hover:bg-primary/90 w-full">
-                    <a href={getLoginUrl()}>
+                    <a href={buildGuestSignupHref(guestEmail)}>
                       <User className="w-4 h-4 mr-2" /> Create Free Account
                     </a>
                   </Button>
+                  <button
+                    type="button"
+                    onClick={() => navigate("/welcome")}
+                    className="mt-2 w-full text-center text-sm text-muted-foreground hover:text-foreground transition-colors py-2"
+                  >
+                    No thanks — exit to welcome
+                  </button>
                 </div>
               </div>
             </motion.div>
@@ -254,7 +262,7 @@ export default function FinalResults() {
             <Button
               variant="outline"
               className="flex-1 border-border/50 py-5"
-              onClick={() => navigate("/")}
+              onClick={() => navigate("/welcome")}
             >
               <Home className="w-4 h-4 mr-2" /> Home
             </Button>

@@ -55,7 +55,7 @@ export default function Profile() {
               Forgot password? Reset it here
             </a>
           </div>
-          <button onClick={() => navigate("/")} className="mt-3 text-sm text-muted-foreground hover:text-foreground transition-colors block w-full">
+          <button onClick={() => navigate("/welcome")} className="mt-3 text-sm text-muted-foreground hover:text-foreground transition-colors block w-full">
             Back to Home
           </button>
         </div>
@@ -102,7 +102,7 @@ export default function Profile() {
       {/* Header */}
       <div className="glass border-b border-border/50 sticky top-0 z-40">
         <div className="container flex items-center justify-between h-16">
-          <button onClick={() => navigate("/")} className="flex items-center gap-2 text-muted-foreground hover:text-foreground transition-colors">
+          <button onClick={() => navigate("/welcome")} className="flex items-center gap-2 text-muted-foreground hover:text-foreground transition-colors">
             <ArrowLeft className="w-4 h-4" />
             <span className="text-sm">Back</span>
           </button>

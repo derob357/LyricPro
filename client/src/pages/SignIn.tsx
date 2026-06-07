@@ -29,7 +29,7 @@ export default function SignIn() {
   // what the user clicked to get here.
   const isSignUp = new URLSearchParams(search).get("mode") === "signup";
   const [mode, setMode] = useState<Mode>("magic");
-  const [email, setEmail] = useState("");
+  const [email, setEmail] = useState(() => new URLSearchParams(search).get("email") ?? "");
   const [password, setPassword] = useState("");
   const [magicSent, setMagicSent] = useState(false);
   const [resetSent, setResetSent] = useState(false);
@@ -86,7 +86,7 @@ export default function SignIn() {
       }
       // Session is now set in the supabase client. Land on home and let
       // the auth context pick it up on next render.
-      navigate("/");
+      navigate("/welcome");
     } finally {
       setLoading(false);
     }
@@ -119,7 +119,7 @@ export default function SignIn() {
         toast.error("That code didn't work. Double-check the digits or request a fresh email.");
         return;
       }
-      navigate("/");
+      navigate("/welcome");
     } finally {
       setOtpVerifying(false);
     }

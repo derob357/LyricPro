@@ -202,6 +202,15 @@
 }
 .score-pop { animation: score-pop 0.4s ease-out; }
 
+@keyframes noteBgFloat {
+  0%, 100% { translate: 0 -10px; }
+  50%      { translate: 0 10px; }
+}
+.note-bg-float { animation: noteBgFloat 7s ease-in-out infinite; }
+@media (prefers-reduced-motion: reduce) {
+  .note-bg-float { animation: none; }
+}
+
 ::-webkit-scrollbar { width: 6px; height: 6px; }
 ::-webkit-scrollbar-track { background: oklch(0.10 0.015 270); }
 ::-webkit-scrollbar-thumb { background: oklch(0.30 0.025 270); border-radius: 3px; }
