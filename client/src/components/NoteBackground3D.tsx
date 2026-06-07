@@ -9,8 +9,7 @@ export function NoteBackground3D() {
   useEffect(() => {
     const el = noteRef.current;
     if (!el) return;
-    const reduce = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
-    if (reduce) return;
+    const mql = window.matchMedia?.("(prefers-reduced-motion: reduce)");
 
     let raf = 0;
     const onMove = (e: MouseEvent) => {
@@ -24,8 +23,23 @@ export function NoteBackground3D() {
         el.style.setProperty("--ry", `${dx * 6}deg`);
       });
     };
-    window.addEventListener("mousemove", onMove);
+
+    // Enable parallax only when the user hasn't asked to reduce motion.
+    // Re-sync if they toggle the OS setting while the page is open.
+    const sync = () => {
+      if (mql?.matches) {
+        window.removeEventListener("mousemove", onMove);
+        cancelAnimationFrame(raf);
+        for (const v of ["--px", "--py", "--rx", "--ry"]) el.style.removeProperty(v);
+      } else {
+        window.addEventListener("mousemove", onMove);
+      }
+    };
+    sync();
+    mql?.addEventListener?.("change", sync);
+
     return () => {
+      mql?.removeEventListener?.("change", sync);
       window.removeEventListener("mousemove", onMove);
       cancelAnimationFrame(raf);
     };
@@ -40,10 +54,12 @@ export function NoteBackground3D() {
       {/* glow halo */}
       <div className="absolute left-1/2 top-1/2 h-[70vmin] w-[70vmin] -translate-x-1/2 -translate-y-1/2 rounded-full blur-3xl"
         style={{ background: "radial-gradient(circle, oklch(0.78 0.18 75 / 0.20), oklch(0.65 0.28 290 / 0.08) 55%, transparent 75%)" }} />
-      {/* blown-up note with 3D tilt + float */}
+      {/* The 3D tilt + centering live on `transform` (inline). The gentle vertical
+          float lives on the independent CSS `translate` property (see .note-bg-float
+          in index.css) so the two never overwrite each other on `transform`. */}
       <div
         ref={noteRef}
-        className="note-bg-float absolute left-1/2 top-1/2 h-[88vmin] w-[88vmin] -translate-x-1/2 -translate-y-1/2 opacity-[0.45]"
+        className="note-bg-float absolute left-1/2 top-1/2 h-[88vmin] w-[88vmin] opacity-[0.45]"
         style={{
           transform:
             "translate(calc(-50% + var(--px, 0px)), calc(-50% + var(--py, 0px))) perspective(1200px) rotate3d(1, 0.5, 0, calc(16deg + var(--rx, 0deg))) rotateY(var(--ry, 0deg))",
