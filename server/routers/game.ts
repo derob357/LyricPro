@@ -222,7 +222,7 @@ export const gameRouter = router({
       genres: z.array(z.string()).min(1),
       decades: z.array(z.string()).min(1),
       difficulty: z.enum(["low", "medium", "high"]).default("medium"),
-      timerSeconds: z.number().int().min(15).max(45).default(30),
+      timerSeconds: z.number().int().min(15).max(90).default(30),
       rounds: z.number().int().min(3).max(20).default(10),
       explicitFilter: z.boolean().default(false),
       guestToken: z.string().optional(),
