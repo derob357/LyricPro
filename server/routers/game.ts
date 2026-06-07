@@ -19,6 +19,7 @@ import {
   type Variant,
 } from "../_core/variantReader";
 import { computePlayerProfile } from "../_core/playerProfile";
+import { deriveGuestNickname } from "./guestNickname";
 import { resolveCommentary, resolveGameSummaryCommentary, type RoundContext, type GameSummaryContext } from "../_core/commentaryEngine";
 import { playerProfiles } from "../../drizzle/schema";
 import type { PlayerProfileData } from "../_core/playerProfile";
@@ -203,15 +204,23 @@ function playableVariantIndicesFrom(
 
 // ── Router ───────────────────────────────────────────────────────────────────
 export const gameRouter = router({
-  // Create a guest session
+  // Create a guest session (interstitial lead capture: email optional)
   createGuestSession: publicProcedure
-    .input(z.object({ nickname: z.string().min(1).max(32) }))
+    .input(z.object({
+      nickname: z.string().min(1).max(64).optional(),
+      email: z.string().email().max(254).optional(),
+    }))
     .mutation(async ({ input }) => {
       const db = await getDb();
       if (!db) throw new Error("Database not available");
       const token = nanoid(32);
-      await db.insert(guestSessions).values({ sessionToken: token, nickname: input.nickname });
-      return { token, nickname: input.nickname };
+      const nickname = deriveGuestNickname(input.nickname, input.email);
+      await db.insert(guestSessions).values({
+        sessionToken: token,
+        nickname,
+        email: input.email ?? null,
+      });
+      return { token, nickname };
     }),
 
   // Create a game room
