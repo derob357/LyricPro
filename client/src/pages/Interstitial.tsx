@@ -136,10 +136,10 @@ export default function Interstitial() {
                 </div>
 
                 <div>
-                  <span className="text-xs uppercase tracking-wide text-muted-foreground">Decade(s)</span>
+                  <span id="play-decade" className="text-xs uppercase tracking-wide text-muted-foreground">Decade(s)</span>
                   <Popover>
                     <PopoverTrigger asChild>
-                      <Button data-testid="decade-trigger" variant="outline" className="mt-1 w-full justify-between font-normal">
+                      <Button aria-labelledby="play-decade" data-testid="decade-trigger" variant="outline" className="mt-1 w-full justify-between font-normal">
                         <span className="truncate">
                           {decades.length === 0 ? "Choose decade(s)" : `${decades.length} selected`}
                         </span>
