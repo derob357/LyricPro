@@ -9,6 +9,7 @@ import { toast } from "sonner";
 import { Clock, Flame, Volume2, VolumeX, X, Trophy, Lightbulb, Music2 } from "lucide-react";
 
 import { usePaused } from "@/lib/pauseState";
+import { formatMMSS } from "@/lib/formatTime";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -473,7 +474,7 @@ export default function Gameplay() {
               {stageInfo.value}
             </div>
             <div className={`inline-flex items-center gap-1 mt-1 text-sm font-mono ${isUrgent ? "timer-urgent" : "text-accent"}`}>
-              <Clock className="w-3.5 h-3.5" /> 0:{String(timeLeft).padStart(2, "0")}
+              <Clock className="w-3.5 h-3.5" /> {formatMMSS(timeLeft)}
             </div>
           </div>
         </div>
