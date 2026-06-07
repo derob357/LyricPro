@@ -248,7 +248,7 @@ export default function FinalResults() {
                   <button
                     type="button"
                     onClick={() => navigate("/welcome")}
-                    className="mt-2 w-full text-center text-sm text-muted-foreground hover:text-foreground transition-colors"
+                    className="mt-2 w-full text-center text-sm text-muted-foreground hover:text-foreground transition-colors py-2"
                   >
                     No thanks — exit to welcome
                   </button>
