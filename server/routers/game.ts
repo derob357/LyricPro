@@ -210,7 +210,11 @@ export const gameRouter = router({
       nickname: z.string().min(1).max(64).optional(),
       email: z.string().email().max(254).optional(),
     }))
-    .mutation(async ({ input }) => {
+    .mutation(async ({ input, ctx }) => {
+      // Public, unauthenticated DB write + email capture — rate-limit by IP to
+      // blunt spam/abuse (mirrors createRoom). No-op outside production.
+      rateLimit("createGuestSession", ctx.req.ip ?? "anon", { max: 10, windowMs: 60_000 });
+
       const db = await getDb();
       if (!db) throw new Error("Database not available");
       const token = nanoid(32);
