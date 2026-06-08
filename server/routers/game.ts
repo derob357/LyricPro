@@ -23,6 +23,13 @@ import { deriveGuestNickname } from "./guestNickname";
 import { resolveCommentary, resolveGameSummaryCommentary, type RoundContext, type GameSummaryContext } from "../_core/commentaryEngine";
 import { playerProfiles } from "../../drizzle/schema";
 import type { PlayerProfileData } from "../_core/playerProfile";
+import {
+  matchLyric,
+  scoreRound,
+  type Difficulty,
+  type LyricMatch,
+  type ArtistMatch,
+} from "../_core/scoring";
 
 // Hashes a userId with USER_HASH_PEPPER for storage in song_displays.user_id_hashed.
 // Exported for test coverage. Uses a fixed fallback pepper in dev when the env
@@ -50,107 +57,6 @@ export function generateInviteCode(): string {
   return code;
 }
 
-function normalizeText(text: string): string {
-  return text.toLowerCase().replace(/[^\w\s]/g, "").replace(/\s+/g, " ").trim();
-}
-
-function levenshtein(a: string, b: string): number {
-  const m = a.length, n = b.length;
-  const dp: number[][] = Array.from({ length: m + 1 }, (_, i) =>
-    Array.from({ length: n + 1 }, (_, j) => (i === 0 ? j : j === 0 ? i : 0))
-  );
-  for (let i = 1; i <= m; i++) {
-    for (let j = 1; j <= n; j++) {
-      dp[i][j] = a[i - 1] === b[j - 1]
-        ? dp[i - 1][j - 1]
-        : 1 + Math.min(dp[i - 1][j], dp[i][j - 1], dp[i - 1][j - 1]);
-    }
-  }
-  return dp[m][n];
-}
-
-type LyricMatch = "full" | "partial" | "none";
-type ArtistMatch = "full" | "primary_only" | "none";
-
-function matchLyric(userAnswer: string, correctAnswer: string): LyricMatch {
-  const user = normalizeText(userAnswer);
-  const correct = normalizeText(correctAnswer);
-  if (!user || !correct) return "none";
-  if (user === correct) return "full";
-  // Allow up to 25% edit distance for full match (handles minor typos/punctuation)
-  if (levenshtein(user, correct) <= Math.floor(correct.length * 0.25)) return "full";
-  const correctWords = correct.split(" ").filter(w => w.length > 2);
-  const userWords = user.split(" ");
-  if (correctWords.length === 0) return "none";
-  // Allow levenshtein distance of 2 per word for typos
-  const matched = correctWords.filter(cw => userWords.some(uw => uw === cw || levenshtein(uw, cw) <= 2));
-  const ratio = matched.length / correctWords.length;
-  const missing = correctWords.length - matched.length;
-  // 60% word match = full (generous for voice input and minor typos)
-  if (ratio >= 0.60) return "full";
-  if (ratio >= 0.40 || (missing <= 2 && correctWords.length >= 3)) return "partial";
-  return "none";
-}
-
-function matchArtist(userAnswer: string, correctArtist: string, aliases?: string[]): ArtistMatch {
-  const user = normalizeText(userAnswer);
-  const correct = normalizeText(correctArtist);
-  if (!user || !correct) return "none";
-
-  const norm = (s: string) => s.replace(/\band\b/g, "&").replace(/\s+/g, " ");
-
-  // Helper: check if a single normalized user token matches the correct artist
-  const tokenMatches = (token: string): boolean => {
-    if (!token || token.length < 2) return false;
-    if (token === correct) return true;
-    if (norm(token) === norm(correct)) return true;
-    // Alias match
-    if (aliases?.some(a => token === normalizeText(a))) return true;
-    // First-name-only match
-    const firstName = correct.split(" ")[0];
-    if (firstName && firstName.length >= 3 && (token === firstName || levenshtein(token, firstName) <= 1)) return true;
-    // Fuzzy full match — 30% edit distance
-    if (levenshtein(token, correct) <= Math.max(2, Math.floor(correct.length * 0.30))) return true;
-    return false;
-  };
-
-  // Direct full match
-  if (tokenMatches(user)) return "full";
-
-  // Multi-artist answer: split by "and", "&", ",", "ft", "feat"
-  // e.g. "Ol dirty bastard and Mariah Carey" → check each part
-  const splitRe = /\s+(?:and|&|ft\.?|feat\.?|featuring|x|,)\s+/i;
-  const parts = user.split(splitRe).map(p => p.trim()).filter(p => p.length > 1);
-  if (parts.length > 1) {
-    for (const part of parts) {
-      if (tokenMatches(part)) return "full";
-    }
-  }
-
-  // Featured artist: primary-only (user named only the primary, not the featured)
-  const featRe = /\s+(?:ft\.?|feat\.?|featuring|x)\s+/i;
-  if (featRe.test(correctArtist) || correctArtist.includes(" & ") || /\band\b/i.test(correctArtist)) {
-    const primaryRaw = correctArtist.split(featRe)[0].split(" & ")[0].replace(/\band\b.*/i, "").trim();
-    const primary = normalizeText(primaryRaw);
-    if (primary && (
-      user === primary ||
-      norm(user) === norm(primary) ||
-      levenshtein(user, primary) <= Math.floor(primary.length * 0.2) ||
-      user === primary.split(" ")[0]
-    )) return "primary_only";
-  }
-  return "none";
-}
-
-function scoreYear(userYear: number | null, correctYear: number): number {
-  if (!userYear) return 0;
-  const diff = Math.abs(userYear - correctYear);
-  if (diff === 0) return 20;
-  if (diff <= 2) return 10;
-  if (diff <= 3) return 5;
-  return 0;
-}
-
 // Variant accessor for getNextSong's per-song lyric rotation.
 //
 // Phase 5c (read-path repoint behind a feature flag): the variant array
@@ -176,7 +82,7 @@ type SongVariant = Variant;
 //       ("Eye of the Tiger", "Whoomp! There it is") because that's the
 //       point of Easy — popular, instantly-recognizable lines. Hard is
 //       length-agnostic too since it's about depth, not friendliness.
-type Difficulty = "low" | "medium" | "high";
+// Difficulty type is imported from ../_core/scoring
 
 function isVariantPlayable(v: SongVariant, difficulty: Difficulty): boolean {
   const prompt = String(v?.prompt ?? "").trim();
@@ -1021,77 +927,74 @@ export const gameRouter = router({
         }
       }
 
-      // Difficulty-based point values
-      // All difficulties score the same 4 stages (Lyric, Title, Artist, Year);
-      // difficulty is a points multiplier only. Lyric and Title share the same
-      // per-difficulty value.
-      // Low:    Lyric=25,  Title=25,  Artist=25,  Year=50
-      // Medium: Lyric=50,  Title=50,  Artist=50,  Year=100
-      // High:   Lyric=50,  Title=50,  Artist=100, Year=200
-      const diff = room.difficulty as "low" | "medium" | "high";
-      const pts = {
-        // artistPartial = full artist points (primary-only match = full credit per spec)
-        low:    { lyric: 25, lyricPartial: 15, artist: 25,  artistPartial: 25,  title: 25, titlePartial: 15, year: 50,  yearClose2: 0,  yearClose3: 0 },
-        medium: { lyric: 50, lyricPartial: 30, artist: 50,  artistPartial: 50,  title: 50, titlePartial: 30, year: 100, yearClose2: 0,  yearClose3: 0 },
-        high:   { lyric: 50, lyricPartial: 25, artist: 100, artistPartial: 100, title: 50, titlePartial: 30, year: 200, yearClose2: 0,  yearClose3: 0 },
-      }[diff];
+      const diff = room.difficulty as Difficulty;
 
-      // Score the answer
-      let lyricPoints = 0, titlePoints = 0, artistPoints = 0, yearPoints = 0, speedBonus = 0, streakBonus = 0;
-      let lyricMatch: LyricMatch = "none";
-      let artistMatch: ArtistMatch = "none";
-      let titleCorrect = false;
-      let titlePartial = false;
+      const userId = ctx.user?.id ?? null;
+      const guestToken = input.guestToken ?? null;
 
-      if (!input.passUsed) {
-        // Lyric scoring (all difficulties) — use the variant the player saw,
-        // not the legacy column, so variant rotation scores correctly.
-        lyricMatch = matchLyric(input.lyricAnswer, playedVariant.answer);
-        lyricPoints = lyricMatch === "full" ? pts.lyric : lyricMatch === "partial" ? pts.lyricPartial : 0;
+      // Get player for streak — must happen before scoreRound so we can pass
+      // the post-insurance newStreak value into the pure scorer.
+      const [player] = await db.select().from(roomPlayers).where(
+        and(
+          eq(roomPlayers.roomId, room.id),
+          userId ? eq(roomPlayers.userId, userId) : eq(roomPlayers.guestToken, guestToken ?? "")
+        )
+      ).limit(1);
 
-        // Title scoring (Low/Medium/High all score title)
-        const titleNorm = normalizeText(input.titleAnswer);
-        const correctTitleNorm = normalizeText(song.title);
-        if (titleNorm && correctTitleNorm) {
-          // Full match: exact, or up to 30% edit distance (generous for typos/voice input)
-          const titleEditDist = levenshtein(titleNorm, correctTitleNorm);
-          const titleThreshold = Math.max(2, Math.floor(correctTitleNorm.length * 0.30));
-          if (titleNorm === correctTitleNorm || titleEditDist <= titleThreshold) {
-            titleCorrect = true;
-            titlePoints = pts.title;
-          } else {
-            // Partial: significant word overlap (allow levenshtein 2 per word)
-            const titleWords = correctTitleNorm.split(" ").filter(w => w.length > 1);
-            const userTitleWords = titleNorm.split(" ");
-            if (titleWords.length > 0) {
-              const matched = titleWords.filter(tw => userTitleWords.some(uw => uw === tw || levenshtein(uw, tw) <= 2));
-              if (matched.length / titleWords.length >= 0.5) {
-                titlePartial = true;
-                titlePoints = pts.titlePartial;
-              }
-            }
-          }
-        }
+      // ── Streak Insurance: resolve before calling scoreRound so we can pass
+      // the correct post-insurance streak value into the pure scorer.
+      // Needs lyricCorrect, which we derive via a direct matchLyric call.
+      const preCheckLyricCorrect = !input.passUsed && matchLyric(input.lyricAnswer, playedVariant.answer) === "full";
+      let streakInsuranceUsed = false;
+      let newStreak = 0;
 
-        artistMatch = matchArtist(input.artistAnswer, song.artistName, aliases);
-        artistPoints = artistMatch === "full" ? pts.artist : artistMatch === "primary_only" ? pts.artistPartial : 0;
+      if (player) {
+        const rawNewStreak = preCheckLyricCorrect ? player.currentStreak + 1 : 0;
+        newStreak = rawNewStreak;
 
-        // Year scoring with new point values
-        const userYear = parseInt(input.yearAnswer) || null;
-        if (userYear) {
-          const diff2 = Math.abs(userYear - song.releaseYear);
-          if (diff2 === 0) yearPoints = pts.year;
-          else if (diff2 <= 2) yearPoints = pts.yearClose2;
-          else if (diff2 <= 3) yearPoints = pts.yearClose3;
-        }
-
-        // Speed bonus
-        const anyCorrect = lyricMatch !== "none" || titleCorrect || titlePartial || artistMatch !== "none" || yearPoints > 0;
-        if (room.rankingMode === "speed_bonus" && anyCorrect) {
-          const timeRatio = 1 - (input.responseTimeSeconds / room.timerSeconds);
-          speedBonus = Math.max(0, Math.round(timeRatio * (diff === "high" ? 20 : diff === "medium" ? 10 : 5)));
+        if (!preCheckLyricCorrect && player.currentStreak >= 1 && room.streakInsurance) {
+          // Insurance fires — preserve the streak, consume the flag.
+          newStreak = player.currentStreak;
+          streakInsuranceUsed = true;
+          await db
+            .update(gameRooms)
+            .set({ streakInsurance: false })
+            .where(eq(gameRooms.id, room.id));
         }
       }
+
+      // ── Pure scoring — all point computation lives in _core/scoring.ts ──
+      const scored = scoreRound({
+        difficulty: diff,
+        passUsed: input.passUsed,
+        lyricAnswer: input.lyricAnswer,
+        titleAnswer: input.titleAnswer,
+        artistAnswer: input.artistAnswer,
+        yearAnswer: input.yearAnswer,
+        correctLyricAnswer: playedVariant.answer,
+        correctTitle: song.title,
+        correctArtistName: song.artistName,
+        correctReleaseYear: song.releaseYear,
+        artistAliases: aliases,
+        responseTimeSeconds: input.responseTimeSeconds,
+        timerSeconds: room.timerSeconds,
+        rankingMode: room.rankingMode,
+        newStreak,
+      });
+
+      const {
+        lyricMatch,
+        artistMatch,
+        titleCorrect,
+        titlePartial,
+        lyricPoints,
+        titlePoints,
+        artistPoints,
+        yearPoints,
+        speedBonusPoints: speedBonus,
+        streakBonusPoints: streakBonus,
+        totalRoundPoints,
+      } = scored;
 
       const lyricCorrect = lyricMatch === "full";
       const lyricPartialFlag = lyricMatch === "partial";
@@ -1110,41 +1013,7 @@ export const gameRouter = router({
         (artistCorrect ? 1 : 0) +
         (yearPoints > 0 ? 1 : 0);
 
-      const userId = ctx.user?.id ?? null;
-      const guestToken = input.guestToken ?? null;
-
-      // Get player for streak
-      const [player] = await db.select().from(roomPlayers).where(
-        and(
-          eq(roomPlayers.roomId, room.id),
-          userId ? eq(roomPlayers.userId, userId) : eq(roomPlayers.guestToken, guestToken ?? "")
-        )
-      ).limit(1);
-
       if (player) {
-        // ── Streak Insurance: if the player missed the lyric stage and has an
-        // active streak, check whether streak insurance is enabled on this room.
-        // If so, preserve the streak (one-shot: flip room.streakInsurance to false).
-        let streakInsuranceUsed = false;
-        const rawNewStreak = lyricCorrect ? player.currentStreak + 1 : 0;
-        let newStreak = rawNewStreak;
-
-        if (!lyricCorrect && player.currentStreak >= 1 && room.streakInsurance) {
-          // Insurance fires — preserve the streak, consume the flag.
-          newStreak = player.currentStreak;
-          streakInsuranceUsed = true;
-          await db
-            .update(gameRooms)
-            .set({ streakInsurance: false })
-            .where(eq(gameRooms.id, room.id));
-        }
-
-        // Streak bonus
-        if (room.rankingMode === "streak_bonus" && lyricCorrect && newStreak >= 2) {
-          streakBonus = Math.min(newStreak * 2, 10);
-        }
-
-        const totalRoundPoints = lyricPoints + titlePoints + artistPoints + yearPoints + speedBonus + streakBonus;
         const newScore = player.currentScore + totalRoundPoints;
 
         // Update player score and streak
