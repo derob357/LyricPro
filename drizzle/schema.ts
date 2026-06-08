@@ -53,6 +53,7 @@ export const gameStatusEnum = pgEnum("game_status", [
   "active",
   "finished",
 ]);
+export const roundPhaseEnum = pgEnum("round_phase", ["in_question", "intermission", "complete"]);
 export const answerMethodEnum = pgEnum("answer_method", ["typed", "voice"]);
 export const prizePoolStatusEnum = pgEnum("prize_pool_status", [
   "active",
@@ -476,6 +477,8 @@ export const gameRooms = pgTable("game_rooms", {
   currentRound: integer("currentRound").default(0).notNull(),
   currentPlayerIndex: integer("currentPlayerIndex").default(0).notNull(),
   currentSongId: integer("currentSongId"),
+  roundPhase: roundPhaseEnum("roundPhase"),
+  roundEndsAt: timestamp("roundEndsAt", { withTimezone: true }),
   usedSongIds: text("usedSongIds"), // JSON array as text, nullable
   customPackSongIds: jsonb("customPackSongIds").$type<number[]>(),
   isVideoRoom: boolean("isVideoRoom").default(false).notNull(),
@@ -568,7 +571,9 @@ export const roundResults = pgTable("round_results", {
   hintUsed: boolean("hintUsed").default(false).notNull(),
   streakInsuranceUsed: boolean("streakInsuranceUsed").default(false).notNull(),
   createdAt: createdAtColumn(),
-});
+}, (t) => ({
+  roomRoundPlayerUq: uniqueIndex("round_results_room_round_player_uq").on(t.roomId, t.roundNumber, t.activePlayerId),
+}));
 
 export type RoundResult = typeof roundResults.$inferSelect;
 
