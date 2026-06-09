@@ -63,6 +63,20 @@ if (DRY_RUN) {
 const sql = postgres(DB_URL, { max: 1, prepare: false });
 
 try {
+  // Pre-flight: round_results_broadcast uses realtime.send(). If this DB's
+  // realtime extension predates it, the trigger would CREATE fine but THROW on
+  // every round_results insert (breaking submitAnswer). Abort before applying.
+  const sendCheck = await sql`
+    SELECT 1 FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+    WHERE n.nspname = 'realtime' AND p.proname = 'send'`;
+  if (sendCheck.length === 0) {
+    console.error("FATAL: realtime.send not found in this database.");
+    console.error("The round_results_broadcast trigger would throw on every answer insert.");
+    console.error("Upgrade Supabase Realtime, or switch the trigger to broadcast_changes, before applying.");
+    process.exit(1);
+  }
+  console.log("Pre-flight OK: realtime.send is available.");
+
   console.log(`Applying ${path.basename(MIGRATION_PATH)} in a single transaction ...`);
   // Wrap the entire file in BEGIN/COMMIT so it's all-or-nothing.
   // postgres-js .simple() lets multi-statement SQL execute as one call.

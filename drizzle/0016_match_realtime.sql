@@ -21,10 +21,12 @@
 DROP POLICY IF EXISTS realtime_game_channel_join ON realtime.messages;
 CREATE POLICY realtime_game_channel_join ON realtime.messages FOR SELECT TO authenticated
 USING (
-  realtime.topic() LIKE 'game:%'
+  -- Strict shape guard: only 'game:<digits>'. Rejects malformed topics cleanly
+  -- (a bad cast like 'game:abc'::int would otherwise raise instead of deny).
+  realtime.topic() ~ '^game:[0-9]+$'
   AND EXISTS (
     SELECT 1 FROM room_players rp
-    WHERE rp."roomId" = NULLIF(split_part(realtime.topic(), ':', 2), '')::int
+    WHERE rp."roomId" = split_part(realtime.topic(), ':', 2)::int
       AND rp."userId" = current_chat_user_id()
   )
 );
