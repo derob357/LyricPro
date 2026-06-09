@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { and, eq, gte, inArray, isNotNull, ne, notInArray, sql } from "drizzle-orm";
+import { and, eq, gte, isNotNull, ne, sql } from "drizzle-orm";
 import { TRPCError } from "@trpc/server";
 import { createHash } from "node:crypto";
 import { router, publicProcedure, protectedProcedure } from "../_core/trpc";
@@ -10,7 +10,6 @@ import {
   guestSessions, leaderboardEntries, artistMetadata, users,
   goldenNoteBalances, goldenNoteTransactions,
   songDisplays,
-  lyricSectionTypeEnum,
 } from "../../drizzle/schema";
 import { nanoid } from "nanoid";
 import {
@@ -30,6 +29,7 @@ import {
   type LyricMatch,
   type ArtistMatch,
 } from "../_core/scoring";
+import { selectSongForRoom } from "../_core/songSelection";
 
 // Hashes a userId with USER_HASH_PEPPER for storage in song_displays.user_id_hashed.
 // Exported for test coverage. Uses a fixed fallback pepper in dev when the env
@@ -432,217 +432,38 @@ export const gameRouter = router({
             )
           );
       } else {
-        // ── Standard branch: genre / decade / difficulty filter + weighted pick ──
+        // ── Standard branch: delegate to selectSongForRoom ───────────────────
+        // All genre/decade/difficulty filtering, playability check, per-identity
+        // dedup window, and weighted pick live in server/_core/songSelection.ts
+        // so the multiplayer engine can reuse the same logic.
+        const selResult = await selectSongForRoom(db, {
+          genres,
+          decades,
+          difficulty: room.difficulty as "low" | "medium" | "high",
+          explicitFilter: room.explicitFilter ?? false,
+          usedSongIds: usedIds,
+          dedupUserId,
+          dedupGuestToken,
+        });
 
-        // Section-type filter PLUS weighted bias for the candidate pick. Low: hooks/
-        // choruses only. Medium/High: chorus + hook + verse dominant; bridge and
-        // call-response remain occasional picks (low weight) rather than dropped.
-        type SectionType = (typeof lyricSectionTypeEnum.enumValues)[number];
-        let difficultyFilter: SectionType[];
-        let sectionWeights: Record<SectionType, number>;
-        if (room.difficulty === "low") {
-          difficultyFilter = ["chorus", "hook"];
-          sectionWeights = { chorus: 1, hook: 1, verse: 0, "call-response": 0, bridge: 0 };
-        } else {
-          // Medium and High share section sampling — they differ in what's shown
-          // to the player (lyric fill-in difficulty), not in song selection.
-          difficultyFilter = ["chorus", "hook", "verse", "bridge", "call-response"];
-          sectionWeights = { chorus: 1, hook: 1, verse: 3, bridge: 0.3, "call-response": 0.3 };
+        // selResult is null only if the pool is exhausted with no recycling
+        // fallback available — selectSongForRoom throws with a user-facing message
+        // before that happens, so null here means an unexpected empty return.
+        if (!selResult) {
+          throw new Error("No songs available for the selected genre/decade.");
         }
 
-        // Map decades to year ranges AND short-form labels (e.g. "1980s")
-        // Note: "1980–1990" means the 1980s decade (1980-1989), end year is exclusive
-        const decadeYearRanges = decades.map(d => {
-          const match = d.match(/(\d{4})[–-](\d{4}|Present)/);
-          if (!match) return null;
-          const start = parseInt(match[1]);
-          // End is exclusive: "1980–1990" covers 1980-1989
-          const endRaw = match[2] === "Present" ? new Date().getFullYear() + 1 : parseInt(match[2]);
-          const end = endRaw - 1; // inclusive end
-          // Derive short-form label: "1980–1990" → "1980s", "2020–Present" → "2020s"
-          const shortLabel = `${match[1].slice(0, 3)}0s`;
-          return { start, end, longLabel: d, shortLabel };
-        }).filter(Boolean) as { start: number; end: number; longLabel: string; shortLabel: string }[];
+        // Retrieve the full song row for the picked id.
+        const [pickedSong] = await db
+          .select()
+          .from(songs)
+          .where(eq(songs.id, selResult.songId))
+          .limit(1);
+        if (!pickedSong) throw new Error("Selected song not found.");
 
-        // Collect all decadeRange label variants stored in DB for these decades
-        const decadeLabels: string[] = [];
-        for (const r of decadeYearRanges) {
-          decadeLabels.push(r.longLabel);
-          decadeLabels.push(r.shortLabel);
-        }
-
-        // Helper to filter songs by decade (strict)
-        const matchesDecade = (s: typeof songs.$inferSelect) =>
-          decadeLabels.includes(s.decadeRange ?? "") ||
-          decadeYearRanges.some(r => s.releaseYear >= r.start && s.releaseYear <= r.end);
-
-        // Get candidate songs matching genre + difficulty + decade
-        let stdCandidateSongs = await db.select().from(songs).where(
-          and(
-            eq(songs.isActive, true),
-            eq(songs.approvalStatus, "approved"),
-            inArray(songs.genre, genres),
-            inArray(songs.lyricSectionType, difficultyFilter),
-            room.explicitFilter ? eq(songs.explicitFlag, false) : undefined,
-            usedIds.length > 0 ? notInArray(songs.id, usedIds) : undefined,
-          )
-        );
-
-        // Filter by decade (strict — always enforce selected decades)
-        stdCandidateSongs = stdCandidateSongs.filter(matchesDecade);
-
-        if (stdCandidateSongs.length === 0) {
-          // Fallback 1: relax difficulty filter but KEEP genre + decade strict.
-          // Genre/decade are user intent — never silently swap them.
-          let relaxed = await db.select().from(songs).where(
-            and(
-              eq(songs.isActive, true),
-              eq(songs.approvalStatus, "approved"),
-              inArray(songs.genre, genres),
-              usedIds.length > 0 ? notInArray(songs.id, usedIds) : undefined,
-            )
-          );
-          relaxed = relaxed.filter(matchesDecade);
-
-          if (relaxed.length === 0) {
-            // Fallback 2: allow re-playing previously-used songs within the
-            // same genre + decade rather than switching categories.
-            let recycled = await db.select().from(songs).where(
-              and(
-                eq(songs.isActive, true),
-                eq(songs.approvalStatus, "approved"),
-                inArray(songs.genre, genres),
-              )
-            );
-            recycled = recycled.filter(matchesDecade);
-            stdCandidateSongs = recycled;
-          } else {
-            stdCandidateSongs = relaxed;
-          }
-        }
-
-        if (stdCandidateSongs.length === 0) {
-          const genreLabel = genres.join(" / ");
-          const decadeLabel = decades.join(" / ");
-          throw new Error(
-            `No ${genreLabel} songs available for ${decadeLabel}. Pick a broader selection on the setup screen.`
-          );
-        }
-
-        // ── Playability filter ───────────────────────────────────────────────
-        // Drop songs whose variants are all unplayable (empty prompt, or
-        // line < 6 words on Low/Medium; <6 words is allowed on Hard).
-        // Without this, the player can land on a hollow "..." question
-        // or a too-short snippet. If filtering empties the pool, the
-        // selected genre/decade slice has no songs ready for this
-        // difficulty — surface that explicitly.
-        //
-        // Phase 5c: variants resolve via the feature-flagged reader. With
-        // the flag OFF, this is in-memory jsonb (zero extra DB hits). With
-        // the flag ON, it's a single `gameplay_items IN (...)` query for
-        // the whole pool, then the filter stays sync.
-        const diffForFilter = room.difficulty as Difficulty;
-        stdCandidateVariantMap = await loadVariantsForSongs(db, stdCandidateSongs);
-        stdCandidateSongs = stdCandidateSongs.filter(
-          s => playableVariantIndicesFrom(
-            stdCandidateVariantMap.get(s.id) ?? [],
-            diffForFilter,
-          ).length > 0,
-        );
-        if (stdCandidateSongs.length === 0) {
-          throw new Error(
-            "No playable songs match the selected genre/decade at this difficulty. Try Hard mode or a broader selection on the setup screen."
-          );
-        }
-
-        // ── Per-identity dedup window ────────────────────────────────────────
-        // Exclude songs already shown to THIS user/guest in the last 10 days.
-        // If that empties the pool, relax to 7 days. If still empty, drop
-        // dedup entirely so we never block the player — preserves the
-        // existing "never empty" guarantee of the fallback chain.
-        const dedupDb = db;
-        const songIdsShownSince = async (days: number): Promise<Set<number>> => {
-          const cutoff = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
-          let rows: { songId: number }[] = [];
-          if (dedupUserId !== null) {
-            rows = await dedupDb
-              .select({ songId: songDisplays.songId })
-              .from(songDisplays)
-              .where(
-                and(
-                  eq(songDisplays.userId, dedupUserId),
-                  gte(songDisplays.shownAt, cutoff),
-                ),
-              );
-          } else if (dedupGuestToken !== null) {
-            rows = await dedupDb
-              .select({ songId: songDisplays.songId })
-              .from(songDisplays)
-              .where(
-                and(
-                  eq(songDisplays.guestToken, dedupGuestToken),
-                  gte(songDisplays.shownAt, cutoff),
-                ),
-              );
-          }
-          return new Set(rows.map(r => r.songId));
-        };
-
-        if (dedupUserId !== null || dedupGuestToken !== null) {
-          const recent10 = await songIdsShownSince(10);
-          let dedupedPool = stdCandidateSongs.filter(s => !recent10.has(s.id));
-          if (dedupedPool.length === 0) {
-            const recent7 = await songIdsShownSince(7);
-            dedupedPool = stdCandidateSongs.filter(s => !recent7.has(s.id));
-          }
-          // If still empty, fall through with the unfiltered pool — the
-          // global penalty below still discourages over-shown picks.
-          if (dedupedPool.length > 0) {
-            stdCandidateSongs = dedupedPool;
-          }
-        }
-
-        // Weighted random pick with pool-relative normalization.
-        // Compute the median displayCount of the current candidate pool,
-        // then penalize songs above the median exponentially. Songs below
-        // or at the median get full section weight; songs above it decay
-        // as 1 / (1 + excessRatio^2) where excessRatio = (count - median)
-        // / max(median, 1). This self-adjusts: in a thin pool where
-        // everything has high plays, the median is high too, so all songs
-        // compete fairly. In a mixed pool, underplayed songs get strong
-        // preference, driving convergence.
-        const displayCounts = stdCandidateSongs
-          .map(s => s.displayCount ?? 0)
-          .sort((a, b) => a - b);
-        const poolMedian = displayCounts.length > 0
-          ? displayCounts[Math.floor(displayCounts.length / 2)]
-          : 0;
-        const medianDivisor = Math.max(poolMedian, 1);
-
-        const weighted = stdCandidateSongs
-          .map(s => {
-            const sectionW = sectionWeights[(s.lyricSectionType as SectionType)] ?? 0;
-            if (sectionW <= 0) return { s, w: 0 };
-            const count = s.displayCount ?? 0;
-            const excess = count - poolMedian;
-            const penalty = excess <= 0
-              ? 1
-              : 1 / (1 + (excess / medianDivisor) ** 2);
-            return { s, w: sectionW * penalty };
-          })
-          .filter(x => x.w > 0);
-        const pickPool = weighted.length > 0
-          ? weighted
-          : stdCandidateSongs.map(s => ({ s, w: 1 }));
-        const totalWeight = pickPool.reduce((acc, x) => acc + x.w, 0);
-        let rnd = Math.random() * totalWeight;
-        song = pickPool[0].s;
-        for (const x of pickPool) {
-          rnd -= x.w;
-          if (rnd <= 0) { song = x.s; break; }
-        }
-
-        candidateSongs = stdCandidateSongs;
+        song = pickedSong;
+        candidateSongs = selResult.candidateSongs;
+        stdCandidateVariantMap = selResult.variantMap as Map<number, Variant[]>;
 
         // Update used songs
         const newUsedIds = [...usedIds, song.id];
