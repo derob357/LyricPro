@@ -22,6 +22,22 @@ export function assertCanStart(opts: {
 }
 
 /**
+ * Pure guard: returns true when the round is ready to be revealed — either all
+ * active players have answered, or the round deadline has passed.
+ * Extracted as a named export so it can be unit-tested without a DB.
+ */
+export function canReveal(opts: {
+  phase: string | null;
+  answeredCount: number;
+  activeCount: number;
+  nowMs: number;
+  deadlineMs: number;
+}): boolean {
+  if (opts.phase !== "in_question") return false;
+  return opts.answeredCount >= opts.activeCount || opts.nowMs >= opts.deadlineMs;
+}
+
+/**
  * Pure guard: returns true only when the round is in the right phase AND
  * the current wall-clock time is within the answer window (deadline + grace).
  * Extracted as a named export so it can be unit-tested without a DB.
@@ -235,5 +251,39 @@ export const matchEngineRouter = router({
       }).where(eq(roomPlayers.id, player.id));
 
       return { totalRoundPoints: points.totalRoundPoints };
+    }),
+
+  revealRound: publicProcedure
+    .input(z.object({ roomCode: z.string() }))
+    .mutation(async ({ input }) => {
+      const db = await getDb();
+      if (!db) throw new Error("Database not available");
+      const [room] = await db.select().from(gameRooms).where(eq(gameRooms.roomCode, input.roomCode)).limit(1);
+      if (!room) throw new TRPCError({ code: "NOT_FOUND", message: "Room not found" });
+      const players = await db.select().from(roomPlayers).where(eq(roomPlayers.roomId, room.id));
+      const activeCount = players.filter(p => p.isActive).length;
+      const answered = await db.select().from(roundResults)
+        .where(and(eq(roundResults.roomId, room.id), eq(roundResults.roundNumber, room.currentRound)));
+      const INTERMISSION_S = 5;
+      if (!canReveal({
+        phase: room.roundPhase,
+        answeredCount: answered.length,
+        activeCount,
+        nowMs: Date.now(),
+        deadlineMs: room.roundEndsAt ? new Date(room.roundEndsAt).getTime() : 0,
+      }))
+        return { revealed: false };
+      const endsAt = new Date(Date.now() + INTERMISSION_S * 1000);
+      // Idempotent: WHERE guards on currentRound + roundPhase so only the first
+      // concurrent call flips the phase; subsequent calls get res.length === 0.
+      const res = await db.update(gameRooms)
+        .set({ roundPhase: "intermission", roundEndsAt: endsAt, updatedAt: new Date() })
+        .where(and(
+          eq(gameRooms.id, room.id),
+          eq(gameRooms.currentRound, room.currentRound),
+          eq(gameRooms.roundPhase, "in_question"),
+        ))
+        .returning({ id: gameRooms.id });
+      return { revealed: res.length > 0 };
     }),
 });
