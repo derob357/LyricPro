@@ -453,12 +453,9 @@ export const gameRouter = router({
           throw new Error("No songs available for the selected genre/decade.");
         }
 
-        // Retrieve the full song row for the picked id.
-        const [pickedSong] = await db
-          .select()
-          .from(songs)
-          .where(eq(songs.id, selResult.songId))
-          .limit(1);
+        // The picked row is already in candidateSongs (selectSongForRoom returns
+        // the pool) — reuse it instead of an extra DB round-trip.
+        const pickedSong = selResult.candidateSongs.find((s) => s.id === selResult.songId);
         if (!pickedSong) throw new Error("Selected song not found.");
 
         song = pickedSong;
