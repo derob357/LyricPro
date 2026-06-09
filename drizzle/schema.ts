@@ -1,3 +1,4 @@
+import { sql } from "drizzle-orm";
 import {
   bigint,
   bigserial,
@@ -572,7 +573,7 @@ export const roundResults = pgTable("round_results", {
   streakInsuranceUsed: boolean("streakInsuranceUsed").default(false).notNull(),
   createdAt: createdAtColumn(),
 }, (t) => ({
-  roomRoundPlayerUq: uniqueIndex("round_results_room_round_player_uq").on(t.roomId, t.roundNumber, t.activePlayerId),
+  roomRoundPlayerUq: uniqueIndex("round_results_room_round_player_uq").on(t.roomId, t.roundNumber, t.activePlayerId).where(sql`"roomId" IS NOT NULL AND "activePlayerId" IS NOT NULL`),
 }));
 
 export type RoundResult = typeof roundResults.$inferSelect;

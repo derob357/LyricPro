@@ -2,7 +2,7 @@
 import { z } from "zod";
 import { and, eq } from "drizzle-orm";
 import { TRPCError } from "@trpc/server";
-import { router, publicProcedure } from "../_core/trpc";
+import { router, publicProcedure, protectedProcedure } from "../_core/trpc";
 import { getDb } from "../db";
 import { gameRooms, roomPlayers, roundResults, songs, artistMetadata } from "../../drizzle/schema";
 import { selectSongForRoom } from "../_core/songSelection";
@@ -69,7 +69,7 @@ export function isSubmitAccepted(opts: {
 
 // Authoritative snapshot for join / reconnect / post-broadcast refetch.
 export const matchEngineRouter = router({
-  startMatch: publicProcedure
+  startMatch: protectedProcedure
     .input(z.object({ roomCode: z.string() }))
     .mutation(async ({ input, ctx }) => {
       const db = await getDb();
@@ -109,6 +109,12 @@ export const matchEngineRouter = router({
         .where(eq(gameRooms.roomCode, input.roomCode))
         .limit(1);
       if (!room) throw new TRPCError({ code: "NOT_FOUND", message: "Room not found" });
+      const STALE_MS = 2 * 60 * 1000; // 2 min past the round deadline → abandoned
+      if (room.status === "active" && room.roundEndsAt && Date.now() > new Date(room.roundEndsAt).getTime() + STALE_MS) {
+        await db.update(gameRooms).set({ status: "finished", roundPhase: "complete", roundEndsAt: null, updatedAt: new Date() })
+          .where(and(eq(gameRooms.id, room.id), eq(gameRooms.status, "active"))).returning({ id: gameRooms.id });
+        room.status = "finished"; room.roundPhase = "complete"; room.roundEndsAt = null;
+      }
       const players = await db
         .select()
         .from(roomPlayers)
@@ -147,7 +153,7 @@ export const matchEngineRouter = router({
       };
     }),
 
-  submitAnswer: publicProcedure
+  submitAnswer: protectedProcedure
     .input(z.object({
       roomCode: z.string(),
       lyricAnswer: z.string().optional(),
@@ -162,8 +168,6 @@ export const matchEngineRouter = router({
 
       const [room] = await db.select().from(gameRooms).where(eq(gameRooms.roomCode, input.roomCode)).limit(1);
       if (!room) throw new TRPCError({ code: "NOT_FOUND", message: "Room not found" });
-
-      if (!ctx.user?.id) throw new TRPCError({ code: "UNAUTHORIZED", message: "Sign in to play." });
 
       const [player] = await db.select().from(roomPlayers)
         .where(and(eq(roomPlayers.roomId, room.id), eq(roomPlayers.userId, ctx.user.id))).limit(1);
@@ -252,7 +256,7 @@ export const matchEngineRouter = router({
       } catch (e: any) {
         // The unique index `round_results_room_round_player_uq` on
         // (roomId, roundNumber, activePlayerId) prevents double-submits.
-        if (String(e?.message ?? "").includes("round_results_room_round_player_uq"))
+        if (e?.code === "23505" && (e?.constraint_name === "round_results_room_round_player_uq" || String(e?.message ?? "").includes("round_results_room_round_player_uq")))
           throw new TRPCError({ code: "CONFLICT", message: "Already answered this round." });
         throw e;
       }
@@ -269,14 +273,15 @@ export const matchEngineRouter = router({
       return { totalRoundPoints: points.totalRoundPoints };
     }),
 
-  revealRound: publicProcedure
+  revealRound: protectedProcedure
     .input(z.object({ roomCode: z.string() }))
-    .mutation(async ({ input }) => {
+    .mutation(async ({ input, ctx }) => {
       const db = await getDb();
       if (!db) throw new Error("Database not available");
       const [room] = await db.select().from(gameRooms).where(eq(gameRooms.roomCode, input.roomCode)).limit(1);
       if (!room) throw new TRPCError({ code: "NOT_FOUND", message: "Room not found" });
       const players = await db.select().from(roomPlayers).where(eq(roomPlayers.roomId, room.id));
+      if (!players.some(p => p.userId === ctx.user.id)) throw new TRPCError({ code: "FORBIDDEN", message: "Not a player in this room." });
       const activeCount = players.filter(p => p.isActive).length;
       const answered = await db.select().from(roundResults)
         .where(and(eq(roundResults.roomId, room.id), eq(roundResults.roundNumber, room.currentRound)));
@@ -303,13 +308,15 @@ export const matchEngineRouter = router({
       return { revealed: res.length > 0 };
     }),
 
-  advanceRound: publicProcedure
+  advanceRound: protectedProcedure
     .input(z.object({ roomCode: z.string() }))
-    .mutation(async ({ input }) => {
+    .mutation(async ({ input, ctx }) => {
       const db = await getDb();
       if (!db) throw new Error("Database not available");
       const [room] = await db.select().from(gameRooms).where(eq(gameRooms.roomCode, input.roomCode)).limit(1);
       if (!room) throw new TRPCError({ code: "NOT_FOUND", message: "Room not found" });
+      const players = await db.select().from(roomPlayers).where(eq(roomPlayers.roomId, room.id));
+      if (!players.some(p => p.userId === ctx.user.id)) throw new TRPCError({ code: "FORBIDDEN", message: "Not a player in this room." });
       const decision = nextRoundDecision({
         phase: room.roundPhase,
         nowMs: Date.now(),
@@ -333,13 +340,16 @@ export const matchEngineRouter = router({
       }
       // decision === "next"
       const used: number[] = room.usedSongIds ? JSON.parse(room.usedSongIds) : [];
-      const pick = await selectSongForRoom(db, {
-        genres: JSON.parse(room.selectedGenres),
-        decades: JSON.parse(room.selectedDecades),
-        difficulty: room.difficulty,
-        explicitFilter: room.explicitFilter,
-        usedSongIds: used,
-      });
+      let pick: Awaited<ReturnType<typeof selectSongForRoom>> = null;
+      try {
+        pick = await selectSongForRoom(db, { genres: JSON.parse(room.selectedGenres), decades: JSON.parse(room.selectedDecades), difficulty: room.difficulty, explicitFilter: room.explicitFilter, usedSongIds: used });
+      } catch { pick = null; }
+      if (!pick) {
+        // Pool exhausted mid-match — finish gracefully rather than hang.
+        const done = await db.update(gameRooms).set({ status: "finished", roundPhase: "complete", roundEndsAt: null, updatedAt: new Date() })
+          .where(and(eq(gameRooms.id, room.id), eq(gameRooms.currentRound, room.currentRound), eq(gameRooms.roundPhase, "intermission"))).returning({ id: gameRooms.id });
+        return { advanced: done.length > 0, complete: true };
+      }
       const endsAt = new Date(Date.now() + room.timerSeconds * 1000);
       // Idempotent: WHERE guards on currentRound + roundPhase so only the first
       // concurrent call advances; subsequent calls get res.length === 0.
@@ -347,8 +357,8 @@ export const matchEngineRouter = router({
         .set({
           currentRound: room.currentRound + 1,
           roundPhase: "in_question",
-          currentSongId: pick?.songId ?? room.currentSongId,
-          usedSongIds: JSON.stringify(pick ? [...used, pick.songId] : used),
+          currentSongId: pick.songId,
+          usedSongIds: JSON.stringify([...used, pick.songId]),
           roundEndsAt: endsAt,
           updatedAt: new Date(),
         })
