@@ -20,6 +20,7 @@ import { bannersRouter } from "./routers/banners";
 import { chatRouter } from "./routers/chat";
 import { favoritesRouter } from "./routers/favorites";
 import { liveRoomRouter } from "./routers/liveRoom";
+import { matchEngineRouter } from "./routers/matchEngine";
 import { tournamentsRouter } from "./routers/tournaments";
 import { getDb } from "./db";
 import { z } from "zod";
@@ -315,6 +316,7 @@ export const appRouter = router({
   }),
   game: gameRouter,
   liveRoom: liveRoomRouter,
+  match: matchEngineRouter,
   monetization: monetizationRouter,
   monetizationIntegration: monetizationIntegrationRouter,
   referral: referralRouter,
