@@ -489,6 +489,11 @@ export const gameRooms = pgTable("game_rooms", {
   inviteCode: varchar("inviteCode", { length: 16 }),
   inviteExpiresAt: timestamp("inviteExpiresAt", { withTimezone: true }),
   streakInsurance: boolean("streakInsurance").default(false).notNull(),
+  // Per-round answer-free MC question payload. Built once at round start so
+  // getMatchState returns a stable payload (no reshuffle on every poll).
+  // Stored as jsonb; typed as MatchQuestion | null (imported lazily at
+  // runtime to avoid circular deps — consumers cast via as MatchQuestion).
+  currentQuestion: jsonb("currentQuestion"),
   createdAt: createdAtColumn(),
   updatedAt: updatedAtColumn(),
 });

@@ -8,6 +8,7 @@ import { gameRooms, roomPlayers, roundResults, songs, artistMetadata } from "../
 import { selectSongForRoom } from "../_core/songSelection";
 import { scoreRound, matchLyric, type Difficulty } from "../_core/scoring";
 import { variantsForSong } from "../_core/variantReader";
+import { buildMatchQuestion, type MatchQuestion } from "../_core/buildMatchQuestion";
 
 export function assertCanStart(opts: {
   isHost: boolean;
@@ -87,12 +88,26 @@ export const matchEngineRouter = router({
       });
       if (!pick) throw new TRPCError({ code: "BAD_REQUEST", message: "No songs available for these filters." });
 
+      // Build the per-round answer-free question payload ONCE so getMatchState
+      // returns a stable payload (no reshuffle on every poll).
+      const pickedSong = pick.candidateSongs.find((s) => s.id === pick.songId);
+      if (!pickedSong) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Picked song missing from candidate pool." });
+      const allVariants = await variantsForSong(db, pickedSong);
+      const pickedVariant = allVariants[0] ?? { prompt: "", answer: "", distractors: [], sectionType: "" };
+      const question: MatchQuestion = buildMatchQuestion({
+        song: pickedSong,
+        variant: pickedVariant,
+        candidateSongs: pick.candidateSongs,
+        difficulty: room.difficulty as "low" | "medium" | "high",
+      });
+
       const now = new Date();
       const endsAt = new Date(now.getTime() + room.timerSeconds * 1000);
       const res = await db.update(gameRooms).set({
         status: "active", currentRound: 1, roundPhase: "in_question",
         currentSongId: pick.songId, usedSongIds: JSON.stringify([...used, pick.songId]),
         roundEndsAt: endsAt, updatedAt: now,
+        currentQuestion: question,
       }).where(and(eq(gameRooms.id, room.id), eq(gameRooms.status, "waiting"))).returning({ id: gameRooms.id });
       if (res.length === 0) throw new TRPCError({ code: "CONFLICT", message: "Match already started." });
       return { ok: true, currentRound: 1, roundEndsAt: endsAt };
@@ -135,6 +150,9 @@ export const matchEngineRouter = router({
           timerSeconds: room.timerSeconds,
           hostUserId: room.hostUserId,
           maxPlayers: room.maxPlayers,
+          // Answer-free question payload — built once at round start, stable
+          // across all getMatchState polls. Null until the first round starts.
+          currentQuestion: (room.currentQuestion as MatchQuestion | null) ?? null,
         },
         players: players.map(p => ({
           id: p.id,
@@ -350,6 +368,19 @@ export const matchEngineRouter = router({
           .where(and(eq(gameRooms.id, room.id), eq(gameRooms.currentRound, room.currentRound), eq(gameRooms.roundPhase, "intermission"))).returning({ id: gameRooms.id });
         return { advanced: done.length > 0, complete: true };
       }
+      // Build the per-round answer-free question payload ONCE so getMatchState
+      // returns a stable payload (no reshuffle on every poll).
+      const pickedSongAdv = pick.candidateSongs.find((s) => s.id === pick.songId);
+      if (!pickedSongAdv) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Picked song missing from candidate pool." });
+      const allVariantsAdv = await variantsForSong(db, pickedSongAdv);
+      const pickedVariantAdv = allVariantsAdv[0] ?? { prompt: "", answer: "", distractors: [], sectionType: "" };
+      const questionAdv: MatchQuestion = buildMatchQuestion({
+        song: pickedSongAdv,
+        variant: pickedVariantAdv,
+        candidateSongs: pick.candidateSongs,
+        difficulty: room.difficulty as "low" | "medium" | "high",
+      });
+
       const endsAt = new Date(Date.now() + room.timerSeconds * 1000);
       // Idempotent: WHERE guards on currentRound + roundPhase so only the first
       // concurrent call advances; subsequent calls get res.length === 0.
@@ -361,6 +392,7 @@ export const matchEngineRouter = router({
           usedSongIds: JSON.stringify([...used, pick.songId]),
           roundEndsAt: endsAt,
           updatedAt: new Date(),
+          currentQuestion: questionAdv,
         })
         .where(and(
           eq(gameRooms.id, room.id),
