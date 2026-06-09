@@ -4,8 +4,10 @@ import { and, eq } from "drizzle-orm";
 import { TRPCError } from "@trpc/server";
 import { router, publicProcedure } from "../_core/trpc";
 import { getDb } from "../db";
-import { gameRooms, roomPlayers } from "../../drizzle/schema";
+import { gameRooms, roomPlayers, roundResults, songs, artistMetadata } from "../../drizzle/schema";
 import { selectSongForRoom } from "../_core/songSelection";
+import { scoreRound, matchLyric, type Difficulty } from "../_core/scoring";
+import { variantsForSong } from "../_core/variantReader";
 
 export function assertCanStart(opts: {
   isHost: boolean;
@@ -17,6 +19,20 @@ export function assertCanStart(opts: {
   if (opts.status !== "waiting") throw new TRPCError({ code: "BAD_REQUEST", message: "Match already started." });
   if (opts.playerCount < 2) throw new TRPCError({ code: "BAD_REQUEST", message: "Need at least 2 players." });
   if (opts.readyCount < opts.playerCount) throw new TRPCError({ code: "BAD_REQUEST", message: "All players must be ready." });
+}
+
+/**
+ * Pure guard: returns true only when the round is in the right phase AND
+ * the current wall-clock time is within the answer window (deadline + grace).
+ * Extracted as a named export so it can be unit-tested without a DB.
+ */
+export function isSubmitAccepted(opts: {
+  phase: string | null;
+  nowMs: number;
+  deadlineMs: number;
+  graceMs: number;
+}): boolean {
+  return opts.phase === "in_question" && opts.nowMs <= opts.deadlineMs + opts.graceMs;
 }
 
 // Authoritative snapshot for join / reconnect / post-broadcast refetch.
@@ -97,5 +113,127 @@ export const matchEngineRouter = router({
           score: p.currentScore,
         })),
       };
+    }),
+
+  submitAnswer: publicProcedure
+    .input(z.object({
+      roomCode: z.string(),
+      lyricAnswer: z.string().optional(),
+      titleAnswer: z.string().optional(),
+      artistAnswer: z.string().optional(),
+      yearAnswer: z.number().optional(),
+      responseTimeSeconds: z.number().optional(),
+    }))
+    .mutation(async ({ input, ctx }) => {
+      const db = await getDb();
+      if (!db) throw new Error("Database not available");
+
+      const [room] = await db.select().from(gameRooms).where(eq(gameRooms.roomCode, input.roomCode)).limit(1);
+      if (!room) throw new TRPCError({ code: "NOT_FOUND", message: "Room not found" });
+
+      if (!ctx.user?.id) throw new TRPCError({ code: "UNAUTHORIZED", message: "Sign in to play." });
+
+      const [player] = await db.select().from(roomPlayers)
+        .where(and(eq(roomPlayers.roomId, room.id), eq(roomPlayers.userId, ctx.user.id))).limit(1);
+      if (!player) throw new TRPCError({ code: "FORBIDDEN", message: "Not a player in this room." });
+
+      // Late-submit guard: 1.5 s grace period past the round deadline.
+      const GRACE_MS = 1500;
+      const deadlineMs = room.roundEndsAt ? new Date(room.roundEndsAt).getTime() : 0;
+      if (!isSubmitAccepted({ phase: room.roundPhase, nowMs: Date.now(), deadlineMs, graceMs: GRACE_MS }))
+        throw new TRPCError({ code: "BAD_REQUEST", message: "Round is not accepting answers." });
+
+      if (!room.currentSongId) throw new TRPCError({ code: "BAD_REQUEST", message: "No active question." });
+
+      // ── Load song + played variant (mirrors solo submitAnswer) ───────────────
+      // In synchronized multiplayer every player sees the same question
+      // (room.currentSongId, variant index 0 — startMatch writes no song_displays
+      // row, so there is no per-player variantIndex to look up; we always use
+      // allVariants[0] which is variant index 0, identical across all players).
+      const [song] = await db.select().from(songs).where(eq(songs.id, room.currentSongId)).limit(1);
+      if (!song) throw new TRPCError({ code: "BAD_REQUEST", message: "Active song not found." });
+
+      const allVariants = await variantsForSong(db, song);
+      // All match players see the same variant (index 0); no per-player rotation.
+      const playedVariant = allVariants[0] ?? { answer: song.lyricAnswer ?? "", prompt: "" };
+
+      // ── Artist aliases (mirrors solo submitAnswer) ───────────────────────────
+      let aliases: string[] = [];
+      if (song.artistMetadataId) {
+        const [meta] = await db.select({ aliases: artistMetadata.aliases })
+          .from(artistMetadata).where(eq(artistMetadata.id, song.artistMetadataId)).limit(1);
+        if (meta?.aliases) {
+          try { aliases = JSON.parse(meta.aliases); } catch {}
+        }
+      }
+
+      // ── Streak resolution (mirrors solo submitAnswer exactly) ────────────────
+      // Solo pre-checks lyric correctness before calling scoreRound so that
+      // streak insurance can fire first.  In match rooms streakInsurance is
+      // always false (the flag is irrelevant for synchronized play), but we
+      // still compute newStreak the same way for scoring parity.
+      const lyricAnswerStr = input.lyricAnswer ?? "";
+      const preCheckLyricCorrect = matchLyric(lyricAnswerStr, playedVariant.answer) === "full";
+      const newStreak = preCheckLyricCorrect ? player.currentStreak + 1 : 0;
+      // (No streakInsurance branch needed — match rooms don't carry the flag.)
+
+      // ── Pure scoring — identical inputs to solo submitAnswer ─────────────────
+      // yearAnswer: ScoreRoundInput expects a string (it calls parseInt internally);
+      // the match input accepts a number for convenience, so convert it here.
+      const points = scoreRound({
+        difficulty: room.difficulty as Difficulty,
+        passUsed: false,                        // match play has no pass option
+        lyricAnswer: lyricAnswerStr,
+        titleAnswer: input.titleAnswer ?? "",
+        artistAnswer: input.artistAnswer ?? "",
+        yearAnswer: String(input.yearAnswer ?? ""),
+        correctLyricAnswer: playedVariant.answer,
+        correctTitle: song.title,
+        correctArtistName: song.artistName,
+        correctReleaseYear: song.releaseYear,
+        artistAliases: aliases,
+        responseTimeSeconds: input.responseTimeSeconds ?? 0,
+        timerSeconds: room.timerSeconds,
+        rankingMode: room.rankingMode,
+        newStreak,
+      });
+
+      // ── Persist round result (double-submit caught by unique index) ──────────
+      try {
+        await db.insert(roundResults).values({
+          roomId: room.id,
+          roundNumber: room.currentRound,
+          activePlayerId: player.id,
+          songId: room.currentSongId,
+          userLyricAnswer: input.lyricAnswer ?? null,
+          userArtistAnswer: input.artistAnswer ?? null,
+          userYearAnswer: input.yearAnswer ?? null,
+          responseTimeSeconds: input.responseTimeSeconds ?? null,
+          lyricPoints: points.lyricPoints,
+          artistPoints: points.artistPoints,
+          yearPoints: points.yearPoints,
+          speedBonusPoints: points.speedBonusPoints,
+          streakBonusPoints: points.streakBonusPoints,
+          totalRoundPoints: points.totalRoundPoints,
+          passUsed: false,
+        });
+      } catch (e: any) {
+        // The unique index `round_results_room_round_player_uq` on
+        // (roomId, roundNumber, activePlayerId) prevents double-submits.
+        if (String(e?.message ?? "").includes("round_results_room_round_player_uq"))
+          throw new TRPCError({ code: "CONFLICT", message: "Already answered this round." });
+        throw e;
+      }
+
+      // ── Update score + streak (mirrors solo: newStreak = post-score streak) ──
+      // Solo sets currentStreak: newStreak unconditionally (the pre-insurance
+      // newStreak value is already the final value after insurance resolution).
+      // Match has no insurance, so newStreak is always the simple rule.
+      await db.update(roomPlayers).set({
+        currentScore: player.currentScore + points.totalRoundPoints,
+        currentStreak: newStreak,
+      }).where(eq(roomPlayers.id, player.id));
+
+      return { totalRoundPoints: points.totalRoundPoints };
     }),
 });
