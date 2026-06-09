@@ -38,6 +38,22 @@ export function canReveal(opts: {
 }
 
 /**
+ * Pure decision function: given the current room state, returns whether the
+ * engine should wait, advance to the next round, or complete the match.
+ * Exported for unit testing without a DB.
+ */
+export function nextRoundDecision(opts: {
+  phase: string | null;
+  nowMs: number;
+  deadlineMs: number;
+  currentRound: number;
+  roundsTotal: number;
+}): "wait" | "next" | "complete" {
+  if (opts.phase !== "intermission" || opts.nowMs < opts.deadlineMs) return "wait";
+  return opts.currentRound < opts.roundsTotal ? "next" : "complete";
+}
+
+/**
  * Pure guard: returns true only when the round is in the right phase AND
  * the current wall-clock time is within the answer window (deadline + grace).
  * Extracted as a named export so it can be unit-tested without a DB.
@@ -285,5 +301,63 @@ export const matchEngineRouter = router({
         ))
         .returning({ id: gameRooms.id });
       return { revealed: res.length > 0 };
+    }),
+
+  advanceRound: publicProcedure
+    .input(z.object({ roomCode: z.string() }))
+    .mutation(async ({ input }) => {
+      const db = await getDb();
+      if (!db) throw new Error("Database not available");
+      const [room] = await db.select().from(gameRooms).where(eq(gameRooms.roomCode, input.roomCode)).limit(1);
+      if (!room) throw new TRPCError({ code: "NOT_FOUND", message: "Room not found" });
+      const decision = nextRoundDecision({
+        phase: room.roundPhase,
+        nowMs: Date.now(),
+        deadlineMs: room.roundEndsAt ? new Date(room.roundEndsAt).getTime() : 0,
+        currentRound: room.currentRound,
+        roundsTotal: room.roundsTotal,
+      });
+      if (decision === "wait") return { advanced: false };
+      if (decision === "complete") {
+        // Idempotent: WHERE guards on currentRound + roundPhase so only the first
+        // concurrent call flips the status; subsequent calls get res.length === 0.
+        const res = await db.update(gameRooms)
+          .set({ status: "finished", roundPhase: "complete", roundEndsAt: null, updatedAt: new Date() })
+          .where(and(
+            eq(gameRooms.id, room.id),
+            eq(gameRooms.currentRound, room.currentRound),
+            eq(gameRooms.roundPhase, "intermission"),
+          ))
+          .returning({ id: gameRooms.id });
+        return { advanced: res.length > 0, complete: true };
+      }
+      // decision === "next"
+      const used: number[] = room.usedSongIds ? JSON.parse(room.usedSongIds) : [];
+      const pick = await selectSongForRoom(db, {
+        genres: JSON.parse(room.selectedGenres),
+        decades: JSON.parse(room.selectedDecades),
+        difficulty: room.difficulty,
+        explicitFilter: room.explicitFilter,
+        usedSongIds: used,
+      });
+      const endsAt = new Date(Date.now() + room.timerSeconds * 1000);
+      // Idempotent: WHERE guards on currentRound + roundPhase so only the first
+      // concurrent call advances; subsequent calls get res.length === 0.
+      const res = await db.update(gameRooms)
+        .set({
+          currentRound: room.currentRound + 1,
+          roundPhase: "in_question",
+          currentSongId: pick?.songId ?? room.currentSongId,
+          usedSongIds: JSON.stringify(pick ? [...used, pick.songId] : used),
+          roundEndsAt: endsAt,
+          updatedAt: new Date(),
+        })
+        .where(and(
+          eq(gameRooms.id, room.id),
+          eq(gameRooms.currentRound, room.currentRound),
+          eq(gameRooms.roundPhase, "intermission"),
+        ))
+        .returning({ id: gameRooms.id });
+      return { advanced: res.length > 0, currentRound: room.currentRound + 1 };
     }),
 });
