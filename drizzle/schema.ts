@@ -878,6 +878,13 @@ export const goldenNoteTransactionKindEnum = pgEnum(
     "refund",
     "expiry",
     "admin_adjustment",
+    "stake_escrow",
+    "stake_win",
+    "stake_refund",
+    "signup_grant",
+    "spend_hint",
+    "spend_streak_insurance",
+    "spend_practice_pack",
   ]
 );
 
@@ -892,6 +899,10 @@ export const goldenNoteGiftStatusEnum = pgEnum("golden_note_gift_status", [
 export const goldenNoteBalances = pgTable("golden_note_balances", {
   userId: integer("userId").primaryKey(),
   balance: integer("balance").default(0).notNull(),
+  // Pool split (App Store 5.3 compliance): earned GN is stakeable; purchased GN never is.
+  // balance is ALWAYS earnedBalance + purchasedBalance — the ledger updates all three atomically.
+  earnedBalance: integer("earnedBalance").default(0).notNull(),
+  purchasedBalance: integer("purchasedBalance").default(0).notNull(),
   lifetimePurchased: integer("lifetimePurchased").default(0).notNull(),
   lifetimeSpent: integer("lifetimeSpent").default(0).notNull(),
   lifetimeGiftedSent: integer("lifetimeGiftedSent").default(0).notNull(),
@@ -917,6 +928,8 @@ export const goldenNoteTransactions = pgTable("golden_note_transactions", {
   relatedUserId: integer("relatedUserId"), // gift counterparty
   stripePaymentIntentId: varchar("stripePaymentIntentId", { length: 256 }),
   balanceAfter: integer("balanceAfter").notNull(),
+  // Client-retry dedupe for money-moving mutations (ante escrow, extra game).
+  idempotencyKey: varchar("idempotencyKey", { length: 64 }).unique(),
   createdAt: createdAtColumn(),
 });
 
@@ -943,6 +956,33 @@ export const goldenNoteGifts = pgTable("golden_note_gifts", {
 
 export type GoldenNoteGift = typeof goldenNoteGifts.$inferSelect;
 export type InsertGoldenNoteGift = typeof goldenNoteGifts.$inferInsert;
+
+export const gnStakeStateEnum = pgEnum("gn_stake_state", ["active", "settled", "refunded"]);
+
+/** One row per staked solo game (accounts only). Escrow model: the ante leaves
+ *  earnedBalance at game start; burns reduce the eventual refund; wins credit
+ *  earnedBalance immediately; settle refunds (staked - burned). */
+export const gnStakes = pgTable(
+  "gn_stakes",
+  {
+    id: serial("id").primaryKey(),
+    roomId: integer("roomId").notNull(),
+    userId: integer("userId").notNull(),
+    staked: integer("staked").notNull(),
+    burned: integer("burned").default(0).notNull(),
+    wonRounds: integer("wonRounds").default(0).notNull(),
+    state: gnStakeStateEnum("state").default("active").notNull(),
+    createdAt: createdAtColumn(),
+    settledAt: timestamp("settledAt", { withTimezone: true }),
+  },
+  (t) => ({
+    roomUserUnique: uniqueIndex("gn_stakes_room_user").on(t.roomId, t.userId),
+    activeCreatedIdx: index("gn_stakes_active_created").on(t.state, t.createdAt),
+  }),
+);
+
+export type GnStake = typeof gnStakes.$inferSelect;
+export type InsertGnStake = typeof gnStakes.$inferInsert;
 
 // ─── Avatars (catalog + ownership) ───────────────────────────────────────────
 export const avatars = pgTable("avatars", {
