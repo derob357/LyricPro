@@ -35,8 +35,15 @@ export interface MatchQuestion {
 // Internal helpers (mirrors game.ts's local pickDistractors + shuffle)
 // ---------------------------------------------------------------------------
 
+// Fisher–Yates — unbiased. A sort(() => random-0.5) skews option positions,
+// which for MC trivia subtly leaks the correct answer's likely slot.
 function shuffle<T>(arr: T[]): T[] {
-  return [...arr].sort(() => Math.random() - 0.5);
+  const a = [...arr];
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
 }
 
 /**
