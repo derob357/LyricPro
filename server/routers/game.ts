@@ -245,22 +245,25 @@ export const gameRouter = router({
       if (input.ante > 0 && input.mode === "solo" && ctx.user?.id) {
         try {
           await db.transaction(async (tx) => {
-            // Read earnedBalance under FOR UPDATE so clampAnte sees the live
-            // value, not a stale snapshot. Silent clamp: if earned balance has
-            // dropped below the requested ante since the UI loaded, we just
-            // stake less (or nothing) rather than blocking game start.
+            // Plain select for the balance read: spendGoldenNotes (inside
+            // escrowStake) re-locks the row authoritatively with FOR UPDATE
+            // inside the same tx, so a redundant outer lock is unnecessary.
+            // Silent clamp: if earned balance has dropped below the requested
+            // ante since the UI loaded, we stake less (or nothing) rather than
+            // blocking game start.
             const [bal] = await tx
               .select({ earnedBalance: goldenNoteBalances.earnedBalance })
               .from(goldenNoteBalances)
-              .where(eq(goldenNoteBalances.userId, ctx.user!.id))
-              .for("update");
+              .where(eq(goldenNoteBalances.userId, ctx.user!.id));
             const clamped = clampAnte(input.ante, bal?.earnedBalance ?? 0);
             if (clamped <= 0) return; // earned balance too low — game proceeds unstaked
             await escrowStake(tx, ctx.user!.id, room.id, clamped);
           });
         } catch (err) {
-          // Velocity-cap errors (and any other escrowStake failures) must abort
-          // room creation with BAD_REQUEST so the client can surface the message.
+          // Velocity-cap errors (and any other escrowStake failures) abort room
+          // creation with BAD_REQUEST. The waiting room row is intentionally
+          // orphaned — the player never receives the roomCode and no GN was
+          // debited (spendGoldenNotes hadn't run yet when the velocity cap fired).
           if (err instanceof Error) {
             throw new TRPCError({ code: "BAD_REQUEST", message: err.message });
           }
@@ -887,43 +890,44 @@ export const gameRouter = router({
           currentStreak: newStreak,
         }).where(eq(roomPlayers.id, player.id));
 
-        // Save round result
+        // Save round result + resolve stake atomically.
         // NOTE: hintUsed defaults to false — client-side hint tracking is a
         // follow-up task (Option A per plan). Wire hintUsed via submitAnswer
         // input when client-side hint state is available.
-        await db.insert(roundResults).values({
-          roomId: room.id,
-          roundNumber: room.currentRound,
-          activePlayerId: player.id,
-          activeGuestToken: guestToken,
-          songId: input.songId,
-          userLyricAnswer: input.lyricAnswer,
-          userArtistAnswer: input.artistAnswer,
-          userYearAnswer: parseInt(input.yearAnswer) || null,
-          answerMethod: input.answerMethod,
-          responseTimeSeconds: input.responseTimeSeconds,
-          lyricPoints,
-          artistPoints,
-          yearPoints,
-          speedBonusPoints: speedBonus,
-          streakBonusPoints: streakBonus,
-          totalRoundPoints: totalRoundPoints,
-          passUsed: input.passUsed,
-          streakInsuranceUsed,
-        });
-
-        // ── Stake resolution ──────────────────────────────────────────────
-        // ORDERING: resolveRoundStake MUST be called strictly AFTER the
-        // roundResults insert above has succeeded. That insert carries the
-        // unique index round_results_room_round_player_uq — a retried or
-        // duplicate submission throws 23505 there and aborts BEFORE we reach
-        // this call. The burn inside resolveRoundStake is NOT idempotent at
-        // the stake level (only the win credit is); this ordering is the only
-        // duplicate-submission guard for stake burns.
         let stakeLine: Awaited<ReturnType<typeof resolveRoundStake>> = null;
-        if (room.mode === "solo" && userId) {
-          stakeLine = await resolveRoundStake(db, room.id, userId, correctCount, room.currentRound);
-        }
+        await db.transaction(async (tx) => {
+          await tx.insert(roundResults).values({
+            roomId: room.id,
+            roundNumber: room.currentRound,
+            activePlayerId: player.id,
+            activeGuestToken: guestToken,
+            songId: input.songId,
+            userLyricAnswer: input.lyricAnswer,
+            userArtistAnswer: input.artistAnswer,
+            userYearAnswer: parseInt(input.yearAnswer) || null,
+            answerMethod: input.answerMethod,
+            responseTimeSeconds: input.responseTimeSeconds,
+            lyricPoints,
+            artistPoints,
+            yearPoints,
+            speedBonusPoints: speedBonus,
+            streakBonusPoints: streakBonus,
+            totalRoundPoints: totalRoundPoints,
+            passUsed: input.passUsed,
+            streakInsuranceUsed,
+          });
+
+          // ── Stake resolution ────────────────────────────────────────────
+          // ATOMICITY: the roundResults insert (unique index
+          // round_results_room_round_player_uq) and the stake resolution
+          // commit or fail TOGETHER. A duplicate submission 23505s the insert
+          // and aborts the whole tx before any burn; a transient stake failure
+          // rolls back the round so a clean retry re-runs both (the win
+          // credit's idempotency key absorbs any rare double-commit race).
+          if (room.mode === "solo" && userId) {
+            stakeLine = await resolveRoundStake(tx, room.id, userId, correctCount, room.currentRound);
+          }
+        });
 
         // ── Commentary (fire-and-forget fetch, best-effort) ──────────────
         let commentary: string | null = null;
@@ -1172,7 +1176,15 @@ export const gameRouter = router({
         // settleStake is idempotent: the UPDATE only fires on state = 'active',
         // so a second call (e.g. cron sweep racing game-over) dedupes cleanly.
         for (const p of players) {
-          if (p.userId) await settleStake(db, room.id, p.userId);
+          if (p.userId) {
+            try {
+              await settleStake(db, room.id, p.userId);
+            } catch (err) {
+              // Settlement must never break game completion — the hourly sweep
+              // refunds any stake left active (same idempotency key).
+              console.warn("[settleStake] failed; sweep will refund", { roomId: room.id, userId: p.userId, err });
+            }
+          }
         }
       }
 

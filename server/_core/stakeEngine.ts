@@ -85,8 +85,11 @@ export async function escrowStake(
  * and updates the gn_stakes row accordingly. Returns the UI stake payload or
  * null when the game is not staked / no active stake exists.
  *
- * Opens its own transaction internally — callers should NOT wrap this in an
- * outer transaction (submitAnswer already handles its own writes separately).
+ * Accepts either a bare db handle or an outer tx. When called with an outer tx
+ * the internal db.transaction() becomes a savepoint (nested tx) under
+ * drizzle/postgres-js, which is correct — the caller controls the top-level
+ * commit boundary (submitAnswer wraps both the roundResults insert and this
+ * call in one transaction for atomicity).
  */
 export async function resolveRoundStake(
   db: AnyTx,
