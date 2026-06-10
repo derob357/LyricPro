@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
 const navigate = vi.fn();
 vi.mock("wouter", async () => {
@@ -59,6 +59,8 @@ describe("Gameplay auto-advance to results", () => {
     captured.submitOpts = null;
     localStorage.setItem("lyricpro_guest_token", "guest-tok");
   });
+
+  afterEach(() => { vi.useRealTimers(); });
 
   it("navigates to round results ~600ms after a successful last-answer submit", () => {
     render(<Gameplay />);
