@@ -1,3 +1,4 @@
+import { sql } from "drizzle-orm";
 import {
   bigint,
   bigserial,
@@ -53,6 +54,7 @@ export const gameStatusEnum = pgEnum("game_status", [
   "active",
   "finished",
 ]);
+export const roundPhaseEnum = pgEnum("round_phase", ["in_question", "intermission", "complete"]);
 export const answerMethodEnum = pgEnum("answer_method", ["typed", "voice"]);
 export const prizePoolStatusEnum = pgEnum("prize_pool_status", [
   "active",
@@ -476,6 +478,8 @@ export const gameRooms = pgTable("game_rooms", {
   currentRound: integer("currentRound").default(0).notNull(),
   currentPlayerIndex: integer("currentPlayerIndex").default(0).notNull(),
   currentSongId: integer("currentSongId"),
+  roundPhase: roundPhaseEnum("roundPhase"),
+  roundEndsAt: timestamp("roundEndsAt", { withTimezone: true }),
   usedSongIds: text("usedSongIds"), // JSON array as text, nullable
   customPackSongIds: jsonb("customPackSongIds").$type<number[]>(),
   isVideoRoom: boolean("isVideoRoom").default(false).notNull(),
@@ -485,6 +489,11 @@ export const gameRooms = pgTable("game_rooms", {
   inviteCode: varchar("inviteCode", { length: 16 }),
   inviteExpiresAt: timestamp("inviteExpiresAt", { withTimezone: true }),
   streakInsurance: boolean("streakInsurance").default(false).notNull(),
+  // Per-round answer-free MC question payload. Built once at round start so
+  // getMatchState returns a stable payload (no reshuffle on every poll).
+  // Stored as jsonb; typed as MatchQuestion | null (imported lazily at
+  // runtime to avoid circular deps — consumers cast via as MatchQuestion).
+  currentQuestion: jsonb("currentQuestion"),
   createdAt: createdAtColumn(),
   updatedAt: updatedAtColumn(),
 });
@@ -568,7 +577,9 @@ export const roundResults = pgTable("round_results", {
   hintUsed: boolean("hintUsed").default(false).notNull(),
   streakInsuranceUsed: boolean("streakInsuranceUsed").default(false).notNull(),
   createdAt: createdAtColumn(),
-});
+}, (t) => ({
+  roomRoundPlayerUq: uniqueIndex("round_results_room_round_player_uq").on(t.roomId, t.roundNumber, t.activePlayerId).where(sql`"roomId" IS NOT NULL AND "activePlayerId" IS NOT NULL`),
+}));
 
 export type RoundResult = typeof roundResults.$inferSelect;
 

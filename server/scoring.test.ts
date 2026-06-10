@@ -8,79 +8,15 @@
  *   - Celebration level derivation from correctCount
  */
 import { describe, it, expect } from "vitest";
-
-// ── Helpers (mirror of server/routers/game.ts) ────────────────────────────────
-function normalizeText(text: string): string {
-  return text.toLowerCase().replace(/[^\w\s]/g, "").replace(/\s+/g, " ").trim();
-}
-
-function levenshtein(a: string, b: string): number {
-  const m = a.length, n = b.length;
-  const dp: number[][] = Array.from({ length: m + 1 }, (_, i) =>
-    Array.from({ length: n + 1 }, (_, j) => (i === 0 ? j : j === 0 ? i : 0))
-  );
-  for (let i = 1; i <= m; i++) {
-    for (let j = 1; j <= n; j++) {
-      dp[i][j] = a[i - 1] === b[j - 1]
-        ? dp[i - 1][j - 1]
-        : 1 + Math.min(dp[i - 1][j], dp[i][j - 1], dp[i - 1][j - 1]);
-    }
-  }
-  return dp[m][n];
-}
-
-type LyricMatch = "full" | "partial" | "none";
-type ArtistMatch = "full" | "primary_only" | "none";
-
-function matchLyric(userAnswer: string, correctAnswer: string): LyricMatch {
-  const user = normalizeText(userAnswer);
-  const correct = normalizeText(correctAnswer);
-  if (!user || !correct) return "none";
-  if (user === correct) return "full";
-  const correctWords = correct.split(" ").filter(w => w.length > 2);
-  const userWords = user.split(" ");
-  if (correctWords.length === 0) return "none";
-  const matched = correctWords.filter(cw => userWords.some(uw => uw === cw || levenshtein(uw, cw) <= 1));
-  const ratio = matched.length / correctWords.length;
-  const missing = correctWords.length - matched.length;
-  if (ratio >= 0.75) return "full";
-  if (ratio >= 0.50 || (missing <= 2 && correctWords.length >= 4)) return "partial";
-  return "none";
-}
-
-function matchArtist(userAnswer: string, correctArtist: string, aliases?: string[]): ArtistMatch {
-  const user = normalizeText(userAnswer);
-  const correct = normalizeText(correctArtist);
-  if (!user || !correct) return "none";
-  if (user === correct) return "full";
-  const norm = (s: string) => s.replace(/\band\b/g, "&").replace(/\s+/g, " ");
-  if (norm(user) === norm(correct)) return "full";
-  if (aliases) {
-    for (const alias of aliases) {
-      if (user === normalizeText(alias)) return "full";
-    }
-  }
-  const firstName = correct.split(" ")[0];
-  if (firstName && firstName.length >= 3 && user === firstName) return "full";
-  if (levenshtein(user, correct) <= Math.floor(correct.length * 0.2)) return "full";
-  const featRe = /\s+(?:ft\.?|feat\.?|featuring|x)\s+/i;
-  if (featRe.test(correctArtist) || correctArtist.includes(" & ") || /\band\b/i.test(correctArtist)) {
-    const primaryRaw = correctArtist.split(featRe)[0].split(" & ")[0].replace(/\band\b.*/i, "").trim();
-    const primary = normalizeText(primaryRaw);
-    if (primary && (
-      user === primary ||
-      norm(user) === norm(primary) ||
-      levenshtein(user, primary) <= Math.floor(primary.length * 0.2) ||
-      user === primary.split(" ")[0]
-    )) return "primary_only";
-  }
-  return "none";
-}
-
-function scoreYear(userYear: number | null, correctYear: number): number {
-  if (!userYear) return 0;
-  return userYear === correctYear ? 20 : 0;
-}
+import {
+  normalizeText,
+  levenshtein,
+  matchLyric,
+  matchArtist,
+  scoreYear,
+  type LyricMatch,
+  type ArtistMatch,
+} from "./_core/scoring";
 
 function lyricPts(m: LyricMatch) { return m === "full" ? 10 : m === "partial" ? 5 : 0; }
 // artistPts uses High difficulty scale (100 pts full). primary_only = 75% = 75 pts.
