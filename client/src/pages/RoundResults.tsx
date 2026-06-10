@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useLocation, useParams } from "wouter";
 import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
@@ -63,6 +63,7 @@ export default function RoundResults() {
   const [result, setResult] = useState<RoundResult | null>(null);
   const [isAdvancing, setIsAdvancing] = useState(false);
   const [celebrationLevel, setCelebrationLevel] = useState<CelebrationLevel>(0);
+  const celebrationPlayed = useRef(false);
   const muted = localStorage.getItem("lyricpro_muted") === "true";
 
   const { data: room } = trpc.game.getRoom.useQuery(
@@ -91,15 +92,16 @@ export default function RoundResults() {
     }
   }, [roomCode]);
 
-  const handleNext = () => {
-    const cnt = result?.celebrationCount ?? result?.correctCount ?? 0;
+  // Celebration plays when results appear — not on the Next Round click.
+  useEffect(() => {
+    if (!result || celebrationPlayed.current) return;
+    celebrationPlayed.current = true;
+    const cnt = result.celebrationCount ?? result.correctCount ?? 0;
     const lvl = (cnt >= 4 ? 3 : cnt >= 3 ? 2 : cnt >= 2 ? 1 : 0) as CelebrationLevel;
-    if (lvl > 0) {
-      setCelebrationLevel(lvl);
-    } else {
-      advanceRound();
-    }
-  };
+    if (lvl > 0) setCelebrationLevel(lvl);
+  }, [result]);
+
+  const handleNext = () => { advanceRound(); };
 
   const advanceRound = () => {
     setIsAdvancing(true);
@@ -175,10 +177,7 @@ export default function RoundResults() {
       <Celebration
         level={celebrationLevel}
         muted={muted}
-        onComplete={() => {
-          setCelebrationLevel(0);
-          advanceRound();
-        }}
+        onComplete={() => setCelebrationLevel(0)}
       />
       {/* Header */}
       <div className="glass border-b border-border/50 sticky top-0 z-40">

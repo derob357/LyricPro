@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { render, screen, fireEvent } from "@testing-library/react";
 
 const navigate = vi.fn();
 vi.mock("wouter", async () => {
@@ -22,10 +22,11 @@ vi.mock("@/lib/trpc", () => ({
     },
   },
 }));
-// Celebration renders canvas/WebAudio — stub it out in jsdom
+// Celebration: props-capturing stub (replaces null mock so we can assert level)
+const celebrationProps = vi.hoisted(() => ({ last: null as { level: number } | null }));
 vi.mock("@/components/Celebration", () => ({
   __esModule: true,
-  default: () => null,
+  default: (props: { level: number }) => { celebrationProps.last = props; return null; },
 }));
 
 import RoundResults from "./RoundResults";
@@ -43,7 +44,12 @@ function seedResult(overrides: Record<string, unknown> = {}) {
 }
 
 describe("RoundResults score breakdown", () => {
-  beforeEach(() => { sessionStorage.clear(); navigate.mockClear(); nextRound.mutate.mockClear(); });
+  beforeEach(() => {
+    sessionStorage.clear();
+    navigate.mockClear();
+    nextRound.mutate.mockClear();
+    celebrationProps.last = null;
+  });
 
   it("shows the Lyric row on LOW difficulty (all four axes visible)", () => {
     seedResult({ difficulty: "low" });
@@ -89,5 +95,22 @@ describe("RoundResults score breakdown", () => {
     expect(screen.queryByText("Round Passed")).toBeNull();
     expect(screen.getByText(/Tough Round/i)).toBeTruthy();
     expect(screen.getAllByText("Song Title").length).toBeGreaterThanOrEqual(1);
+  });
+
+  it("celebration level is set on mount for a 4-correct round (no click needed)", () => {
+    seedResult({ celebrationCount: 4 });
+    render(<RoundResults />);
+    expect(celebrationProps.last?.level).toBe(3);
+  });
+
+  it("Next Round advances immediately (mutation fires on click)", () => {
+    seedResult({
+      celebrationCount: 0, total: 0, correctCount: 0,
+      lyricPoints: 0, titlePoints: 0, artistPoints: 0, yearPoints: 0,
+      lyricCorrect: false, titleCorrect: false, artistCorrect: false, newScore: 0,
+    });
+    render(<RoundResults />);
+    fireEvent.click(screen.getByRole("button", { name: /Next Round/i }));
+    expect(nextRound.mutate).toHaveBeenCalled();
   });
 });

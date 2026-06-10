@@ -10,6 +10,7 @@
  */
 
 import { useEffect, useRef, useCallback } from "react";
+import { getSharedAudioContext } from "@/lib/sharedAudio";
 
 export type CelebrationLevel = 0 | 1 | 2 | 3;
 
@@ -53,13 +54,6 @@ function randomColor(palette: string[]) {
 }
 
 // ── Web Audio helpers ─────────────────────────────────────────────────────────
-function createAudioContext(): AudioContext | null {
-  try {
-    return new (window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext)();
-  } catch {
-    return null;
-  }
-}
 
 /** Level 1: gentle ascending chime */
 function playChime(ctx: AudioContext) {
@@ -218,7 +212,10 @@ export default function Celebration({ level, onComplete, duration, muted }: Cele
   const animRef = useRef<number>(0);
   const particlesRef = useRef<Particle[]>([]);
   const startTimeRef = useRef<number>(0);
-  const audioCtxRef = useRef<AudioContext | null>(null);
+
+  const reducedMotion =
+    typeof window !== "undefined" &&
+    window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
 
   const defaultDuration = level === 1 ? 3000 : level === 2 ? 4000 : 5000;
   const totalDuration = duration ?? defaultDuration;
@@ -236,12 +233,9 @@ export default function Celebration({ level, onComplete, duration, muted }: Cele
 
   const playSound = useCallback(() => {
     if (muted) return;
-    if (!audioCtxRef.current) {
-      audioCtxRef.current = createAudioContext();
-    }
-    const ctx = audioCtxRef.current;
+    const ctx = getSharedAudioContext();
     if (!ctx) return;
-    if (ctx.state === "suspended") ctx.resume();
+    if (ctx.state === "suspended") ctx.resume().catch(() => {});
     if (level === 1) playChime(ctx);
     else if (level === 2) playApplause(ctx);
     else if (level === 3) playFanfare(ctx);
@@ -249,6 +243,13 @@ export default function Celebration({ level, onComplete, duration, muted }: Cele
 
   useEffect(() => {
     if (level === 0) return;
+
+    // Reduced motion: skip particles, still play sound, schedule onComplete.
+    if (reducedMotion) {
+      playSound();
+      const t = setTimeout(() => onComplete?.(), 800);
+      return () => clearTimeout(t);
+    }
 
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -337,12 +338,12 @@ export default function Celebration({ level, onComplete, duration, muted }: Cele
       cancelAnimationFrame(animRef.current);
       ctx2d.clearRect(0, 0, W, H);
     };
-  }, [level, totalDuration, playSound, dismiss]);
+  }, [level, totalDuration, playSound, dismiss, reducedMotion, onComplete]);
 
   if (level === 0) return null;
 
   // Level 3 = perfect round (all 4 correct), Level 2 = 3/4, Level 1 = 2/4
-  const label = level === 3 ? "🎆 Perfect!" : level === 2 ? "🎉 Nice!" : "✨ Not bad!";
+  const label = level === 3 ? "Perfect!" : level === 2 ? "Nice!" : "Not bad!";
 
   return (
     <div
