@@ -8,7 +8,7 @@ import { useAuth } from "@/_core/hooks/useAuth";
 import { toast } from "sonner";
 import {
   Check, X, ChevronRight, ExternalLink, Music, Instagram,
-  Youtube, Globe, Trophy, Flame, Zap, SkipForward, Home,
+  Youtube, Globe, Trophy, Flame, Zap, Home,
   MicVocal
 } from "lucide-react";
 import Celebration, { type CelebrationLevel } from "@/components/Celebration";
@@ -118,12 +118,13 @@ export default function RoundResults() {
   }
 
   const isLastRound = room && room.currentRound >= room.roundsTotal;
-  const passedRound = result.total === 0 && result.lyricPoints === 0 && !result.titlePoints && !result.artistPoints;
+  const zeroScore = result.total === 0;
   const diff = result.difficulty || room?.difficulty || "medium";
   const isHighDiff = diff === "high";
   const maxArtist = isHighDiff ? 100 : diff === "medium" ? 50 : 25;
   const maxTitle = isHighDiff ? 50 : diff === "medium" ? 50 : 25;
   const maxYear = isHighDiff ? 200 : diff === "medium" ? 100 : 50;
+  const maxLyric = isHighDiff ? 50 : diff === "medium" ? 50 : 25;
 
   // Always generate dynamic links from artist name + song title
   const artistQ = encodeURIComponent(result.correctArtist);
@@ -243,12 +244,13 @@ export default function RoundResults() {
               "from-transparent to-transparent"
             } pointer-events-none`} />
             <div className="relative flex flex-col sm:flex-row items-center justify-between gap-4">
-              {/* Points / passed-round group */}
+              {/* Points / zero-score group */}
               <div className="text-center sm:text-left">
-                {passedRound ? (
+                {zeroScore ? (
                   <>
-                    <SkipForward className="w-10 h-10 text-muted-foreground mx-auto sm:mx-0 mb-2" />
-                    <p className="text-muted-foreground font-medium">Round Passed</p>
+                    <MicVocal className="w-10 h-10 text-muted-foreground mx-auto sm:mx-0 mb-2" />
+                    <p className="text-foreground font-medium">Tough Round — no points this time.</p>
+                    <p className="text-muted-foreground text-sm mt-1">The next one's yours.</p>
                     {result.commentary && (
                       <p className="text-sm text-muted-foreground italic mt-2">{result.commentary}</p>
                     )}
@@ -334,14 +336,12 @@ export default function RoundResults() {
           <div className="glass rounded-2xl p-5">
             <h3 className="font-display font-semibold mb-4 text-foreground">Score Breakdown</h3>
             <div className="space-y-3">
-              {isHighDiff && (
-                <ScoreRow
-                  label="Lyric"
-                  correct={result.lyricCorrect}
-                  points={result.lyricPoints}
-                  maxPoints={50}
-                />
-              )}
+              <ScoreRow
+                label="Lyric"
+                correct={result.lyricCorrect}
+                points={result.lyricPoints}
+                maxPoints={maxLyric}
+              />
               <ScoreRow
                 label="Song Title"
                 correct={!!(result.titleCorrect)}
