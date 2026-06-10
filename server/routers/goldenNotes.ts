@@ -169,6 +169,7 @@ export const goldenNotesRouter = router({
   // idempotencyKey so the client can safely retry on network failure without
   // double-billing. The spend_extra_game transaction recorded here is what
   // checkGameEligibility later counts to widen the daily game limit.
+  // Implicit behavior: debit from purchasedBalance pool first (intentional design).
   purchaseExtraGame: protectedProcedure
     .input(z.object({ idempotencyKey: z.string().max(64).optional() }))
     .mutation(async ({ ctx, input }) => {

@@ -75,6 +75,10 @@ export default function AnimatedGnBalance({ value, className }: Props) {
         clearInterval(intervalRef.current);
         intervalRef.current = null;
       }
+      if (deltaTimerRef.current !== null) {
+        clearTimeout(deltaTimerRef.current);
+        deltaTimerRef.current = null;
+      }
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [value]);
