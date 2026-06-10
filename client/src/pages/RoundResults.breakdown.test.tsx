@@ -48,11 +48,34 @@ describe("RoundResults score breakdown", () => {
   it("shows the Lyric row on LOW difficulty (all four axes visible)", () => {
     seedResult({ difficulty: "low" });
     render(<RoundResults />);
-    // Score breakdown labels — several also appear in the Answer Reveal section below
+    // NOTE: getAllByText assertions below only prove the text exists somewhere in the DOM;
+    // Answer Reveal also renders these labels, so counts may be >= 2.
     expect(screen.getByText("Lyric")).toBeTruthy();
     expect(screen.getAllByText("Song Title").length).toBeGreaterThanOrEqual(1);
     expect(screen.getAllByText("Artist").length).toBeGreaterThanOrEqual(1);
     expect(screen.getAllByText("Release Year").length).toBeGreaterThanOrEqual(1);
+    // Assert the lyric denominator is wired: ScoreRow renders "/ {maxPoints}".
+    // On low difficulty lyric/title/artist all cap at 25, so "/ 25" appears 3 times.
+    expect(screen.getAllByText("/ 25").length).toBeGreaterThanOrEqual(1);
+  });
+
+  it("shows correct max denominators on HIGH difficulty", () => {
+    seedResult({
+      difficulty: "high",
+      lyricPoints: 50, titlePoints: 50, artistPoints: 100, yearPoints: 200,
+      total: 400, newScore: 400,
+    });
+    render(<RoundResults />);
+    // NOTE: getAllByText assertions below only prove the text exists somewhere in the DOM;
+    // Answer Reveal also contains these labels, so counts may be >= 2.
+    expect(screen.getAllByText("Lyric").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText("Artist").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText("Release Year").length).toBeGreaterThanOrEqual(1);
+    // ScoreRow renders "/ {maxPoints}" — assert each axis denominator for high difficulty.
+    // Lyric and title both cap at 50 on high, so "/ 50" appears twice; use getAllByText.
+    expect(screen.getAllByText("/ 50").length).toBeGreaterThanOrEqual(1);  // lyric+title max on high
+    expect(screen.getByText("/ 100")).toBeTruthy();                        // artist max on high
+    expect(screen.getByText("/ 200")).toBeTruthy();                        // year max on high
   });
 
   it("zero-score round shows encouraging copy, not 'Round Passed'", () => {

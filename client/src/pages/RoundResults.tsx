@@ -122,9 +122,9 @@ export default function RoundResults() {
   const diff = result.difficulty || room?.difficulty || "medium";
   const isHighDiff = diff === "high";
   const maxArtist = isHighDiff ? 100 : diff === "medium" ? 50 : 25;
-  const maxTitle = isHighDiff ? 50 : diff === "medium" ? 50 : 25;
+  const maxTitle = diff === "low" ? 25 : 50;   // low:25, medium/high:50
   const maxYear = isHighDiff ? 200 : diff === "medium" ? 100 : 50;
-  const maxLyric = isHighDiff ? 50 : diff === "medium" ? 50 : 25;
+  const maxLyric = diff === "low" ? 25 : 50;   // low:25, medium/high:50
 
   // Always generate dynamic links from artist name + song title
   const artistQ = encodeURIComponent(result.correctArtist);
