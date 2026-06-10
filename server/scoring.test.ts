@@ -263,4 +263,7 @@ describe("resolveMcVariant (display-row drift realignment)", () => {
     expect(resolveMcVariant(variants[0], variants, "some wrong distractor"))
       .toBe(variants[0]);
   });
+  it("empty submitted answer keeps the played variant", () => {
+    expect(resolveMcVariant(variants[0], variants, "")).toBe(variants[0]);
+  });
 });

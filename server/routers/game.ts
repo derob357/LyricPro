@@ -951,7 +951,7 @@ export const gameRouter = router({
         lyricPoints, titlePoints, artistPoints, yearPoints,
         speedBonus, streakBonus, total: 0, newScore: 0, newStreak: 0,
         streakInsuranceUsed: false, commentary: null as string | null,
-        correctLyric: playedVariant.answer, correctTitle: song.title,
+        correctLyric: effectiveVariant.answer, correctTitle: song.title,
         correctArtist: song.artistName, correctYear: song.releaseYear, difficulty: diff,
         passUsed: input.passUsed,
       };
