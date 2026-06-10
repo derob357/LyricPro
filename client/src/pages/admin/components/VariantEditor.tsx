@@ -11,6 +11,7 @@ export interface Variant {
   answer: string;
   distractors: string[];
   sectionType: string;
+  difficulty?: "low" | "medium" | "high";
 }
 
 export function VariantEditor({
@@ -45,6 +46,13 @@ export function VariantEditor({
   );
 }
 
+// Patch type matches the server variantPatchSchema:
+// difficulty: null = clear to Inherit; undefined = no change; value = set.
+// Omit difficulty from Partial<Variant> before re-adding so null is a valid value.
+type VariantPatch = Omit<Partial<Variant>, "difficulty"> & {
+  difficulty?: "low" | "medium" | "high" | null;
+};
+
 function VariantCard({
   index,
   variant,
@@ -53,7 +61,7 @@ function VariantCard({
 }: {
   index: number;
   variant: Variant;
-  onSave: (p: Partial<Variant>) => void;
+  onSave: (p: VariantPatch) => void;
   onDelete: () => void;
 }) {
   const [draft, setDraft] = useState(variant);
@@ -63,6 +71,10 @@ function VariantCard({
   const [distractorsText, setDistractorsText] = useState(
     variant.distractors.join(", "),
   );
+  // difficultyValue: "" = Inherit (unset), or "low"/"medium"/"high"
+  const [difficultyValue, setDifficultyValue] = useState<string>(
+    variant.difficulty ?? "",
+  );
   const parsedDistractors = distractorsText
     .split(",")
     .map((s) => s.trim())
@@ -71,7 +83,27 @@ function VariantCard({
     draft.prompt !== variant.prompt ||
     draft.answer !== variant.answer ||
     draft.sectionType !== variant.sectionType ||
-    JSON.stringify(parsedDistractors) !== JSON.stringify(variant.distractors);
+    JSON.stringify(parsedDistractors) !== JSON.stringify(variant.distractors) ||
+    difficultyValue !== (variant.difficulty ?? "");
+
+  function handleSave() {
+    // difficulty patch semantics:
+    //   ""        → null  (clear the tag, back to Inherit / heuristic)
+    //   "low" etc → value (set explicitly)
+    const difficultyPatch: "low" | "medium" | "high" | null =
+      difficultyValue === ""
+        ? null
+        : (difficultyValue as "low" | "medium" | "high");
+    const patch: VariantPatch = {
+      prompt: draft.prompt,
+      answer: draft.answer,
+      sectionType: draft.sectionType,
+      distractors: parsedDistractors,
+      difficulty: difficultyPatch,
+    };
+    onSave(patch);
+  }
+
   return (
     <Card className="p-4 space-y-3">
       <div className="flex items-center justify-between">
@@ -102,12 +134,31 @@ function VariantCard({
           value={distractorsText}
           onChange={(e) => setDistractorsText(e.target.value)}
         />
+        <label className="text-xs text-muted-foreground">Difficulty</label>
+        <select
+          data-testid={`variant-difficulty-${index}`}
+          aria-label={`Difficulty for variant ${index + 1}`}
+          className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+          value={difficultyValue}
+          onChange={(e) => setDifficultyValue(e.target.value)}
+        >
+          <option value="">Inherit (use song default)</option>
+          <option value="low">Low</option>
+          <option value="medium">Medium</option>
+          <option value="high">High</option>
+        </select>
+      </div>
+      <div className="mt-2 text-sm text-muted-foreground">
+        <span className="uppercase text-xs tracking-wide">Preview</span>
+        <p className="text-foreground font-medium">
+          &ldquo;{draft.prompt}<span className="text-accent">...</span>&rdquo; &rarr; <span className="text-primary">{draft.answer}</span>
+        </p>
       </div>
       <div className="flex justify-end">
         <Button
           size="sm"
           disabled={!dirty}
-          onClick={() => onSave({ ...draft, distractors: parsedDistractors })}
+          onClick={handleSave}
           className="gap-2"
         >
           <Save className="w-3 h-3" /> Save variant

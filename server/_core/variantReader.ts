@@ -30,11 +30,16 @@
 
 import type { Song } from "../../drizzle/schema";
 
+// NOTE(difficulty): per-variant difficulty lives in this jsonb (the layer
+// gameplay reads by default). gameplay_items.difficulty (layer 3) is NOT
+// synced here — layer 3 is flag-off with a known drift issue; sync belongs
+// to the Phase 5c effort.
 export type Variant = {
   prompt: string;
   answer: string;
   distractors: string[];
   sectionType: string;
+  difficulty?: "low" | "medium" | "high";
 };
 
 // Pure, sync legacy reader — same semantics as the old `variantsOf` helper

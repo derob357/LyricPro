@@ -5,12 +5,16 @@ import { getDb } from "../db";
 import { songs } from "../../drizzle/schema";
 import { recordAdminAction } from "../_core/audit";
 import { TRPCError } from "@trpc/server";
+import { normalizeLyricText, validateLyricFields } from "../_core/lyricNormalize";
 
+// difficulty: z.null() means "clear the tag (Inherit)"; z.undefined means "no change".
+// JSON serialization drops undefined keys, so we use null as the explicit clear sentinel.
 const variantPatchSchema = z.object({
   prompt: z.string().optional(),
   answer: z.string().optional(),
   distractors: z.array(z.string()).optional(),
   sectionType: z.string().optional(),
+  difficulty: z.enum(["low", "medium", "high"]).nullable().optional(),
 });
 
 export const adminVariantsRouter = router({
@@ -31,7 +35,33 @@ export const adminVariantsRouter = router({
           throw new TRPCError({ code: "BAD_REQUEST", message: "variantIndex out of range" });
         }
         const before = variants[input.variantIndex];
-        const after = { ...before, ...input.patch };
+        // Normalize text fields before writing.
+        const normalizedPatch: Record<string, unknown> = { ...input.patch };
+        if (typeof normalizedPatch.prompt === "string") {
+          normalizedPatch.prompt = normalizeLyricText(normalizedPatch.prompt as string);
+        }
+        if (typeof normalizedPatch.answer === "string") {
+          normalizedPatch.answer = normalizeLyricText(normalizedPatch.answer as string);
+        }
+        if (Array.isArray(normalizedPatch.distractors)) {
+          normalizedPatch.distractors = (normalizedPatch.distractors as string[]).map(normalizeLyricText);
+        }
+        // Validate the resolved prompt + answer.
+        const resolvedPrompt = typeof normalizedPatch.prompt === "string" ? normalizedPatch.prompt : before.prompt;
+        const resolvedAnswer = typeof normalizedPatch.answer === "string" ? normalizedPatch.answer : before.answer;
+        const validation = validateLyricFields(resolvedPrompt, resolvedAnswer);
+        if (!validation.ok) {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: `Lyric validation failed: ${validation.issues.join(" ")}`,
+          });
+        }
+        // Build after object: spread before + normalizedPatch, then handle difficulty null (clear).
+        const after = { ...before, ...normalizedPatch } as typeof before;
+        if (normalizedPatch.difficulty === null) {
+          // null means "clear the explicit tag" (back to Inherit / heuristic).
+          delete after.difficulty;
+        }
         variants[input.variantIndex] = after;
         await tx.update(songs).set({ lyricVariants: variants, updatedAt: new Date() })
           .where(eq(songs.id, input.songId));
@@ -59,12 +89,31 @@ export const adminVariantsRouter = router({
         const [song] = await tx.select().from(songs).where(eq(songs.id, input.songId)).limit(1);
         if (!song) throw new TRPCError({ code: "NOT_FOUND" });
         const variants = Array.isArray(song.lyricVariants) ? [...song.lyricVariants] : [];
-        const newVariant = {
-          prompt: input.variant.prompt!,
-          answer: input.variant.answer!,
-          distractors: input.variant.distractors ?? [],
+        const normalizedPrompt = normalizeLyricText(input.variant.prompt!);
+        const normalizedAnswer = normalizeLyricText(input.variant.answer!);
+        const validation = validateLyricFields(normalizedPrompt, normalizedAnswer);
+        if (!validation.ok) {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: `Lyric validation failed: ${validation.issues.join(" ")}`,
+          });
+        }
+        const newVariant: {
+          prompt: string;
+          answer: string;
+          distractors: string[];
+          sectionType: string;
+          difficulty?: "low" | "medium" | "high";
+        } = {
+          prompt: normalizedPrompt,
+          answer: normalizedAnswer,
+          distractors: (input.variant.distractors ?? []).map(normalizeLyricText),
           sectionType: input.variant.sectionType!,
         };
+        // null means "no explicit tag" for create — omit the key entirely.
+        if (input.variant.difficulty && input.variant.difficulty !== null) {
+          newVariant.difficulty = input.variant.difficulty;
+        }
         variants.push(newVariant);
         await tx.update(songs).set({ lyricVariants: variants, updatedAt: new Date() })
           .where(eq(songs.id, input.songId));
