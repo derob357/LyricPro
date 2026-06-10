@@ -10,6 +10,7 @@ import GameSetup from "./pages/GameSetup";
 import Lobby from "./pages/Lobby";
 import VideoLobby from "./pages/VideoLobby";
 import Gameplay from "./pages/Gameplay";
+import MultiplayerGameplay from "./pages/MultiplayerGameplay";
 import RoundResults from "./pages/RoundResults";
 import FinalResults from "./pages/FinalResults";
 import Profile from "./pages/Profile";
@@ -57,6 +58,7 @@ function Router() {
       <Route path="/lobby/live/:inviteCode" component={VideoLobby} />
       <Route path="/lobby/:roomCode" component={Lobby} />
       <Route path="/play/:roomCode" component={GameplayWithKey} />
+      <Route path="/match/:roomCode" component={MultiplayerGameplay} />
       <Route path="/results/round/:roomCode" component={RoundResults} />
       <Route path="/results/final/:roomCode" component={FinalResults} />
       <Route path="/profile" component={Profile} />
