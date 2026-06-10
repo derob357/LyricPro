@@ -35,6 +35,7 @@ import {
   type ArtistMatch,
 } from "../_core/scoring";
 import { selectSongForRoom } from "../_core/songSelection";
+import { playableVariantIndexes } from "../_core/variantPlayability";
 
 // Hashes a userId with USER_HASH_PEPPER for storage in song_displays.user_id_hashed.
 // Exported for test coverage. Uses a fixed fallback pepper in dev when the env
@@ -79,39 +80,12 @@ export function generateInviteCode(): string {
 //     sectionType is not consumed at runtime.)
 type SongVariant = Variant;
 
-// A variant is playable iff:
-//   - prompt is non-empty after trim (else the player sees a hollow "...")
-//     — this rule applies at every difficulty
-//   - prompt + answer combined is at least 6 words
-//     — this rule applies on Medium only. Low gets the short iconic hooks
-//       ("Eye of the Tiger", "Whoomp! There it is") because that's the
-//       point of Easy — popular, instantly-recognizable lines. Hard is
-//       length-agnostic too since it's about depth, not friendliness.
+// Variant playability is now handled by the shared helper in
+// server/_core/variantPlayability.ts.  That module preserves the exact
+// legacy heuristic (medium requires ≥6 combined words; low/high are
+// length-agnostic) and adds support for explicit per-variant difficulty
+// tags (tagged === requested wins; empty-set fallback returns all indexes).
 // Difficulty type is imported from ../_core/scoring
-
-function isVariantPlayable(v: SongVariant, difficulty: Difficulty): boolean {
-  const prompt = String(v?.prompt ?? "").trim();
-  const answer = String(v?.answer ?? "").trim();
-  if (!prompt) return false;
-  if (difficulty !== "medium") return true;
-  const lineWords = (prompt + " " + answer).trim().split(/\s+/).filter(Boolean).length;
-  return lineWords >= 6;
-}
-
-// Returns the ORIGINAL indices (within the resolved variants array) that
-// pass isVariantPlayable for the given difficulty. Original indices matter
-// because song_displays stores variantIndex, and submitAnswer / useHint
-// resolve scoring by that index back into the same variants array.
-function playableVariantIndicesFrom(
-  variants: SongVariant[],
-  difficulty: Difficulty,
-): number[] {
-  const out: number[] = [];
-  for (let i = 0; i < variants.length; i++) {
-    if (isVariantPlayable(variants[i], difficulty)) out.push(i);
-  }
-  return out;
-}
 
 // ── Router ───────────────────────────────────────────────────────────────────
 export const gameRouter = router({
@@ -519,7 +493,10 @@ export const gameRouter = router({
       // so song_displays stays scoring-compatible. For customPack songs
       // that slipped past the standard candidate filter, fall back to [0]
       // as a last resort.
-      const playableIndices = playableVariantIndicesFrom(allVariants, room.difficulty as Difficulty);
+      const playableIndices = playableVariantIndexes(allVariants, room.difficulty as Difficulty);
+      // playableVariantIndexes guarantees a non-empty result (falls back to
+      // all indexes when the filter would be empty), but keep [0] safety net
+      // for customPack songs that slipped past the standard candidate filter.
       const candidateIndices = playableIndices.length > 0 ? playableIndices : [0];
       const dedupCutoff = new Date(Date.now() - 10 * 24 * 60 * 60 * 1000);
       let seenVariantIndices = new Set<number>();
