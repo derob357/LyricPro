@@ -347,25 +347,6 @@ export default function SignIn() {
                     maxLength={128}
                   />
                 </div>
-                {isSignUp && (
-                  <label className="flex items-start gap-2 cursor-pointer">
-                    <Checkbox
-                      data-testid="signup-optin"
-                      checked={marketingOptIn}
-                      onCheckedChange={(v) => {
-                        const on = v === true;
-                        setMarketingOptIn(on);
-                        if (on) localStorage.setItem("lyricpro_pending_optin", "signup-form");
-                        else localStorage.removeItem("lyricpro_pending_optin");
-                      }}
-                      className="mt-0.5"
-                    />
-                    <span className="text-xs text-muted-foreground leading-snug">
-                      Yes, I'd like to receive tips, game updates, and promotions from LyricPro by email.
-                      Unsubscribe anytime. <a href="/privacy" className="underline hover:text-foreground">Privacy Policy</a>
-                    </span>
-                  </label>
-                )}
                 <Button
                   type="submit"
                   disabled={loading || !email || !password}

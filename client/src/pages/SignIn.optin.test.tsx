@@ -115,4 +115,17 @@ describe("SignIn — marketing opt-in checkbox", () => {
 
     expect(screen.queryByTestId("signup-optin")).toBeNull();
   });
+
+  it("does NOT render the opt-in checkbox in password mode even with ?mode=signup", async () => {
+    const { useSearch } = await import("wouter");
+    vi.mocked(useSearch).mockReturnValue("?mode=signup");
+
+    render(<SignIn />);
+
+    // Switch to password tab
+    const passwordTab = screen.getByRole("button", { name: /password/i });
+    fireEvent.click(passwordTab);
+
+    expect(screen.queryByTestId("signup-optin")).toBeNull();
+  });
 });
