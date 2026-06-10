@@ -15,6 +15,20 @@ if (typeof window !== "undefined" && !window.IntersectionObserver) {
   });
 }
 
+// Polyfill ResizeObserver for Radix UI components (e.g. Checkbox, Select)
+// that use @radix-ui/react-use-size internally.
+if (typeof window !== "undefined" && !window.ResizeObserver) {
+  class MockResizeObserver {
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+  }
+  Object.defineProperty(window, "ResizeObserver", {
+    value: MockResizeObserver,
+    writable: true,
+  });
+}
+
 class InMemoryStorage implements Storage {
   private store = new Map<string, string>();
 
