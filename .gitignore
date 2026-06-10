@@ -156,3 +156,7 @@ scripts/*.report.json
 
 # Claude Code local (machine-specific) settings — shared settings.json is committed
 .claude/settings.local.json
+
+# Local-only analysis docs (not for the remote)
+docs/gap-analysis-game-economy-brief.md
+docs/gap-analysis-game-economy-brief.pdf
