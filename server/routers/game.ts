@@ -8,9 +8,11 @@ import { getDb } from "../db";
 import {
   songs, gameRooms, roomPlayers, teams, gameSessions, roundResults,
   guestSessions, leaderboardEntries, artistMetadata, users,
-  songDisplays,
+  songDisplays, goldenNoteBalances,
 } from "../../drizzle/schema";
 import { spendGoldenNotes } from "../_core/goldenNotesLedger";
+import { escrowStake, resolveRoundStake, settleStake } from "../_core/stakeEngine";
+import { clampAnte } from "../_core/stakeMath";
 import { nanoid } from "nanoid";
 import {
   variantsForSong,
@@ -152,6 +154,7 @@ export const gameRouter = router({
       explicitFilter: z.boolean().default(false),
       guestToken: z.string().optional(),
       streakInsurance: z.boolean().default(false),
+      ante: z.number().int().min(0).max(1000).default(0),
     }))
     .mutation(async ({ input, ctx }) => {
       const rlKey = ctx.user?.id ?? input.guestToken ?? ctx.req.ip ?? "anon";
@@ -234,6 +237,36 @@ export const gameRouter = router({
         isReady: input.mode === "solo",
         isActive: true,
       });
+
+      // ── Ante escrow (solo, signed-in only) ─────────────────────────────────
+      // Guests and multiplayer ignore ante entirely. Escrow MUST happen after the
+      // room + roomPlayers rows are committed so the roomId is known and the
+      // gn_stakes unique index (roomId, userId) has something to reference.
+      if (input.ante > 0 && input.mode === "solo" && ctx.user?.id) {
+        try {
+          await db.transaction(async (tx) => {
+            // Read earnedBalance under FOR UPDATE so clampAnte sees the live
+            // value, not a stale snapshot. Silent clamp: if earned balance has
+            // dropped below the requested ante since the UI loaded, we just
+            // stake less (or nothing) rather than blocking game start.
+            const [bal] = await tx
+              .select({ earnedBalance: goldenNoteBalances.earnedBalance })
+              .from(goldenNoteBalances)
+              .where(eq(goldenNoteBalances.userId, ctx.user!.id))
+              .for("update");
+            const clamped = clampAnte(input.ante, bal?.earnedBalance ?? 0);
+            if (clamped <= 0) return; // earned balance too low — game proceeds unstaked
+            await escrowStake(tx, ctx.user!.id, room.id, clamped);
+          });
+        } catch (err) {
+          // Velocity-cap errors (and any other escrowStake failures) must abort
+          // room creation with BAD_REQUEST so the client can surface the message.
+          if (err instanceof Error) {
+            throw new TRPCError({ code: "BAD_REQUEST", message: err.message });
+          }
+          throw err;
+        }
+      }
 
       return { roomCode, roomId: room.id };
     }),
@@ -879,6 +912,19 @@ export const gameRouter = router({
           streakInsuranceUsed,
         });
 
+        // ── Stake resolution ──────────────────────────────────────────────
+        // ORDERING: resolveRoundStake MUST be called strictly AFTER the
+        // roundResults insert above has succeeded. That insert carries the
+        // unique index round_results_room_round_player_uq — a retried or
+        // duplicate submission throws 23505 there and aborts BEFORE we reach
+        // this call. The burn inside resolveRoundStake is NOT idempotent at
+        // the stake level (only the win credit is); this ordering is the only
+        // duplicate-submission guard for stake burns.
+        let stakeLine: Awaited<ReturnType<typeof resolveRoundStake>> = null;
+        if (room.mode === "solo" && userId) {
+          stakeLine = await resolveRoundStake(db, room.id, userId, correctCount, room.currentRound);
+        }
+
         // ── Commentary (fire-and-forget fetch, best-effort) ──────────────
         let commentary: string | null = null;
         try {
@@ -935,6 +981,7 @@ export const gameRouter = router({
           difficulty: diff,
           passUsed: input.passUsed,
           commentary,
+          stake: stakeLine,
         };
       }
 
@@ -947,6 +994,7 @@ export const gameRouter = router({
         correctLyric: effectiveVariant.answer, correctTitle: song.title,
         correctArtist: song.artistName, correctYear: song.releaseYear, difficulty: diff,
         passUsed: input.passUsed,
+        stake: null as Awaited<ReturnType<typeof resolveRoundStake>>,
       };
     }),
 
@@ -1117,6 +1165,14 @@ export const gameRouter = router({
               console.warn("[playerProfile] compute failed for user", p.userId, err),
             );
           }
+        }
+
+        // Settle solo stakes for signed-in players (refund staked - burned).
+        // `players` is the same collection used by the leaderboard loop above.
+        // settleStake is idempotent: the UPDATE only fires on state = 'active',
+        // so a second call (e.g. cron sweep racing game-over) dedupes cleanly.
+        for (const p of players) {
+          if (p.userId) await settleStake(db, room.id, p.userId);
         }
       }
 
