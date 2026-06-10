@@ -955,5 +955,5 @@ Summarize: audit-script counts (Task 3), any mock-surface reconciliations (Task 
 
 - Spec coverage: scoring both directions (Tasks 1-3), breakdown rows (4), zero-score copy (4), difficulty copy (5), auto-advance (6), celebration + D5 audio (7). ✔
 - Engine point values untouched (user decision: copy matches engine). ✔
-- `answerMethod` reuses the existing enum field — no schema/DB change anywhere in this plan. ✔
+- ~~`answerMethod` reuses the existing enum field — no schema/DB change anywhere in this plan.~~ **SUPERSEDED during execution:** `answer_method` is a Postgres enum, so Task 2 added value `"mc"` via hand-written migration `drizzle/0018_answer_method_mc.sql` + `scripts/apply-answer-method-mc-migration.mjs`. **Applied to the shared Supabase DB on 2026-06-10** (additive, idempotent) — deploy order is therefore already satisfied. ✔
 - Multiplayer (`matchEngine.ts`) is NOT modified; it may adopt `mcMode` later — out of scope per spec. ✔
