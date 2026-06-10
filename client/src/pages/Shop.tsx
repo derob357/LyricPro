@@ -5,7 +5,7 @@ import { trpc } from "@/lib/trpc";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
-import { Music2, Music, Gift, History, Check, Globe } from "lucide-react";
+import { Music2, Music, Gift, History, Globe, Trophy } from "lucide-react";
 import { CAN_PURCHASE } from "@/lib/platform";
 import { SubscriptionTierSelector } from "@/components/SubscriptionTierSelector";
 
@@ -31,11 +31,22 @@ export default function Shop() {
     enabled: !loading && isAuthenticated,
   });
 
+  const utils = trpc.useUtils();
+
   const checkoutMutation = trpc.goldenNotes.createPurchaseCheckout.useMutation({
     onSuccess: (data) => {
       if (data.checkoutUrl) {
         window.location.href = data.checkoutUrl;
       }
+    },
+    onError: (err) => toast.error(err.message),
+  });
+
+  const extraGameMutation = trpc.goldenNotes.purchaseExtraGame.useMutation({
+    onSuccess: () => {
+      utils.goldenNotes.getMyBalance.invalidate();
+      utils.goldenNotes.getTransactions.invalidate();
+      toast.success("Extra game added — your next game won't count against today's limit.");
     },
     onError: (err) => toast.error(err.message),
   });
@@ -294,78 +305,83 @@ export default function Shop() {
           Spend Golden Notes
         </h2>
         <div className="space-y-3 mb-12">
-          {[
-            {
-              icon: <Music className="w-5 h-5 text-amber-400" />,
-              title: "Extra Game",
-              description: "Play one more round after your daily limit",
-              cost: 1,
-            },
-            {
-              icon: <Check className="w-5 h-5 text-amber-400" />,
-              title: "Advanced Mode (30 min)",
-              description: "Unlock harder songs and tighter timers",
-              cost: 5,
-            },
-            {
-              icon: <Check className="w-5 h-5 text-amber-400" />,
-              title: "Advanced Mode (Full Day)",
-              description: "All-day access to the advanced song pool",
-              cost: 20,
-            },
-            {
-              icon: <Music2 className="w-5 h-5 text-amber-400" />,
-              title: "Tournament Entry (Small)",
-              description: "Compete for prizes against other players",
-              cost: 5,
-            },
-            {
-              icon: <Music2 className="w-5 h-5 text-amber-400" />,
-              title: "Tournament Entry (Medium)",
-              description: "Larger field, bigger prize pool",
-              cost: 25,
-            },
-            {
-              icon: <Music2 className="w-5 h-5 text-amber-400" />,
-              title: "Tournament Entry (Large)",
-              description: "The biggest stage with the biggest rewards",
-              cost: 100,
-            },
-            {
-              icon: <Gift className="w-5 h-5 text-amber-400" />,
-              title: "Gift to a Friend",
-              description: "Send Golden Notes to someone you know",
-              cost: null,
-            },
-          ].map((item) => (
-            <div
-              key={item.title}
-              className="glass rounded-xl border border-border/50 p-4 flex items-center gap-4 transition-all duration-200 hover:border-amber-400/30"
-            >
-              <div className="w-10 h-10 rounded-lg bg-amber-500/10 border border-amber-500/20 flex items-center justify-center shrink-0">
-                {item.icon}
+          {/* Extra Game — real buy button, 1 GN, widens the daily play limit */}
+          <div className="glass rounded-xl border border-border/50 p-4 flex items-center gap-4 transition-all duration-200 hover:border-amber-400/30">
+            <div className="w-10 h-10 rounded-lg bg-amber-500/10 border border-amber-500/20 flex items-center justify-center shrink-0">
+              <Music className="w-5 h-5 text-amber-400" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="font-display font-semibold text-foreground text-sm">
+                Extra Game
               </div>
-              <div className="flex-1 min-w-0">
-                <div className="font-display font-semibold text-foreground text-sm">
-                  {item.title}
-                </div>
-                <div className="text-xs text-muted-foreground truncate">
-                  {item.description}
-                </div>
+              <div className="text-xs text-muted-foreground truncate">
+                Play one more game after your daily limit — 1 GN
               </div>
-              <div className="text-right shrink-0">
-                {item.cost !== null ? (
-                  <span className="font-display font-bold text-amber-400 text-sm">
-                    {item.cost} 🎵
-                  </span>
-                ) : (
-                  <span className="text-xs text-muted-foreground italic">
-                    Coming soon
-                  </span>
-                )}
+              {balance < 1 && (
+                <div className="text-xs text-destructive mt-0.5">
+                  Not enough Golden Notes
+                </div>
+              )}
+            </div>
+            <div className="shrink-0">
+              <Button
+                size="sm"
+                className="bg-amber-500 text-black font-bold hover:bg-amber-400 transition-colors"
+                disabled={balance < 1 || extraGameMutation.isPending}
+                onClick={() =>
+                  extraGameMutation.mutate({
+                    idempotencyKey: crypto.randomUUID(),
+                  })
+                }
+              >
+                {extraGameMutation.isPending ? "Buying…" : "Buy — 1 GN"}
+              </Button>
+            </div>
+          </div>
+
+          {/* Tournament Entry — navigation card; join + pay flow lives on /tournaments */}
+          <div className="glass rounded-xl border border-border/50 p-4 flex items-center gap-4 transition-all duration-200 hover:border-amber-400/30">
+            <div className="w-10 h-10 rounded-lg bg-amber-500/10 border border-amber-500/20 flex items-center justify-center shrink-0">
+              <Trophy className="w-5 h-5 text-amber-400" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="font-display font-semibold text-foreground text-sm">
+                Tournament Entry — 5 to 100 GN
+              </div>
+              <div className="text-xs text-muted-foreground truncate">
+                Join from the Tournaments page — entry cost varies by event
               </div>
             </div>
-          ))}
+            <div className="shrink-0">
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => navigate("/tournaments")}
+              >
+                Browse Tournaments
+              </Button>
+            </div>
+          </div>
+
+          {/* Gifting — coming soon */}
+          <div className="glass rounded-xl border border-border/50 p-4 flex items-center gap-4 transition-all duration-200 hover:border-amber-400/30">
+            <div className="w-10 h-10 rounded-lg bg-amber-500/10 border border-amber-500/20 flex items-center justify-center shrink-0">
+              <Gift className="w-5 h-5 text-amber-400" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="font-display font-semibold text-foreground text-sm">
+                Gift to a Friend
+              </div>
+              <div className="text-xs text-muted-foreground truncate">
+                Send Golden Notes to someone you know
+              </div>
+            </div>
+            <div className="text-right shrink-0">
+              <span className="text-xs text-muted-foreground italic">
+                Coming soon
+              </span>
+            </div>
+          </div>
         </div>
 
         {/* ── Recent activity ── */}

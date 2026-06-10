@@ -1,6 +1,6 @@
 import { getDb } from "../db";
-import { subscriptions, gameSessions } from "../../drizzle/schema";
-import { eq, and, gte } from "drizzle-orm";
+import { subscriptions, gameSessions, goldenNoteTransactions } from "../../drizzle/schema";
+import { eq, and, gte, sql } from "drizzle-orm";
 import { TRPCError } from "@trpc/server";
 
 const FREE_GAMES_LIMIT = 2;
@@ -36,7 +36,7 @@ export async function checkGameEligibility(
 
   // Free play (entry fee = 0)
   if (!subscription || subscription.tier === "free") {
-    // Check free game limit
+    // Check free game limit — daily window (today since midnight UTC-local).
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
@@ -52,7 +52,29 @@ export async function checkGameEligibility(
 
     const freeGamesPlayedToday = todayGames.length;
 
-    if (freeGamesPlayedToday >= FREE_GAMES_LIMIT) {
+    // Widen the daily allowance by the number of spend_extra_game transactions
+    // purchased within THE SAME daily window this limit uses (midnight → now).
+    // Window alignment is critical: if the limit resets at midnight, extra-game
+    // credits must also be counted from midnight — counting them lifetime would
+    // let a single old purchase extend the limit indefinitely, and counting them
+    // from a different window (e.g. 24 h rolling) would create a mismatch where
+    // a purchase made yesterday doesn't help a midnight-reset limit today.
+    const extraGamesRows = await db
+      .select({ n: sql<number>`count(*)::int` })
+      .from(goldenNoteTransactions)
+      .where(
+        and(
+          eq(goldenNoteTransactions.userId, userId),
+          eq(goldenNoteTransactions.kind, "spend_extra_game"),
+          gte(goldenNoteTransactions.createdAt, today),
+        )
+      );
+    const extraGamesToday = extraGamesRows[0]?.n ?? 0;
+
+    // Effective daily allowance = base free limit + extra games purchased today.
+    const dailyAllowance = FREE_GAMES_LIMIT + extraGamesToday;
+
+    if (freeGamesPlayedToday >= dailyAllowance) {
       throw new TRPCError({
         code: "FORBIDDEN",
         message: `You've reached your free game limit (${FREE_GAMES_LIMIT} per day). Upgrade to Player tier ($6.99/mo) for unlimited play.`,
