@@ -8,7 +8,7 @@ import { Label } from "@/components/ui/label";
 import { trpc } from "@/lib/trpc";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { toast } from "sonner";
-import { ArrowLeft, Users, User, UsersRound, Video, Wifi, Clock, Layers, BarChart3, Music, Music2, Calendar, ChevronRight, ChevronDown, Mic, Star, Crown, Trophy, LogOut } from "lucide-react";
+import { ArrowLeft, Users, User, UsersRound, Video, Wifi, Clock, Layers, BarChart3, Music, Music2, Calendar, ChevronRight, ChevronDown, Mic, Star, Crown, Trophy, LogOut, Coins, Plus, Minus } from "lucide-react";
 import { getLoginUrl, getSignUpUrl } from "@/const";
 import type { GameMode, Difficulty } from "@/contexts/GameContext";
 
@@ -84,6 +84,27 @@ export default function GameSetup() {
 
     hasHydratedRef.current = true;
   }, [isAuthenticated, serverPrefs, prefsLoading]);
+
+  // Ante stepper (solo + authenticated only): fetch earned balance to compute max stake.
+  const { data: balanceData } = trpc.goldenNotes.getMyBalance.useQuery(
+    undefined,
+    { enabled: isAuthenticated }
+  );
+  const earnedBalance = balanceData?.earnedBalance ?? 0;
+  const maxAnte = Math.floor(earnedBalance / 25) * 25;
+
+  // ante state: null until balance loads (defaults to min(50, maxAnte) once loaded).
+  const [ante, setAnte] = useState<number | null>(null);
+
+  // Initialize ante from balance once data arrives and state is still null.
+  useEffect(() => {
+    if (ante === null && balanceData !== undefined) {
+      setAnte(Math.min(50, maxAnte));
+    }
+  }, [balanceData, maxAnte]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Effective ante used in the payload and UI display.
+  const effectiveAnte = ante ?? Math.min(50, maxAnte);
 
   const savePrefsMutation = trpc.game.saveGamePrefs.useMutation();
 
@@ -167,6 +188,7 @@ export default function GameSetup() {
       rounds,
       explicitFilter,
       streakInsurance,
+      ante: mode === "solo" && isAuthenticated ? effectiveAnte : 0,
     });
   };
 
@@ -500,6 +522,52 @@ export default function GameSetup() {
             </section>
           )}
 
+          {/* Ante — stake earned Golden Notes on this game (solo, signed-in) */}
+          {isAuthenticated && mode === "solo" && (
+            <section className="glass rounded-xl p-4">
+              <div className="flex items-center justify-between gap-4 flex-wrap">
+                <div>
+                  <h3 className="font-display font-semibold flex items-center gap-2">
+                    <Coins className="w-4 h-4 text-yellow-400" /> Ante
+                  </h3>
+                  <p className="text-muted-foreground text-xs mt-1">
+                    Stake Golden Notes: win a round (3+ of 4 correct) +25, lose a round −25 from your stake.
+                    Unused stake comes back at the end. Stakeable: {earnedBalance}
+                  </p>
+                </div>
+                <div className="flex items-center gap-3">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="icon"
+                    data-testid="ante-down"
+                    onClick={() => setAnte(a => Math.max(0, (a ?? effectiveAnte) - 25))}
+                  >
+                    <Minus className="w-4 h-4" />
+                  </Button>
+                  <span
+                    data-testid="ante-value"
+                    className="font-display font-bold text-xl text-yellow-400 w-12 text-center"
+                  >
+                    {effectiveAnte}
+                  </span>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="icon"
+                    data-testid="ante-up"
+                    onClick={() => setAnte(a => Math.min(maxAnte, (a ?? effectiveAnte) + 25))}
+                  >
+                    <Plus className="w-4 h-4" />
+                  </Button>
+                </div>
+              </div>
+              {effectiveAnte === 0 && (
+                <p className="text-xs text-muted-foreground mt-2">Playing for fun — no stake.</p>
+              )}
+            </section>
+          )}
+
           {/* Summary & Start */}
           <div className="glass rounded-2xl p-6 space-y-5">
             <h3 className="font-display font-semibold text-foreground text-lg">Game Summary</h3>
@@ -544,6 +612,16 @@ export default function GameSetup() {
                   <p className="text-sm font-medium text-foreground">{explicitFilter ? "On (family-safe)" : "Off"}</p>
                 </div>
               </div>
+              {/* Ante (solo signed-in only) */}
+              {isAuthenticated && mode === "solo" && (
+                <div className="flex items-center gap-2.5 bg-white/5 rounded-xl px-3 py-2.5">
+                  <Coins className="w-4 h-4 text-yellow-400 shrink-0" />
+                  <div className="min-w-0">
+                    <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Ante</p>
+                    <p className="text-sm font-medium text-foreground">{effectiveAnte} GN</p>
+                  </div>
+                </div>
+              )}
             </div>
             {/* Genres */}
             {selectedGenres.length > 0 && (

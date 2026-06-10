@@ -51,7 +51,7 @@ liveDescribe("tournaments.admin", () => {
       role: "user",
     }).returning();
     playerId = p.id;
-    await db!.insert(goldenNoteBalances).values({ userId: playerId, balance: 200 });
+    await db!.insert(goldenNoteBalances).values({ userId: playerId, balance: 200, purchasedBalance: 200, earnedBalance: 0 });
   });
 
   afterAll(async () => {

@@ -8,9 +8,11 @@ import { getDb } from "../db";
 import {
   songs, gameRooms, roomPlayers, teams, gameSessions, roundResults,
   guestSessions, leaderboardEntries, artistMetadata, users,
-  goldenNoteBalances, goldenNoteTransactions,
-  songDisplays,
+  songDisplays, goldenNoteBalances,
 } from "../../drizzle/schema";
+import { spendGoldenNotes } from "../_core/goldenNotesLedger";
+import { escrowStake, resolveRoundStake, settleStake } from "../_core/stakeEngine";
+import { clampAnte } from "../_core/stakeMath";
 import { nanoid } from "nanoid";
 import {
   variantsForSong,
@@ -152,6 +154,7 @@ export const gameRouter = router({
       explicitFilter: z.boolean().default(false),
       guestToken: z.string().optional(),
       streakInsurance: z.boolean().default(false),
+      ante: z.number().int().min(0).max(1000).default(0),
     }))
     .mutation(async ({ input, ctx }) => {
       const rlKey = ctx.user?.id ?? input.guestToken ?? ctx.req.ip ?? "anon";
@@ -160,43 +163,32 @@ export const gameRouter = router({
       const db = await getDb();
       if (!db) throw new Error("Database not available");
 
-      // ── Streak Insurance: auth + balance check + debit ──────────────────────
+      // ── Streak Insurance: auth + balance check + debit via shared ledger ────
       if (input.streakInsurance) {
         if (!ctx.user?.id) {
           throw new TRPCError({ code: "UNAUTHORIZED", message: "Sign in to use Streak Insurance." });
         }
 
-        const [bal] = await db
-          .select()
-          .from(goldenNoteBalances)
-          .where(eq(goldenNoteBalances.userId, ctx.user.id))
-          .limit(1);
-
-        if (!bal || bal.balance < STREAK_INSURANCE_PRICE_GN) {
-          throw new TRPCError({
-            code: "PAYMENT_REQUIRED",
-            message: `Need ${STREAK_INSURANCE_PRICE_GN} Golden Notes for Streak Insurance. You have ${bal?.balance ?? 0}.`,
+        try {
+          await db.transaction(async (tx) => {
+            await spendGoldenNotes(
+              tx,
+              ctx.user!.id,
+              STREAK_INSURANCE_PRICE_GN,
+              "spend_streak_insurance",
+              "Streak Insurance",
+            );
           });
+        } catch (err) {
+          if (err instanceof TRPCError && err.code === "BAD_REQUEST") {
+            // Re-throw as PAYMENT_REQUIRED to preserve existing client behavior.
+            throw new TRPCError({
+              code: "PAYMENT_REQUIRED",
+              message: err.message,
+            });
+          }
+          throw err;
         }
-
-        const newBalance = bal.balance - STREAK_INSURANCE_PRICE_GN;
-
-        await db
-          .update(goldenNoteBalances)
-          .set({
-            balance: newBalance,
-            lifetimeSpent: bal.lifetimeSpent + STREAK_INSURANCE_PRICE_GN,
-            updatedAt: new Date(),
-          })
-          .where(eq(goldenNoteBalances.userId, ctx.user.id));
-
-        await db.insert(goldenNoteTransactions).values({
-          userId: ctx.user.id,
-          amount: -STREAK_INSURANCE_PRICE_GN,
-          kind: "spend_advanced_mode",
-          reason: "Streak Insurance",
-          balanceAfter: newBalance,
-        });
       }
 
       let roomCode = generateRoomCode();
@@ -245,6 +237,39 @@ export const gameRouter = router({
         isReady: input.mode === "solo",
         isActive: true,
       });
+
+      // ── Ante escrow (solo, signed-in only) ─────────────────────────────────
+      // Guests and multiplayer ignore ante entirely. Escrow MUST happen after the
+      // room + roomPlayers rows are committed so the roomId is known and the
+      // gn_stakes unique index (roomId, userId) has something to reference.
+      if (input.ante > 0 && input.mode === "solo" && ctx.user?.id) {
+        try {
+          await db.transaction(async (tx) => {
+            // Plain select for the balance read: spendGoldenNotes (inside
+            // escrowStake) re-locks the row authoritatively with FOR UPDATE
+            // inside the same tx, so a redundant outer lock is unnecessary.
+            // Silent clamp: if earned balance has dropped below the requested
+            // ante since the UI loaded, we stake less (or nothing) rather than
+            // blocking game start.
+            const [bal] = await tx
+              .select({ earnedBalance: goldenNoteBalances.earnedBalance })
+              .from(goldenNoteBalances)
+              .where(eq(goldenNoteBalances.userId, ctx.user!.id));
+            const clamped = clampAnte(input.ante, bal?.earnedBalance ?? 0);
+            if (clamped <= 0) return; // earned balance too low — game proceeds unstaked
+            await escrowStake(tx, ctx.user!.id, room.id, clamped);
+          });
+        } catch (err) {
+          // Velocity-cap errors (and any other escrowStake failures) abort room
+          // creation with BAD_REQUEST. The waiting room row is intentionally
+          // orphaned — the player never receives the roomCode and no GN was
+          // debited (spendGoldenNotes hadn't run yet when the velocity cap fired).
+          if (err instanceof Error) {
+            throw new TRPCError({ code: "BAD_REQUEST", message: err.message });
+          }
+          throw err;
+        }
+      }
 
       return { roomCode, roomId: room.id };
     }),
@@ -865,29 +890,43 @@ export const gameRouter = router({
           currentStreak: newStreak,
         }).where(eq(roomPlayers.id, player.id));
 
-        // Save round result
+        // Save round result + resolve stake atomically.
         // NOTE: hintUsed defaults to false — client-side hint tracking is a
         // follow-up task (Option A per plan). Wire hintUsed via submitAnswer
         // input when client-side hint state is available.
-        await db.insert(roundResults).values({
-          roomId: room.id,
-          roundNumber: room.currentRound,
-          activePlayerId: player.id,
-          activeGuestToken: guestToken,
-          songId: input.songId,
-          userLyricAnswer: input.lyricAnswer,
-          userArtistAnswer: input.artistAnswer,
-          userYearAnswer: parseInt(input.yearAnswer) || null,
-          answerMethod: input.answerMethod,
-          responseTimeSeconds: input.responseTimeSeconds,
-          lyricPoints,
-          artistPoints,
-          yearPoints,
-          speedBonusPoints: speedBonus,
-          streakBonusPoints: streakBonus,
-          totalRoundPoints: totalRoundPoints,
-          passUsed: input.passUsed,
-          streakInsuranceUsed,
+        let stakeLine: Awaited<ReturnType<typeof resolveRoundStake>> = null;
+        await db.transaction(async (tx) => {
+          await tx.insert(roundResults).values({
+            roomId: room.id,
+            roundNumber: room.currentRound,
+            activePlayerId: player.id,
+            activeGuestToken: guestToken,
+            songId: input.songId,
+            userLyricAnswer: input.lyricAnswer,
+            userArtistAnswer: input.artistAnswer,
+            userYearAnswer: parseInt(input.yearAnswer) || null,
+            answerMethod: input.answerMethod,
+            responseTimeSeconds: input.responseTimeSeconds,
+            lyricPoints,
+            artistPoints,
+            yearPoints,
+            speedBonusPoints: speedBonus,
+            streakBonusPoints: streakBonus,
+            totalRoundPoints: totalRoundPoints,
+            passUsed: input.passUsed,
+            streakInsuranceUsed,
+          });
+
+          // ── Stake resolution ────────────────────────────────────────────
+          // ATOMICITY: the roundResults insert (unique index
+          // round_results_room_round_player_uq) and the stake resolution
+          // commit or fail TOGETHER. A duplicate submission 23505s the insert
+          // and aborts the whole tx before any burn; a transient stake failure
+          // rolls back the round so a clean retry re-runs both (the win
+          // credit's idempotency key absorbs any rare double-commit race).
+          if (room.mode === "solo" && userId) {
+            stakeLine = await resolveRoundStake(tx, room.id, userId, correctCount, room.currentRound);
+          }
         });
 
         // ── Commentary (fire-and-forget fetch, best-effort) ──────────────
@@ -946,6 +985,7 @@ export const gameRouter = router({
           difficulty: diff,
           passUsed: input.passUsed,
           commentary,
+          stake: stakeLine,
         };
       }
 
@@ -958,6 +998,7 @@ export const gameRouter = router({
         correctLyric: effectiveVariant.answer, correctTitle: song.title,
         correctArtist: song.artistName, correctYear: song.releaseYear, difficulty: diff,
         passUsed: input.passUsed,
+        stake: null as Awaited<ReturnType<typeof resolveRoundStake>>,
       };
     }),
 
@@ -974,39 +1015,26 @@ export const gameRouter = router({
 
       const userId = ctx.user.id;
 
-      // Check GN balance.
-      const [bal] = await db
-        .select()
-        .from(goldenNoteBalances)
-        .where(eq(goldenNoteBalances.userId, userId))
-        .limit(1);
-
-      if (!bal || bal.balance < HINT_PRICE_GN) {
-        throw new TRPCError({
-          code: "PAYMENT_REQUIRED",
-          message: `Need ${HINT_PRICE_GN} Golden Note to use a hint. You have ${bal?.balance ?? 0}.`,
+      // Debit GN via shared ledger (purchased-first, distinct kind for analytics).
+      try {
+        await db.transaction(async (tx) => {
+          await spendGoldenNotes(
+            tx,
+            userId,
+            HINT_PRICE_GN,
+            "spend_hint",
+            `Hint: ${input.stage}`,
+          );
         });
+      } catch (err) {
+        if (err instanceof TRPCError && err.code === "BAD_REQUEST") {
+          throw new TRPCError({
+            code: "PAYMENT_REQUIRED",
+            message: err.message,
+          });
+        }
+        throw err;
       }
-
-      const newBalance = bal.balance - HINT_PRICE_GN;
-
-      // Debit GN and record transaction.
-      await db
-        .update(goldenNoteBalances)
-        .set({
-          balance: newBalance,
-          lifetimeSpent: bal.lifetimeSpent + HINT_PRICE_GN,
-          updatedAt: new Date(),
-        })
-        .where(eq(goldenNoteBalances.userId, userId));
-
-      await db.insert(goldenNoteTransactions).values({
-        userId,
-        amount: -HINT_PRICE_GN,
-        kind: "spend_advanced_mode",
-        reason: `Hint: ${input.stage}`,
-        balanceAfter: newBalance,
-      });
 
       // Look up song to build the hint payload.
       const [song] = await db.select().from(songs).where(eq(songs.id, input.songId)).limit(1);
@@ -1140,6 +1168,22 @@ export const gameRouter = router({
             computePlayerProfile(db, p.userId).catch(err =>
               console.warn("[playerProfile] compute failed for user", p.userId, err),
             );
+          }
+        }
+
+        // Settle solo stakes for signed-in players (refund staked - burned).
+        // `players` is the same collection used by the leaderboard loop above.
+        // settleStake is idempotent: the UPDATE only fires on state = 'active',
+        // so a second call (e.g. cron sweep racing game-over) dedupes cleanly.
+        for (const p of players) {
+          if (p.userId) {
+            try {
+              await settleStake(db, room.id, p.userId);
+            } catch (err) {
+              // Settlement must never break game completion — the hourly sweep
+              // refunds any stake left active (same idempotency key).
+              console.warn("[settleStake] failed; sweep will refund", { roomId: room.id, userId: p.userId, err });
+            }
           }
         }
       }

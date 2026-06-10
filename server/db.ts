@@ -3,6 +3,8 @@ import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
 import { InsertUser, users } from "../drizzle/schema";
 import { ENV } from "./_core/env";
+import { creditGoldenNotes } from "./_core/goldenNotesLedger";
+import { SIGNUP_GRANT } from "./_core/stakeMath";
 
 type DrizzleDb = ReturnType<typeof drizzle>;
 let _db: DrizzleDb | null = null;
@@ -102,10 +104,28 @@ export async function upsertUser(user: InsertUser): Promise<void> {
     }
 
     // Postgres upsert: INSERT ... ON CONFLICT (openId) DO UPDATE SET ...
-    await db
+    const upserted = await db
       .insert(users)
       .values(values)
-      .onConflictDoUpdate({ target: users.openId, set: updateSet });
+      .onConflictDoUpdate({ target: users.openId, set: updateSet })
+      .returning({ id: users.id });
+
+    const userId = upserted[0]?.id;
+    if (userId) {
+      // One-time signup grant: 100 earned GN (idempotent via the unique
+      // idempotency key — every login attempts it, only the first ever lands).
+      try {
+        await db.transaction(async (tx) => {
+          await creditGoldenNotes(tx, userId, SIGNUP_GRANT, "signup_grant", "Welcome bonus", undefined, {
+            pool: "earned",
+            idempotencyKey: `signup-grant-${userId}`,
+          });
+        });
+      } catch (error) {
+        // Grant must never block auth, but failures should be visible in logs.
+        console.warn("[upsertUser] signup grant failed (non-fatal):", error instanceof Error ? error.message : error);
+      }
+    }
   } catch (error) {
     console.error(
       "[Database] Failed to upsert user:",

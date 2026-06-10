@@ -121,4 +121,20 @@ describe("RoundResults score breakdown", () => {
     rerender(<RoundResults />);
     expect(celebrationProps.last?.onComplete).toBe(first);
   });
+
+  it("renders stake win line when stake.win > 0", () => {
+    seedResult({
+      stake: { staked: 50, burned: 0, win: 25, burn: 0, remaining: 50 },
+    });
+    render(<RoundResults />);
+    expect(screen.getByTestId("stake-line")).toBeTruthy();
+    expect(screen.getByTestId("stake-line").textContent).toContain("+25 GN won");
+    expect(screen.getByTestId("stake-line").textContent).toContain("50 staked remaining");
+  });
+
+  it("renders no stake line when stake is absent", () => {
+    seedResult(); // no stake field
+    render(<RoundResults />);
+    expect(screen.queryByTestId("stake-line")).toBeNull();
+  });
 });

@@ -61,6 +61,8 @@ export const goldenNotesRouter = router({
     const bal = await getOrCreateBalance(ctx.user.id);
     return {
       balance: bal.balance,
+      earnedBalance: bal.earnedBalance,
+      purchasedBalance: bal.purchasedBalance,
       lifetimePurchased: bal.lifetimePurchased,
       lifetimeSpent: bal.lifetimeSpent,
       lifetimeGiftedSent: bal.lifetimeGiftedSent,
@@ -161,6 +163,29 @@ export const goldenNotesRouter = router({
       });
 
       return { checkoutUrl: session.url };
+    }),
+
+  // Debit exactly 1 GN for an extra game. Idempotent: supply a UUID as
+  // idempotencyKey so the client can safely retry on network failure without
+  // double-billing. The spend_extra_game transaction recorded here is what
+  // checkGameEligibility later counts to widen the daily game limit.
+  // Implicit behavior: debit from purchasedBalance pool first (intentional design).
+  purchaseExtraGame: protectedProcedure
+    .input(z.object({ idempotencyKey: z.string().max(64).optional() }))
+    .mutation(async ({ ctx, input }) => {
+      const db = await getDb();
+      if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "DB unavailable" });
+      const { spendGoldenNotes } = await import("../_core/goldenNotesLedger");
+      const result = await db.transaction(async (tx) =>
+        spendGoldenNotes(
+          tx,
+          ctx.user.id,
+          GN_SPEND_COSTS.spend_extra_game,
+          "spend_extra_game",
+          "Extra game",
+          { idempotencyKey: input.idempotencyKey },
+        ));
+      return { success: true as const, newBalance: result.newBalance };
     }),
 
   // Debit the user's balance for a defined spend kind. Server validates the

@@ -39,8 +39,8 @@ liveDescribe("goldenNotesLedger", () => {
       role: "user",
     }).returning();
     userId = u.id;
-    // Seed balance to 100 GN
-    await db!.insert(goldenNoteBalances).values({ userId, balance: 100 });
+    // Seed balance to 100 GN — pools must sum to balance (migration 0020 invariant).
+    await db!.insert(goldenNoteBalances).values({ userId, balance: 100, purchasedBalance: 100, earnedBalance: 0 });
   });
 
   afterAll(async () => {
@@ -70,7 +70,7 @@ liveDescribe("goldenNotesLedger", () => {
       db!.transaction(async (tx) => {
         return spendGoldenNotes(tx, userId, 9999, "spend_tournament", "too much");
       }),
-    ).rejects.toThrow(/Not enough Golden Notes/i);
+    ).rejects.toThrow(/not enough golden notes|insufficient golden notes/i);
   });
 
   it("creditGoldenNotes adds funds and writes a refund transaction", async () => {

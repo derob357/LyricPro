@@ -1,13 +1,12 @@
 import { z } from "zod";
-import { and, asc, eq, isNull, sql } from "drizzle-orm";
+import { and, asc, eq, isNull } from "drizzle-orm";
 import { TRPCError } from "@trpc/server";
 import { router, protectedProcedure } from "../_core/trpc";
 import { rateLimit } from "../_core/rateLimit";
 import { getDb } from "../db";
+import { spendGoldenNotes } from "../_core/goldenNotesLedger";
 import {
   avatars,
-  goldenNoteBalances,
-  goldenNoteTransactions,
   userAvatars,
   users,
 } from "../../drizzle/schema";
@@ -98,14 +97,6 @@ export const avatarsRouter = router({
       const db = await getDb();
       if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Database unavailable" });
 
-      // Ensure the balance row exists (mirrors getOrCreateBalance in
-      // goldenNotes.ts so brand-new users hit a clean "0 balance" path
-      // rather than relying on the UPDATE finding no row at all).
-      await db
-        .insert(goldenNoteBalances)
-        .values({ userId: ctx.user.id })
-        .onConflictDoNothing();
-
       // Look up avatar (server-owned price)
       const [avatar] = await db
         .select()
@@ -129,53 +120,41 @@ export const avatarsRouter = router({
 
       const cost = avatar.priceGn;
 
-      // Race-safe debit + ownership row + audit log + auto-equip
-      return await db.transaction(async (tx) => {
-        const debited = await tx
-          .update(goldenNoteBalances)
-          .set({
-            balance: sql`${goldenNoteBalances.balance} - ${cost}`,
-            lifetimeSpent: sql`${goldenNoteBalances.lifetimeSpent} + ${cost}`,
-            updatedAt: new Date(),
-          })
-          .where(
-            and(
-              eq(goldenNoteBalances.userId, ctx.user.id),
-              sql`${goldenNoteBalances.balance} >= ${cost}`,
-            ),
-          )
-          .returning({ newBalance: goldenNoteBalances.balance });
+      // Pool-aware debit + ownership row + auto-equip — all inside one transaction.
+      // spendGoldenNotes handles balance row creation, the race-safe decrement
+      // (purchased-first), and the audit log. Catch BAD_REQUEST (insufficient funds)
+      // and rethrow as BAD_REQUEST to preserve the original error code semantics.
+      try {
+        return await db.transaction(async (tx) => {
+          const { newBalance } = await spendGoldenNotes(
+            tx,
+            ctx.user.id,
+            cost,
+            "spend_avatar_unlock",
+            `Avatar: ${avatar.slug ?? avatar.name}`,
+          );
 
-        if (debited.length === 0) {
-          throw new TRPCError({
-            code: "BAD_REQUEST",
-            message: `Not enough Golden Notes. You need ${cost}.`,
+          await tx.insert(userAvatars).values({
+            userId: ctx.user.id,
+            avatarId: avatar.id,
+            acquiredVia: "purchase",
+            spentGn: cost,
           });
+
+          await tx
+            .update(users)
+            .set({ equippedAvatarId: avatar.id, updatedAt: new Date() })
+            .where(eq(users.id, ctx.user.id));
+
+          return { avatarId: avatar.id, newBalance, equipped: true as const };
+        });
+      } catch (err) {
+        if (err instanceof TRPCError && err.code === "BAD_REQUEST") {
+          // Preserve original error code — surface insufficient-funds as BAD_REQUEST.
+          throw new TRPCError({ code: "BAD_REQUEST", message: err.message });
         }
-        const newBalance = debited[0].newBalance;
-
-        await tx.insert(userAvatars).values({
-          userId: ctx.user.id,
-          avatarId: avatar.id,
-          acquiredVia: "purchase",
-          spentGn: cost,
-        });
-
-        await tx.insert(goldenNoteTransactions).values({
-          userId: ctx.user.id,
-          amount: -cost,
-          kind: "spend_avatar_unlock",
-          reason: `avatar:${avatar.slug}`,
-          balanceAfter: newBalance,
-        });
-
-        await tx
-          .update(users)
-          .set({ equippedAvatarId: avatar.id, updatedAt: new Date() })
-          .where(eq(users.id, ctx.user.id));
-
-        return { avatarId: avatar.id, newBalance, equipped: true as const };
-      });
+        throw err;
+      }
     }),
 
   // Set the user's equipped avatar. Must be one they own.

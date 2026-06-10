@@ -1,5 +1,5 @@
 import { TRPCError } from "@trpc/server";
-import { and, desc, eq, gte, sql } from "drizzle-orm";
+import { and, desc, eq, sql } from "drizzle-orm";
 import Anthropic from "@anthropic-ai/sdk";
 import { router, publicProcedure, protectedProcedure } from "../_core/trpc";
 import { getDb } from "../db";
@@ -9,10 +9,9 @@ import {
   userInsights,
   gameRooms,
   roomPlayers,
-  goldenNoteBalances,
-  goldenNoteTransactions,
   playerProfiles,
 } from "../../drizzle/schema";
+import { spendGoldenNotes } from "../_core/goldenNotesLedger";
 import { nanoid } from "nanoid";
 import { resolveSuggestions } from "../_core/suggestionResolver";
 import type { PlayerProfileData } from "../_core/playerProfile";
@@ -348,41 +347,17 @@ export const insightsRouter = router({
     const packReason = `Weakness pack: ${insight.weakestGenre ?? ""} ${insight.weakestDecade ?? ""} ${insight.weakestCategory ?? ""}`.trim();
 
     await db.transaction(async (tx) => {
-      const updated = await tx
-        .update(goldenNoteBalances)
-        .set({
-          balance: sql`${goldenNoteBalances.balance} - ${PACK_PRICE_GN}`,
-          lifetimeSpent: sql`${goldenNoteBalances.lifetimeSpent} + ${PACK_PRICE_GN}`,
-          updatedAt: new Date(),
-        })
-        .where(
-          and(
-            eq(goldenNoteBalances.userId, userId),
-            gte(goldenNoteBalances.balance, PACK_PRICE_GN),
-          )
-        )
-        .returning({ newBalance: goldenNoteBalances.balance });
-
-      if (updated.length === 0) {
-        const [cur] = await tx
-          .select({ balance: goldenNoteBalances.balance })
-          .from(goldenNoteBalances)
-          .where(eq(goldenNoteBalances.userId, userId));
-        throw new TRPCError({
-          code: "PAYMENT_REQUIRED",
-          message: `Need ${PACK_PRICE_GN} Golden Notes. You have ${cur?.balance ?? 0}.`,
-        });
+      try {
+        await spendGoldenNotes(tx, userId, PACK_PRICE_GN, "spend_practice_pack", packReason);
+      } catch (err) {
+        if (err instanceof TRPCError && err.code === "BAD_REQUEST") {
+          throw new TRPCError({
+            code: "PAYMENT_REQUIRED",
+            message: err.message,
+          });
+        }
+        throw err;
       }
-
-      await tx.insert(goldenNoteTransactions).values({
-        userId,
-        amount: -PACK_PRICE_GN,
-        kind: "spend_advanced_mode",
-        reason: packReason,
-        balanceAfter: updated[0].newBalance,
-      });
-
-      return updated[0].newBalance;
     });
 
     // Create the custom-pack room.

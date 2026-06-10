@@ -129,13 +129,17 @@ export async function handleStripeWebhook(req: Request, res: Response) {
           );
           if (gnUserId && gnNotes > 0) {
             await db.transaction(async (tx) => {
-              // Upsert the balance row: add to balance and lifetime counters
-              // in one atomic statement, insert with defaults if missing.
+              // Upsert the balance row: add to balance, purchasedBalance, and
+              // lifetime counters in one atomic statement, insert with defaults
+              // if missing.
+              // purchasedBalance is included so balance === earnedBalance +
+              // purchasedBalance invariant holds after every real purchase.
               await tx
                 .insert(goldenNoteBalances)
                 .values({
                   userId: gnUserId,
                   balance: gnNotes,
+                  purchasedBalance: gnNotes,
                   lifetimePurchased: gnNotes,
                   lastPurchaseAt: new Date(),
                 })
@@ -143,6 +147,7 @@ export async function handleStripeWebhook(req: Request, res: Response) {
                   target: goldenNoteBalances.userId,
                   set: {
                     balance: sql`${goldenNoteBalances.balance} + ${gnNotes}`,
+                    purchasedBalance: sql`${goldenNoteBalances.purchasedBalance} + ${gnNotes}`,
                     lifetimePurchased: sql`${goldenNoteBalances.lifetimePurchased} + ${gnNotes}`,
                     lastPurchaseAt: new Date(),
                     updatedAt: new Date(),
