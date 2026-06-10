@@ -207,6 +207,11 @@
   50%      { translate: 0 10px; }
 }
 .note-bg-float { animation: noteBgFloat 7s ease-in-out infinite; }
+
+@keyframes fadeUpOut {
+  0%   { opacity: 1; transform: translateY(0); }
+  100% { opacity: 0; transform: translateY(-16px); }
+}
 @media (prefers-reduced-motion: reduce) {
   .note-bg-float { animation: none; }
 }
