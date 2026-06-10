@@ -1,0 +1,222 @@
+// DB-gated integration tests for the pool-aware ledger (spendGoldenNotes /
+// creditGoldenNotes).  Skipped when no DATABASE_URL is present — they run
+// against the real DB on the controller's machine, not in CI.
+//
+// Sentinel user IDs are negative so they can never collide with real rows.
+// afterEach cleans up all rows for sentinel IDs to keep the DB pristine.
+
+import { describe, it, expect, afterEach } from "vitest";
+import { eq, or } from "drizzle-orm";
+import { goldenNoteBalances, goldenNoteTransactions } from "../drizzle/schema";
+
+const DB_URL =
+  process.env.SUPABASE_SESSION_POOLER_STRING ??
+  process.env.SUPABASE_DIRECT_CONNECTION_STRING ??
+  process.env.DATABASE_URL;
+
+const liveDescribe = DB_URL ? describe : describe.skip;
+
+// Sentinel user IDs — negative so they never collide with real users.
+const U1 = -9001;
+const U2 = -9002;
+const U3 = -9003;
+const U4 = -9004;
+
+async function getDb() {
+  const { getDb: _getDb } = await import("./db");
+  const db = await _getDb();
+  if (!db) throw new Error("DB not available");
+  return db;
+}
+
+async function cleanup(userIds: number[]) {
+  const db = await getDb();
+  // Delete in FK-safe order: transactions first, then balances.
+  for (const uid of userIds) {
+    await db.delete(goldenNoteTransactions).where(eq(goldenNoteTransactions.userId, uid));
+    await db.delete(goldenNoteBalances).where(eq(goldenNoteBalances.userId, uid));
+  }
+}
+
+async function seedBalance(
+  userId: number,
+  earned: number,
+  purchased: number,
+) {
+  const db = await getDb();
+  const total = earned + purchased;
+  await db
+    .insert(goldenNoteBalances)
+    .values({
+      userId,
+      balance: total,
+      earnedBalance: earned,
+      purchasedBalance: purchased,
+    })
+    .onConflictDoNothing();
+  // If row already existed (unlikely with sentinels), UPDATE it.
+  await db
+    .update(goldenNoteBalances)
+    .set({ balance: total, earnedBalance: earned, purchasedBalance: purchased })
+    .where(eq(goldenNoteBalances.userId, userId));
+}
+
+liveDescribe("goldenNotesLedger — pool-aware spend (live DB)", () => {
+  afterEach(async () => {
+    await cleanup([U1, U2, U3, U4]);
+  });
+
+  it("purchased-first: drains purchased before earned, balance === sum invariant", async () => {
+    const db = await getDb();
+    const { spendGoldenNotes } = await import("./_core/goldenNotesLedger");
+
+    // U1: purchased=10, earned=20 total=30, spend 15 → fromPurchased=10, fromEarned=5
+    await seedBalance(U1, 20, 10);
+
+    const result = await db.transaction(async (tx) =>
+      spendGoldenNotes(tx, U1, 15, "spend_extra_game", "test purchased-first"),
+    );
+
+    expect(result.deduped).toBe(false);
+    expect(result.newBalance).toBe(15);
+
+    const [bal] = await db
+      .select()
+      .from(goldenNoteBalances)
+      .where(eq(goldenNoteBalances.userId, U1));
+
+    expect(bal.balance).toBe(15);
+    expect(bal.purchasedBalance).toBe(0);   // 10 - 10 = 0
+    expect(bal.earnedBalance).toBe(15);     // 20 - 5 = 15
+    // Invariant: balance === earned + purchased
+    expect(bal.balance).toBe(bal.earnedBalance + bal.purchasedBalance);
+  });
+
+  it("earned-only: throws even when purchased balance covers the cost", async () => {
+    const db = await getDb();
+    const { spendGoldenNotes } = await import("./_core/goldenNotesLedger");
+
+    // U2: earned=5 (insufficient), purchased=100 (plentiful)
+    await seedBalance(U2, 5, 100);
+
+    await expect(
+      db.transaction(async (tx) =>
+        spendGoldenNotes(tx, U2, 50, "stake_escrow", "test earned-only", {
+          pool: "earned-only",
+        }),
+      ),
+    ).rejects.toThrow(/insufficient/i);
+
+    // Balance unchanged
+    const [bal] = await db
+      .select()
+      .from(goldenNoteBalances)
+      .where(eq(goldenNoteBalances.userId, U2));
+    expect(bal.purchasedBalance).toBe(100);
+    expect(bal.earnedBalance).toBe(5);
+  });
+
+  it("idempotency: replay with same idempotencyKey returns deduped without double-debit", async () => {
+    const db = await getDb();
+    const { spendGoldenNotes } = await import("./_core/goldenNotesLedger");
+
+    await seedBalance(U3, 0, 100);
+    const idem = `test-idem-spend-${U3}-${Date.now()}`;
+
+    const first = await db.transaction(async (tx) =>
+      spendGoldenNotes(tx, U3, 10, "spend_extra_game", "idem test", {
+        idempotencyKey: idem,
+      }),
+    );
+
+    const second = await db.transaction(async (tx) =>
+      spendGoldenNotes(tx, U3, 10, "spend_extra_game", "idem test", {
+        idempotencyKey: idem,
+      }),
+    );
+
+    expect(first.deduped).toBe(false);
+    expect(second.deduped).toBe(true);
+    // Balance is 90 from first debit only — second was a no-op.
+    expect(second.newBalance).toBe(first.newBalance);
+
+    const [bal] = await db
+      .select()
+      .from(goldenNoteBalances)
+      .where(eq(goldenNoteBalances.userId, U3));
+    expect(bal.balance).toBe(90);
+
+    // Only one transaction row written.
+    const txns = await db
+      .select()
+      .from(goldenNoteTransactions)
+      .where(eq(goldenNoteTransactions.userId, U3));
+    expect(txns).toHaveLength(1);
+  });
+
+  it("earned credit lands in earnedBalance, not purchasedBalance", async () => {
+    const db = await getDb();
+    const { creditGoldenNotes } = await import("./_core/goldenNotesLedger");
+
+    await seedBalance(U4, 0, 0);
+
+    const result = await db.transaction(async (tx) =>
+      creditGoldenNotes(tx, U4, 25, "stake_win", "Round 1 win", undefined, {
+        pool: "earned",
+      }),
+    );
+
+    expect(result.deduped).toBe(false);
+    expect(result.newBalance).toBe(25);
+
+    const [bal] = await db
+      .select()
+      .from(goldenNoteBalances)
+      .where(eq(goldenNoteBalances.userId, U4));
+
+    expect(bal.balance).toBe(25);
+    expect(bal.earnedBalance).toBe(25);
+    expect(bal.purchasedBalance).toBe(0);
+    // Invariant
+    expect(bal.balance).toBe(bal.earnedBalance + bal.purchasedBalance);
+  });
+
+  it("credit idempotency: replay with same key dedupes without double-credit", async () => {
+    const db = await getDb();
+    const { creditGoldenNotes } = await import("./_core/goldenNotesLedger");
+
+    await seedBalance(U1, 0, 0);
+    const idem = `test-idem-credit-${U1}-${Date.now()}`;
+
+    const first = await db.transaction(async (tx) =>
+      creditGoldenNotes(tx, U1, 100, "signup_grant", "Welcome", undefined, {
+        pool: "earned",
+        idempotencyKey: idem,
+      }),
+    );
+
+    const second = await db.transaction(async (tx) =>
+      creditGoldenNotes(tx, U1, 100, "signup_grant", "Welcome", undefined, {
+        pool: "earned",
+        idempotencyKey: idem,
+      }),
+    );
+
+    expect(first.deduped).toBe(false);
+    expect(second.deduped).toBe(true);
+    expect(second.newBalance).toBe(first.newBalance);
+
+    const [bal] = await db
+      .select()
+      .from(goldenNoteBalances)
+      .where(eq(goldenNoteBalances.userId, U1));
+    expect(bal.balance).toBe(100);       // only credited once
+    expect(bal.earnedBalance).toBe(100);
+
+    const txns = await db
+      .select()
+      .from(goldenNoteTransactions)
+      .where(eq(goldenNoteTransactions.userId, U1));
+    expect(txns).toHaveLength(1);
+  });
+});

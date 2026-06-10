@@ -61,6 +61,8 @@ export const goldenNotesRouter = router({
     const bal = await getOrCreateBalance(ctx.user.id);
     return {
       balance: bal.balance,
+      earnedBalance: bal.earnedBalance,
+      purchasedBalance: bal.purchasedBalance,
       lifetimePurchased: bal.lifetimePurchased,
       lifetimeSpent: bal.lifetimeSpent,
       lifetimeGiftedSent: bal.lifetimeGiftedSent,

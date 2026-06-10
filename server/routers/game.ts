@@ -8,9 +8,9 @@ import { getDb } from "../db";
 import {
   songs, gameRooms, roomPlayers, teams, gameSessions, roundResults,
   guestSessions, leaderboardEntries, artistMetadata, users,
-  goldenNoteBalances, goldenNoteTransactions,
   songDisplays,
 } from "../../drizzle/schema";
+import { spendGoldenNotes } from "../_core/goldenNotesLedger";
 import { nanoid } from "nanoid";
 import {
   variantsForSong,
@@ -160,43 +160,32 @@ export const gameRouter = router({
       const db = await getDb();
       if (!db) throw new Error("Database not available");
 
-      // ── Streak Insurance: auth + balance check + debit ──────────────────────
+      // ── Streak Insurance: auth + balance check + debit via shared ledger ────
       if (input.streakInsurance) {
         if (!ctx.user?.id) {
           throw new TRPCError({ code: "UNAUTHORIZED", message: "Sign in to use Streak Insurance." });
         }
 
-        const [bal] = await db
-          .select()
-          .from(goldenNoteBalances)
-          .where(eq(goldenNoteBalances.userId, ctx.user.id))
-          .limit(1);
-
-        if (!bal || bal.balance < STREAK_INSURANCE_PRICE_GN) {
-          throw new TRPCError({
-            code: "PAYMENT_REQUIRED",
-            message: `Need ${STREAK_INSURANCE_PRICE_GN} Golden Notes for Streak Insurance. You have ${bal?.balance ?? 0}.`,
+        try {
+          await db.transaction(async (tx) => {
+            await spendGoldenNotes(
+              tx,
+              ctx.user!.id,
+              STREAK_INSURANCE_PRICE_GN,
+              "spend_streak_insurance",
+              "Streak Insurance",
+            );
           });
+        } catch (err) {
+          if (err instanceof TRPCError && err.code === "BAD_REQUEST") {
+            // Re-throw as PAYMENT_REQUIRED to preserve existing client behavior.
+            throw new TRPCError({
+              code: "PAYMENT_REQUIRED",
+              message: err.message,
+            });
+          }
+          throw err;
         }
-
-        const newBalance = bal.balance - STREAK_INSURANCE_PRICE_GN;
-
-        await db
-          .update(goldenNoteBalances)
-          .set({
-            balance: newBalance,
-            lifetimeSpent: bal.lifetimeSpent + STREAK_INSURANCE_PRICE_GN,
-            updatedAt: new Date(),
-          })
-          .where(eq(goldenNoteBalances.userId, ctx.user.id));
-
-        await db.insert(goldenNoteTransactions).values({
-          userId: ctx.user.id,
-          amount: -STREAK_INSURANCE_PRICE_GN,
-          kind: "spend_advanced_mode",
-          reason: "Streak Insurance",
-          balanceAfter: newBalance,
-        });
       }
 
       let roomCode = generateRoomCode();
@@ -974,39 +963,26 @@ export const gameRouter = router({
 
       const userId = ctx.user.id;
 
-      // Check GN balance.
-      const [bal] = await db
-        .select()
-        .from(goldenNoteBalances)
-        .where(eq(goldenNoteBalances.userId, userId))
-        .limit(1);
-
-      if (!bal || bal.balance < HINT_PRICE_GN) {
-        throw new TRPCError({
-          code: "PAYMENT_REQUIRED",
-          message: `Need ${HINT_PRICE_GN} Golden Note to use a hint. You have ${bal?.balance ?? 0}.`,
+      // Debit GN via shared ledger (purchased-first, distinct kind for analytics).
+      try {
+        await db.transaction(async (tx) => {
+          await spendGoldenNotes(
+            tx,
+            userId,
+            HINT_PRICE_GN,
+            "spend_hint",
+            `Hint: ${input.stage}`,
+          );
         });
+      } catch (err) {
+        if (err instanceof TRPCError && err.code === "BAD_REQUEST") {
+          throw new TRPCError({
+            code: "PAYMENT_REQUIRED",
+            message: err.message,
+          });
+        }
+        throw err;
       }
-
-      const newBalance = bal.balance - HINT_PRICE_GN;
-
-      // Debit GN and record transaction.
-      await db
-        .update(goldenNoteBalances)
-        .set({
-          balance: newBalance,
-          lifetimeSpent: bal.lifetimeSpent + HINT_PRICE_GN,
-          updatedAt: new Date(),
-        })
-        .where(eq(goldenNoteBalances.userId, userId));
-
-      await db.insert(goldenNoteTransactions).values({
-        userId,
-        amount: -HINT_PRICE_GN,
-        kind: "spend_advanced_mode",
-        reason: `Hint: ${input.stage}`,
-        balanceAfter: newBalance,
-      });
 
       // Look up song to build the hint payload.
       const [song] = await db.select().from(songs).where(eq(songs.id, input.songId)).limit(1);
