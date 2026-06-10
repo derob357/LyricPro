@@ -9,7 +9,7 @@
 //   1. INSERT INTO golden_note_transactions ... ON CONFLICT ("idempotencyKey")
 //      WHERE "idempotencyKey" IS NOT NULL DO NOTHING -- matches the partial index
 //   2. Only if the INSERT actually inserted a row: UPDATE golden_note_balances
-//      to increment balance, earnedBalance, and lifetimeEarned.
+//      to increment balance and earnedBalance.
 //
 // Usage:
 //   node scripts/backfill-signup-grant.mjs            (dry-run)

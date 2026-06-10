@@ -121,8 +121,9 @@ export async function upsertUser(user: InsertUser): Promise<void> {
             idempotencyKey: `signup-grant-${userId}`,
           });
         });
-      } catch {
-        /* grant must never block auth */
+      } catch (error) {
+        // Grant must never block auth, but failures should be visible in logs.
+        console.warn("[upsertUser] signup grant failed (non-fatal):", error instanceof Error ? error.message : error);
       }
     }
   } catch (error) {
