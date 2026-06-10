@@ -15,6 +15,7 @@ import {
   matchArtist,
   scoreYear,
   scoreRound,
+  resolveMcVariant,
   type LyricMatch,
   type ArtistMatch,
   type ScoreRoundInput,
@@ -241,5 +242,25 @@ describe("full round scoring integration", () => {
     const artist = matchArtist("", "Whitney Houston");
     const year = scoreYear(null, 1992);
     expect(lyricPts(lyric) + artistPts(artist, 100) + year).toBe(0);
+  });
+});
+
+// ── resolveMcVariant (display-row drift realignment) ─────────────────────────
+describe("resolveMcVariant (display-row drift realignment)", () => {
+  const variants = [
+    { prompt: "p0", answer: "hello darkness my old friend" },
+    { prompt: "p1", answer: "i've come to talk with you again" },
+  ];
+  it("keeps the played variant when the answer matches it", () => {
+    expect(resolveMcVariant(variants[0], variants, "Hello darkness, my old friend"))
+      .toBe(variants[0]);
+  });
+  it("realigns to another variant on exact match (player saw a stale display row)", () => {
+    expect(resolveMcVariant(variants[0], variants, "I've come to talk with you again"))
+      .toBe(variants[1]);
+  });
+  it("keeps the played variant when nothing matches (genuinely wrong answer)", () => {
+    expect(resolveMcVariant(variants[0], variants, "some wrong distractor"))
+      .toBe(variants[0]);
   });
 });

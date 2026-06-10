@@ -176,7 +176,7 @@ export default function Gameplay() {
       yearAnswer: final.year,
       passUsed,
       responseTimeSeconds: responseTime,
-      answerMethod: "typed",
+      answerMethod: "mc" as const,
       guestToken: guestToken || undefined,
     });
   }, [currentSong, hasSubmitted, roundStartTime, roomCode, guestToken, submitMutation]);

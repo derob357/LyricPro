@@ -24,6 +24,8 @@ import { playerProfiles } from "../../drizzle/schema";
 import type { PlayerProfileData } from "../_core/playerProfile";
 import {
   matchLyric,
+  normalizeText,
+  resolveMcVariant,
   scoreRound,
   type Difficulty,
   type LyricMatch,
@@ -586,12 +588,16 @@ export const gameRouter = router({
       function pickDistractors(n: number, keyOf: (s: typeof song) => string, correct: string) {
         const shuffled = [...distractorPool, ...fallbackPool].sort(() => Math.random() - 0.5);
         const out: string[] = [];
-        const seen = new Set<string>([correct.toLowerCase()]);
+        // Use normalizeText (not just .toLowerCase()) so distractors that
+        // normalize-collide with the correct answer (e.g. "P!nk" vs "Pink",
+        // "Jay-Z" vs "Jay Z") are excluded — a collision would let a wrong
+        // pick score full in mcMode.
+        const seen = new Set<string>([normalizeText(correct)]);
         for (const s of shuffled) {
           const v = keyOf(s);
           if (!v) continue;
-          if (seen.has(v.toLowerCase())) continue;
-          seen.add(v.toLowerCase());
+          if (seen.has(normalizeText(v))) continue;
+          seen.add(normalizeText(v));
           out.push(v);
           if (out.length >= n) break;
         }
@@ -623,12 +629,13 @@ export const gameRouter = router({
       // Prefer the picked variant's authored distractors; fall back to the old
       // other-song-snippet method when the variant has fewer than 3 stored.
       const variantAnswer = pickedVariant.answer;
-      const answerNormalized = variantAnswer.toLowerCase().trim();
-      const seenDistractors = new Set<string>([answerNormalized]);
+      // Use normalizeText for collision guard (consistent with pickDistractors
+      // and with scoreRound's mcMode exact-match logic).
+      const seenDistractors = new Set<string>([normalizeText(variantAnswer)]);
       const stored = Array.isArray(pickedVariant.distractors)
         ? pickedVariant.distractors.filter((d): d is string => {
             if (typeof d !== "string") return false;
-            const norm = d.toLowerCase().trim();
+            const norm = normalizeText(d);
             if (norm.length === 0) return false;
             if (seenDistractors.has(norm)) return false;
             seenDistractors.add(norm);
@@ -679,7 +686,7 @@ export const gameRouter = router({
       yearAnswer: z.string().default(""),
       passUsed: z.boolean().default(false),
       responseTimeSeconds: z.number().default(30),
-      answerMethod: z.enum(["typed", "voice"]).default("typed"),
+      answerMethod: z.enum(["typed", "voice", "mc"]).default("typed"),
       guestToken: z.string().optional(),
     }))
     .mutation(async ({ input, ctx }) => {
@@ -736,6 +743,15 @@ export const gameRouter = router({
       const playedVariant =
         allVariants[latestDisplay?.variantIndex ?? 0] ?? allVariants[0];
 
+      // MC drift realignment: if getNextSong re-ran after the question
+      // rendered, the display row may point at a newer variant. Realign
+      // effectiveVariant to whichever variant's answer the player actually
+      // picked, so a correct pick is never scored against the wrong variant.
+      const mcMode = input.answerMethod === "mc";
+      const effectiveVariant = mcMode
+        ? resolveMcVariant(playedVariant, allVariants, input.lyricAnswer)
+        : playedVariant;
+
       // Get artist aliases
       let aliases: string[] = [];
       if (song.artistMetadataId) {
@@ -762,7 +778,11 @@ export const gameRouter = router({
       // ── Streak Insurance: resolve before calling scoreRound so we can pass
       // the correct post-insurance streak value into the pure scorer.
       // Needs lyricCorrect, which we derive via a direct matchLyric call.
-      const preCheckLyricCorrect = !input.passUsed && matchLyric(input.lyricAnswer, playedVariant.answer) === "full";
+      const preCheckLyricCorrect = !input.passUsed && (
+        mcMode
+          ? (!!normalizeText(input.lyricAnswer) && normalizeText(input.lyricAnswer) === normalizeText(effectiveVariant.answer))
+          : matchLyric(input.lyricAnswer, effectiveVariant.answer) === "full"
+      );
       let streakInsuranceUsed = false;
       let newStreak = 0;
 
@@ -789,7 +809,7 @@ export const gameRouter = router({
         titleAnswer: input.titleAnswer,
         artistAnswer: input.artistAnswer,
         yearAnswer: input.yearAnswer,
-        correctLyricAnswer: playedVariant.answer,
+        correctLyricAnswer: effectiveVariant.answer,
         correctTitle: song.title,
         correctArtistName: song.artistName,
         correctReleaseYear: song.releaseYear,
@@ -798,6 +818,7 @@ export const gameRouter = router({
         timerSeconds: room.timerSeconds,
         rankingMode: room.rankingMode,
         newStreak,
+        mcMode,
       });
 
       const {
@@ -914,7 +935,7 @@ export const gameRouter = router({
           newScore,
           newStreak,
           streakInsuranceUsed,
-          correctLyric: playedVariant.answer,
+          correctLyric: effectiveVariant.answer,
           correctTitle: song.title,
           correctArtist: song.artistName,
           correctYear: song.releaseYear,

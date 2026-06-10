@@ -114,6 +114,22 @@ export function scoreYear(userYear: number | null, correctYear: number): number 
   return userYear === correctYear ? 20 : 0;
 }
 
+/** MC answers are option strings the client rendered. If the most recent
+ *  song_displays row drifted (getNextSong re-ran after the question was
+ *  rendered), the submitted lyric may exactly equal a DIFFERENT variant's
+ *  answer. Realign so a correct pick is never scored against the wrong
+ *  variant. An exact variant answer is always correct content for the song. */
+export function resolveMcVariant<V extends { answer: string }>(
+  playedVariant: V,
+  allVariants: V[],
+  lyricAnswer: string,
+): V {
+  const submitted = normalizeText(lyricAnswer);
+  if (!submitted) return playedVariant;
+  if (submitted === normalizeText(playedVariant.answer)) return playedVariant;
+  return allVariants.find(v => normalizeText(v.answer) === submitted) ?? playedVariant;
+}
+
 // ── scoreRound ────────────────────────────────────────────────────────────────
 // Pure function: takes all primitives needed to score one round, returns the
 // per-axis points + bonuses + total.  The DB insert in submitAnswer (and the
