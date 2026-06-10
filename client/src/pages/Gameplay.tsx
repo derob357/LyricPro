@@ -9,6 +9,7 @@ import { toast } from "sonner";
 import { Clock, Flame, Volume2, VolumeX, X, Trophy, Lightbulb, Music2 } from "lucide-react";
 
 import { usePaused } from "@/lib/pauseState";
+import { unlockAudioOnGesture } from "@/lib/sharedAudio";
 import { formatMMSS } from "@/lib/formatTime";
 import {
   AlertDialog,
@@ -176,7 +177,7 @@ export default function Gameplay() {
       yearAnswer: final.year,
       passUsed,
       responseTimeSeconds: responseTime,
-      answerMethod: "typed",
+      answerMethod: "mc" as const,
       guestToken: guestToken || undefined,
     });
   }, [currentSong, hasSubmitted, roundStartTime, roomCode, guestToken, submitMutation]);
@@ -252,6 +253,7 @@ export default function Gameplay() {
 
   // Handle selecting an MC option at the current stage.
   const pickOption = (value: string | number) => {
+    unlockAudioOnGesture();
     if (hasSubmitted) return;
     // Only the buzzed player can answer in MP mode; solo is always enabled.
     if (!isSolo && buzzedPlayerIndex === null) return;

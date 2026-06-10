@@ -114,6 +114,22 @@ export function scoreYear(userYear: number | null, correctYear: number): number 
   return userYear === correctYear ? 20 : 0;
 }
 
+/** MC answers are option strings the client rendered. If the most recent
+ *  song_displays row drifted (getNextSong re-ran after the question was
+ *  rendered), the submitted lyric may exactly equal a DIFFERENT variant's
+ *  answer. Realign so a correct pick is never scored against the wrong
+ *  variant. An exact variant answer is always correct content for the song. */
+export function resolveMcVariant<V extends { answer: string }>(
+  playedVariant: V,
+  allVariants: V[],
+  lyricAnswer: string,
+): V {
+  const submitted = normalizeText(lyricAnswer);
+  if (!submitted) return playedVariant;
+  if (submitted === normalizeText(playedVariant.answer)) return playedVariant;
+  return allVariants.find(v => normalizeText(v.answer) === submitted) ?? playedVariant;
+}
+
 // ── scoreRound ────────────────────────────────────────────────────────────────
 // Pure function: takes all primitives needed to score one round, returns the
 // per-axis points + bonuses + total.  The DB insert in submitAnswer (and the
@@ -148,6 +164,10 @@ export interface ScoreRoundInput {
   /** lyricCorrect flag — derived from lyricMatch but needed for streak bonus gate.
    *  Caller should pass the lyricMatch === "full" check, or leave undefined to
    *  let scoreRound derive it internally (default). */
+  /** Multiple-choice mode: answers are picked options, so lyric/title/artist
+   *  match by normalized exact equality (aliases allowed for artist). Fuzzy
+   *  matchers remain for typed/voice input when this is false/undefined. */
+  mcMode?: boolean;
 }
 
 export interface ScoreRoundResult {
@@ -182,6 +202,7 @@ export function scoreRound(input: ScoreRoundInput): ScoreRoundResult {
     timerSeconds,
     rankingMode,
     newStreak,
+    mcMode,
   } = input;
 
   // Difficulty-based point values
@@ -208,34 +229,51 @@ export function scoreRound(input: ScoreRoundInput): ScoreRoundResult {
   if (!passUsed) {
     // Lyric scoring (all difficulties) — use the variant the player saw,
     // not the legacy column, so variant rotation scores correctly.
-    lyricMatch = matchLyric(lyricAnswer, correctLyricAnswer);
+    // NOTE(mcMode): exact-match is only as strong as normalizeText's injectivity
+    // over the served option set — the distractor builder in getNextSong must
+    // reject distractors whose normalizeText collides with the correct answer.
+    lyricMatch = mcMode
+      ? ((normalizeText(lyricAnswer) && normalizeText(lyricAnswer) === normalizeText(correctLyricAnswer)) ? "full" : "none")
+      : matchLyric(lyricAnswer, correctLyricAnswer);
     lyricPoints = lyricMatch === "full" ? pts.lyric : lyricMatch === "partial" ? pts.lyricPartial : 0;
 
     // Title scoring (Low/Medium/High all score title)
     const titleNorm = normalizeText(titleAnswer);
     const correctTitleNorm = normalizeText(correctTitle);
     if (titleNorm && correctTitleNorm) {
-      // Full match: exact, or up to 30% edit distance (generous for typos/voice input)
-      const titleEditDist = levenshtein(titleNorm, correctTitleNorm);
-      const titleThreshold = Math.max(2, Math.floor(correctTitleNorm.length * 0.30));
-      if (titleNorm === correctTitleNorm || titleEditDist <= titleThreshold) {
-        titleCorrect = true;
-        titlePoints = pts.title;
+      if (mcMode) {
+        if (titleNorm === correctTitleNorm) {
+          titleCorrect = true;
+          titlePoints = pts.title;
+        }
       } else {
-        // Partial: significant word overlap (allow levenshtein 2 per word)
-        const titleWords = correctTitleNorm.split(" ").filter(w => w.length > 1);
-        const userTitleWords = titleNorm.split(" ");
-        if (titleWords.length > 0) {
-          const matched = titleWords.filter(tw => userTitleWords.some(uw => uw === tw || levenshtein(uw, tw) <= 2));
-          if (matched.length / titleWords.length >= 0.5) {
-            titlePartial = true;
-            titlePoints = pts.titlePartial;
+        // Full match: exact, or up to 30% edit distance (generous for typos/voice input)
+        const titleEditDist = levenshtein(titleNorm, correctTitleNorm);
+        const titleThreshold = Math.max(2, Math.floor(correctTitleNorm.length * 0.30));
+        if (titleNorm === correctTitleNorm || titleEditDist <= titleThreshold) {
+          titleCorrect = true;
+          titlePoints = pts.title;
+        } else {
+          // Partial: significant word overlap (allow levenshtein 2 per word)
+          const titleWords = correctTitleNorm.split(" ").filter(w => w.length > 1);
+          const userTitleWords = titleNorm.split(" ");
+          if (titleWords.length > 0) {
+            const matched = titleWords.filter(tw => userTitleWords.some(uw => uw === tw || levenshtein(uw, tw) <= 2));
+            if (matched.length / titleWords.length >= 0.5) {
+              titlePartial = true;
+              titlePoints = pts.titlePartial;
+            }
           }
         }
       }
     }
 
-    artistMatch = matchArtist(artistAnswer, correctArtistName, artistAliases);
+    artistMatch = mcMode
+      ? ((normalizeText(artistAnswer) && (
+          normalizeText(artistAnswer) === normalizeText(correctArtistName) ||
+          artistAliases.some(a => normalizeText(a) === normalizeText(artistAnswer))))
+          ? "full" : "none")
+      : matchArtist(artistAnswer, correctArtistName, artistAliases);
     artistPoints = artistMatch === "full" ? pts.artist : artistMatch === "primary_only" ? pts.artistPartial : 0;
 
     // Year scoring with new point values

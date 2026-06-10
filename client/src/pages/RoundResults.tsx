@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useLocation, useParams } from "wouter";
 import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
@@ -8,7 +8,7 @@ import { useAuth } from "@/_core/hooks/useAuth";
 import { toast } from "sonner";
 import {
   Check, X, ChevronRight, ExternalLink, Music, Instagram,
-  Youtube, Globe, Trophy, Flame, Zap, SkipForward, Home,
+  Youtube, Globe, Trophy, Flame, Zap, Home,
   MicVocal
 } from "lucide-react";
 import Celebration, { type CelebrationLevel } from "@/components/Celebration";
@@ -63,6 +63,7 @@ export default function RoundResults() {
   const [result, setResult] = useState<RoundResult | null>(null);
   const [isAdvancing, setIsAdvancing] = useState(false);
   const [celebrationLevel, setCelebrationLevel] = useState<CelebrationLevel>(0);
+  const celebrationPlayed = useRef(false);
   const muted = localStorage.getItem("lyricpro_muted") === "true";
 
   const { data: room } = trpc.game.getRoom.useQuery(
@@ -91,15 +92,18 @@ export default function RoundResults() {
     }
   }, [roomCode]);
 
-  const handleNext = () => {
-    const cnt = result?.celebrationCount ?? result?.correctCount ?? 0;
+  // Celebration plays when results appear — not on the Next Round click.
+  useEffect(() => {
+    if (!result || celebrationPlayed.current) return;
+    celebrationPlayed.current = true;
+    const cnt = result.celebrationCount ?? result.correctCount ?? 0;
     const lvl = (cnt >= 4 ? 3 : cnt >= 3 ? 2 : cnt >= 2 ? 1 : 0) as CelebrationLevel;
-    if (lvl > 0) {
-      setCelebrationLevel(lvl);
-    } else {
-      advanceRound();
-    }
-  };
+    if (lvl > 0) setCelebrationLevel(lvl);
+  }, [result]);
+
+  const handleCelebrationComplete = useCallback(() => setCelebrationLevel(0), []);
+
+  const handleNext = () => { advanceRound(); };
 
   const advanceRound = () => {
     setIsAdvancing(true);
@@ -118,12 +122,13 @@ export default function RoundResults() {
   }
 
   const isLastRound = room && room.currentRound >= room.roundsTotal;
-  const passedRound = result.total === 0 && result.lyricPoints === 0 && !result.titlePoints && !result.artistPoints;
+  const zeroScore = result.total === 0;
   const diff = result.difficulty || room?.difficulty || "medium";
   const isHighDiff = diff === "high";
   const maxArtist = isHighDiff ? 100 : diff === "medium" ? 50 : 25;
-  const maxTitle = isHighDiff ? 50 : diff === "medium" ? 50 : 25;
+  const maxTitle = diff === "low" ? 25 : 50;   // low:25, medium/high:50
   const maxYear = isHighDiff ? 200 : diff === "medium" ? 100 : 50;
+  const maxLyric = diff === "low" ? 25 : 50;   // low:25, medium/high:50
 
   // Always generate dynamic links from artist name + song title
   const artistQ = encodeURIComponent(result.correctArtist);
@@ -174,10 +179,7 @@ export default function RoundResults() {
       <Celebration
         level={celebrationLevel}
         muted={muted}
-        onComplete={() => {
-          setCelebrationLevel(0);
-          advanceRound();
-        }}
+        onComplete={handleCelebrationComplete}
       />
       {/* Header */}
       <div className="glass border-b border-border/50 sticky top-0 z-40">
@@ -243,12 +245,13 @@ export default function RoundResults() {
               "from-transparent to-transparent"
             } pointer-events-none`} />
             <div className="relative flex flex-col sm:flex-row items-center justify-between gap-4">
-              {/* Points / passed-round group */}
+              {/* Points / zero-score group */}
               <div className="text-center sm:text-left">
-                {passedRound ? (
+                {zeroScore ? (
                   <>
-                    <SkipForward className="w-10 h-10 text-muted-foreground mx-auto sm:mx-0 mb-2" />
-                    <p className="text-muted-foreground font-medium">Round Passed</p>
+                    <MicVocal className="w-10 h-10 text-muted-foreground mx-auto sm:mx-0 mb-2" />
+                    <p className="text-foreground font-medium">Tough Round — no points this time.</p>
+                    <p className="text-muted-foreground text-sm mt-1">The next one's yours.</p>
                     {result.commentary && (
                       <p className="text-sm text-muted-foreground italic mt-2">{result.commentary}</p>
                     )}
@@ -334,14 +337,12 @@ export default function RoundResults() {
           <div className="glass rounded-2xl p-5">
             <h3 className="font-display font-semibold mb-4 text-foreground">Score Breakdown</h3>
             <div className="space-y-3">
-              {isHighDiff && (
-                <ScoreRow
-                  label="Lyric"
-                  correct={result.lyricCorrect}
-                  points={result.lyricPoints}
-                  maxPoints={50}
-                />
-              )}
+              <ScoreRow
+                label="Lyric"
+                correct={result.lyricCorrect}
+                points={result.lyricPoints}
+                maxPoints={maxLyric}
+              />
               <ScoreRow
                 label="Song Title"
                 correct={!!(result.titleCorrect)}

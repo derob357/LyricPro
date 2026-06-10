@@ -55,7 +55,7 @@ export const gameStatusEnum = pgEnum("game_status", [
   "finished",
 ]);
 export const roundPhaseEnum = pgEnum("round_phase", ["in_question", "intermission", "complete"]);
-export const answerMethodEnum = pgEnum("answer_method", ["typed", "voice"]);
+export const answerMethodEnum = pgEnum("answer_method", ["typed", "voice", "mc"]);
 export const prizePoolStatusEnum = pgEnum("prize_pool_status", [
   "active",
   "paused",

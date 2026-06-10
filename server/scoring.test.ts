@@ -14,8 +14,11 @@ import {
   matchLyric,
   matchArtist,
   scoreYear,
+  scoreRound,
+  resolveMcVariant,
   type LyricMatch,
   type ArtistMatch,
+  type ScoreRoundInput,
 } from "./_core/scoring";
 
 function lyricPts(m: LyricMatch) { return m === "full" ? 10 : m === "partial" ? 5 : 0; }
@@ -115,6 +118,96 @@ describe("correctCount → celebration level", () => {
   it("level 3 for partial lyric + primary artist + year", () => expect(celebLevel("partial", "primary_only", 10)).toBe(3));
 });
 
+// ── MC exact-match mode (mcMode) ──────────────────────────────────────────────
+function mcInput(overrides: Partial<ScoreRoundInput>): ScoreRoundInput {
+  return {
+    difficulty: "medium",
+    passUsed: false,
+    lyricAnswer: "shake it off shake it off",
+    titleAnswer: "Stay",
+    artistAnswer: "Nas",
+    yearAnswer: "1994",
+    correctLyricAnswer: "shake it off shake it off",
+    correctTitle: "Stay",
+    correctArtistName: "Nas",
+    correctReleaseYear: 1994,
+    artistAliases: [],
+    responseTimeSeconds: 10,
+    timerSeconds: 90,
+    rankingMode: "standard",
+    newStreak: 0,
+    mcMode: true,
+    ...overrides,
+  };
+}
+
+describe("scoreRound mcMode (multiple-choice exact matching)", () => {
+  it("wrong title option close in edit distance scores 0 (fuzzy would match)", () => {
+    const r = scoreRound(mcInput({ titleAnswer: "Stan" })); // lev("stan","stay")=2 ≤ fuzzy threshold
+    expect(r.titleCorrect).toBe(false);
+    expect(r.titlePoints).toBe(0);
+  });
+
+  it("wrong short artist option within edit distance 2 scores 0", () => {
+    const r = scoreRound(mcInput({ artistAnswer: "NAV" })); // lev("nav","nas")=1
+    expect(r.artistMatch).toBe("none");
+    expect(r.artistPoints).toBe(0);
+  });
+
+  it("wrong lyric option sharing >60% words scores 0", () => {
+    const r = scoreRound(mcInput({
+      correctLyricAnswer: "shake it off shake it off",
+      lyricAnswer: "shake it up shake it up",
+    }));
+    expect(r.lyricMatch).toBe("none");
+    expect(r.lyricPoints).toBe(0);
+  });
+
+  it("exact picks score full on all four axes (medium: 50/50/50/100)", () => {
+    const r = scoreRound(mcInput({}));
+    expect(r.lyricPoints).toBe(50);
+    expect(r.titlePoints).toBe(50);
+    expect(r.artistPoints).toBe(50);
+    expect(r.yearPoints).toBe(100);
+    expect(r.totalRoundPoints).toBe(250);
+  });
+
+  it("exact match tolerates case/punctuation differences (normalizeText)", () => {
+    const r = scoreRound(mcInput({ titleAnswer: "stay!", artistAnswer: "NAS" }));
+    expect(r.titleCorrect).toBe(true);
+    expect(r.artistMatch).toBe("full");
+  });
+
+  it("artist alias exact match counts as full in mcMode", () => {
+    const r = scoreRound(mcInput({
+      correctArtistName: "Sean Combs",
+      artistAliases: ["Diddy", "Puff Daddy"],
+      artistAnswer: "Puff Daddy",
+    }));
+    expect(r.artistMatch).toBe("full");
+  });
+
+  it("typed mode (mcMode absent) keeps fuzzy behavior", () => {
+    const r = scoreRound(mcInput({ mcMode: undefined, titleAnswer: "Stan" }));
+    expect(r.titleCorrect).toBe(true); // fuzzy threshold allows it — unchanged
+  });
+
+  it("passUsed short-circuits everything to zero in mcMode", () => {
+    const r = scoreRound(mcInput({ passUsed: true }));
+    expect(r.totalRoundPoints).toBe(0);
+    expect(r.lyricMatch).toBe("none");
+    expect(r.titlePoints).toBe(0);
+    expect(r.artistPoints).toBe(0);
+    expect(r.yearPoints).toBe(0);
+  });
+
+  it("empty lyric answer scores none in mcMode even if correct answer normalizes empty", () => {
+    const r = scoreRound(mcInput({ lyricAnswer: "", correctLyricAnswer: "" }));
+    expect(r.lyricMatch).toBe("none");
+    expect(r.lyricPoints).toBe(0);
+  });
+});
+
 // ── Full round integration ────────────────────────────────────────────────────
 describe("full round scoring integration", () => {
   it("perfect answer (high diff): 170 points + level 3 celebration", () => {
@@ -149,5 +242,28 @@ describe("full round scoring integration", () => {
     const artist = matchArtist("", "Whitney Houston");
     const year = scoreYear(null, 1992);
     expect(lyricPts(lyric) + artistPts(artist, 100) + year).toBe(0);
+  });
+});
+
+// ── resolveMcVariant (display-row drift realignment) ─────────────────────────
+describe("resolveMcVariant (display-row drift realignment)", () => {
+  const variants = [
+    { prompt: "p0", answer: "hello darkness my old friend" },
+    { prompt: "p1", answer: "i've come to talk with you again" },
+  ];
+  it("keeps the played variant when the answer matches it", () => {
+    expect(resolveMcVariant(variants[0], variants, "Hello darkness, my old friend"))
+      .toBe(variants[0]);
+  });
+  it("realigns to another variant on exact match (player saw a stale display row)", () => {
+    expect(resolveMcVariant(variants[0], variants, "I've come to talk with you again"))
+      .toBe(variants[1]);
+  });
+  it("keeps the played variant when nothing matches (genuinely wrong answer)", () => {
+    expect(resolveMcVariant(variants[0], variants, "some wrong distractor"))
+      .toBe(variants[0]);
+  });
+  it("empty submitted answer keeps the played variant", () => {
+    expect(resolveMcVariant(variants[0], variants, "")).toBe(variants[0]);
   });
 });
