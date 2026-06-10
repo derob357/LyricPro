@@ -70,6 +70,12 @@ try {
       AND table_name IN ('guest_sessions', 'users')
       AND column_name IN ('marketingOptIn', 'consentedAt', 'consentWordingVersion', 'consentSource', 'consentIp')
     ORDER BY table_name, column_name`;
+
+  if (rows.length !== 10) {
+    console.error(`Expected 10 consent columns, found ${rows.length}. Review manually.`);
+    process.exit(1);
+  }
+
   console.log(`Verified ${rows.length} consent columns present:`);
   for (const r of rows) {
     console.log(`  ${r.table_name}.${r.column_name}`);
