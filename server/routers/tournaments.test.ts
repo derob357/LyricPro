@@ -54,8 +54,8 @@ liveDescribe("tournamentsRouter", () => {
     }).returning();
     adminId = a.id;
 
-    // Seed user with 100 GN
-    await db!.insert(goldenNoteBalances).values({ userId, balance: 100 });
+    // Seed user with 100 GN — pools must sum to balance (migration 0020 invariant).
+    await db!.insert(goldenNoteBalances).values({ userId, balance: 100, purchasedBalance: 100, earnedBalance: 0 });
 
     // Create an open tournament. The DB has a non-deferrable CHECK
     // requiring (kind='tournament' AND tournament_id IS NOT NULL), so we
@@ -180,7 +180,7 @@ liveDescribe("tournamentsRouter", () => {
       role: "user",
     }).returning();
     try {
-      await db!.insert(goldenNoteBalances).values({ userId: poor.id, balance: 1 });
+      await db!.insert(goldenNoteBalances).values({ userId: poor.id, balance: 1, purchasedBalance: 1, earnedBalance: 0 });
       await expect(
         callerFor(poor.id).tournaments.payEntry({ tournamentId: openTournamentId }),
       ).rejects.toThrow(/not enough golden notes|insufficient/i);
