@@ -1,6 +1,7 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useLocation } from "wouter";
 import { supabase } from "@/lib/supabase";
+import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
 import { Music, ShieldCheck } from "lucide-react";
 
@@ -60,6 +61,12 @@ export default function AuthCallback() {
   const [pending, setPending] = useState<Pending>(null);
   const [phase, setPhase] = useState<"ready" | "exchanging" | "error">("ready");
   const [errorMsg, setErrorMsg] = useState<string>("");
+
+  const setMarketingConsent = trpc.auth.setMarketingConsent.useMutation();
+  // Stable ref so the useEffect closure can call the latest mutation instance
+  // without being listed as an effect dependency.
+  const setMarketingConsentRef = useRef(setMarketingConsent);
+  setMarketingConsentRef.current = setMarketingConsent;
 
   useEffect(() => {
     let cancelled = false;
@@ -122,6 +129,15 @@ export default function AuthCallback() {
           setPhase("error");
           return;
         }
+        const pendingOptIn = localStorage.getItem("lyricpro_pending_optin");
+        if (pendingOptIn) {
+          try {
+            await setMarketingConsentRef.current.mutateAsync({ optIn: true, source: pendingOptIn });
+          } catch {
+            /* consent write must never block login */
+          }
+          localStorage.removeItem("lyricpro_pending_optin");
+        }
         window.history.replaceState(null, "", "/welcome");
         navigate("/welcome");
       })();
@@ -148,6 +164,15 @@ export default function AuthCallback() {
           "Sign-in completed but no session was created. " +
             "If this keeps happening, the link may have already been used or expired — request a fresh one."
         );
+      }
+      const pendingOptIn = localStorage.getItem("lyricpro_pending_optin");
+      if (pendingOptIn) {
+        try {
+          await setMarketingConsent.mutateAsync({ optIn: true, source: pendingOptIn });
+        } catch {
+          /* consent write must never block login */
+        }
+        localStorage.removeItem("lyricpro_pending_optin");
       }
       window.history.replaceState(null, "", "/welcome");
       navigate("/welcome");

@@ -5,7 +5,6 @@ import { Route, Switch, Redirect, useSearch } from "wouter";
 import ErrorBoundary from "./components/ErrorBoundary";
 import { ThemeProvider } from "./contexts/ThemeContext";
 import Home from "./pages/Home";
-import Interstitial from "./pages/Interstitial";
 import GameSetup from "./pages/GameSetup";
 import Lobby from "./pages/Lobby";
 import VideoLobby from "./pages/VideoLobby";
@@ -33,6 +32,7 @@ import Shop from "./pages/Shop";
 import Avatars from "./pages/Avatars";
 import ChatPage from "./pages/Chat";
 import TournamentsPage from "@/pages/Tournaments";
+import Privacy from "./pages/Privacy";
 // import JoinInvite from "./pages/JoinInvite"; // Disabled - invite codes removed
 import { PersistentHeader } from "./components/PersistentHeader";
 import { NotificationContainer } from "./components/NotificationToast";
@@ -52,8 +52,8 @@ function GameplayWithKey() {
 function Router() {
   return (
     <Switch>
-      <Route path="/" component={Interstitial} />
-      <Route path="/welcome" component={Home} />
+      <Route path="/" component={Home} />
+      <Route path="/welcome">{() => <Redirect to="/" />}</Route>
       <Route path="/setup" component={GameSetup} />
       <Route path="/lobby/live/:inviteCode" component={VideoLobby} />
       <Route path="/lobby/:roomCode" component={Lobby} />
@@ -82,6 +82,7 @@ function Router() {
       <Route path="/shop" component={Shop} />
       <Route path="/avatars" component={Avatars} />
       <Route path="/chat" component={ChatPage} />
+      <Route path="/privacy" component={Privacy} />
       {/* <Route path="/join" component={JoinInvite} /> */} {/* Disabled - invite codes removed */}
       <Route path="/404" component={NotFound} />
       <Route component={NotFound} />

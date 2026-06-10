@@ -11,6 +11,7 @@ import SocialShareButtons from "@/components/SocialShareButtons";
 import { getHomepageShareContent } from "@/lib/shareUtils";
 import { WeaknessPackCard } from "@/components/WeaknessPackCard";
 import { SuggestionCard } from "@/components/SuggestionCard";
+import PlayNowCard from "@/components/PlayNowCard";
 import {
   Music, Mic, Users, Trophy, Zap, ChevronRight,
   Play, Radio, Clock, Target, ArrowRight, ShoppingCart,
@@ -24,14 +25,6 @@ export default function Home() {
   const [, navigate] = useLocation();
   const { user, isAuthenticated } = useAuth();
   const [authOpen, setAuthOpen] = useState(false);
-
-  const handlePlayNow = () => {
-    if (isAuthenticated) {
-      navigate("/setup");
-    } else {
-      setAuthOpen(true);
-    }
-  };
 
   const handleHostGame = () => {
     if (isAuthenticated) {
@@ -93,7 +86,7 @@ export default function Home() {
                   className="border-primary/50 text-primary hover:bg-primary/10 hidden sm:flex">
                   <a href={getSignUpUrl()}>Sign Up</a>
                 </Button>
-                <Button size="sm" onClick={handlePlayNow}
+                <Button size="sm" onClick={() => document.getElementById("play-now-anchor")?.scrollIntoView({ behavior: "smooth" })}
                   className="bg-primary text-primary-foreground hover:bg-primary/90">
                   Play Free
                 </Button>
@@ -133,15 +126,14 @@ export default function Home() {
               Play solo or battle friends across every genre and decade.
             </motion.p>
 
-            <motion.div variants={fadeUp} className="flex flex-col sm:flex-row gap-4 justify-center items-center">
-              <Button size="lg" onClick={handlePlayNow}
-                className="bg-primary text-primary-foreground hover:bg-primary/90 glow-purple px-8 py-6 text-lg font-semibold rounded-xl w-full sm:w-auto">
-                <Play className="w-5 h-5 mr-2" /> Play Now — Free to try
-              </Button>
-              <Button size="lg" variant="outline" onClick={handleHostGame}
-                className="border-border/60 hover:border-primary/50 hover:bg-primary/5 px-8 py-6 text-lg font-semibold rounded-xl w-full sm:w-auto">
-                <Users className="w-5 h-5 mr-2" /> Host a Game
-              </Button>
+            <motion.div variants={fadeUp} className="w-full scroll-mt-20" id="play-now-anchor">
+              <PlayNowCard />
+              <div className="flex justify-center mt-4">
+                <Button size="lg" variant="outline" onClick={handleHostGame}
+                  className="border-border/60 hover:border-primary/50 hover:bg-primary/5 px-8 py-5 text-base font-semibold rounded-xl">
+                  <Users className="w-5 h-5 mr-2" /> Host a Game
+                </Button>
+              </div>
             </motion.div>
 
             {/* Social share buttons moved to top nav */}
@@ -248,18 +240,18 @@ export default function Home() {
           </h2>
           <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
             {[
-              { icon: User, title: "Solo Mode", desc: "Challenge yourself. Beat your personal best.", badge: "Any time", color: "text-primary", glow: "glow-purple" },
-              { icon: Repeat, title: "Turn-Based", desc: "Pass the device. Take turns. Battle it out.", badge: "1 device", color: "text-accent", glow: "glow-cyan" },
-              { icon: UsersRound, title: "Team Mode", desc: "Form teams. Collaborate. Crush the competition.", badge: "Group play", color: "text-yellow-400", glow: "glow-gold" },
-              { icon: Smartphone, title: "Remote Live", desc: "Join from anywhere. Play over FaceTime or Zoom.", badge: "Any device", color: "text-primary", glow: "glow-purple" },
-            ].map(({ icon: Icon, title, desc, badge, color, glow }) => (
+              { icon: User, title: "Solo Mode", desc: "Challenge yourself. Beat your personal best.", badge: "Any time", color: "text-primary", glow: "glow-purple", solo: true },
+              { icon: Repeat, title: "Turn-Based", desc: "Pass the device. Take turns. Battle it out.", badge: "1 device", color: "text-accent", glow: "glow-cyan", solo: false },
+              { icon: UsersRound, title: "Team Mode", desc: "Form teams. Collaborate. Crush the competition.", badge: "Group play", color: "text-yellow-400", glow: "glow-gold", solo: false },
+              { icon: Smartphone, title: "Remote Live", desc: "Join from anywhere. Play over FaceTime or Zoom.", badge: "Any device", color: "text-primary", glow: "glow-purple", solo: false },
+            ].map(({ icon: Icon, title, desc, badge, color, glow, solo }) => (
               <motion.div
                 key={title}
                 initial={{ opacity: 0, scale: 0.95 }}
                 whileInView={{ opacity: 1, scale: 1 }}
                 viewport={{ once: true }}
                 className="glass rounded-2xl p-6 text-center hover:border-primary/30 transition-all duration-300 cursor-pointer group"
-                onClick={handlePlayNow}
+                onClick={() => solo ? document.getElementById("play-now-anchor")?.scrollIntoView({ behavior: "smooth" }) : handleHostGame()}
               >
                 <div className={`w-12 h-12 rounded-xl bg-card flex items-center justify-center mx-auto mb-4 ${glow}`}>
                   <Icon className={`w-6 h-6 ${color}`} />
@@ -287,7 +279,7 @@ export default function Home() {
                 Join thousands of music lovers testing their knowledge. Free to play. No download required.
               </p>
               <div className="flex flex-col sm:flex-row gap-4 justify-center">
-                <Button size="lg" onClick={handlePlayNow}
+                <Button size="lg" onClick={() => document.getElementById("play-now-anchor")?.scrollIntoView({ behavior: "smooth" })}
                   className="bg-primary text-primary-foreground hover:bg-primary/90 glow-purple px-10 py-6 text-lg font-semibold rounded-xl">
                   <Play className="w-5 h-5 mr-2" /> Start Playing Free
                 </Button>

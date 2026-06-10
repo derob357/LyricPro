@@ -30,6 +30,7 @@ import { createClient } from "@supabase/supabase-js";
 import { TRPCError } from "@trpc/server";
 import { sendMagicLinkEmail } from "./_core/sendMagicLinkEmail";
 import { sendPasswordResetEmail } from "./_core/sendPasswordResetEmail";
+import { buildConsentStamp } from "./_core/consent";
 
 export const appRouter = router({
   system: systemRouter,
@@ -55,6 +56,20 @@ export const appRouter = router({
           firstName: input.firstName,
           lastName: input.lastName || null,
         }).where(eq(users.openId, ctx.user.openId));
+        return { success: true };
+      }),
+
+    setMarketingConsent: protectedProcedure
+      .input(z.object({
+        optIn: z.boolean(),
+        source: z.string().max(64),
+      }))
+      .mutation(async ({ input, ctx }) => {
+        const db = await getDb();
+        if (!db) throw new Error("Database not available");
+        await db.update(users)
+          .set(buildConsentStamp(input.optIn, input.source, ctx.req.ip))
+          .where(eq(users.id, ctx.user.id));
         return { success: true };
       }),
 

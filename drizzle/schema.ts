@@ -222,6 +222,12 @@ export const users = pgTable("users", {
   firstName: varchar("firstName", { length: 128 }),
   lastName: varchar("lastName", { length: 128 }),
   email: varchar("email", { length: 320 }),
+  // Marketing consent audit (GDPR/CASL: timestamp + wording version + source + IP)
+  marketingOptIn: boolean("marketingOptIn").default(false).notNull(),
+  consentedAt: timestamp("consentedAt", { withTimezone: true }),
+  consentWordingVersion: varchar("consentWordingVersion", { length: 32 }),
+  consentSource: varchar("consentSource", { length: 64 }),
+  consentIp: varchar("consentIp", { length: 45 }),
   loginMethod: varchar("loginMethod", { length: 64 }),
   role: userRoleEnum("role").default("user").notNull(),
   avatarUrl: text("avatarUrl"),
@@ -264,6 +270,12 @@ export const guestSessions = pgTable("guest_sessions", {
   sessionToken: varchar("sessionToken", { length: 128 }).notNull().unique(),
   nickname: varchar("nickname", { length: 64 }).notNull(),
   email: varchar("email", { length: 254 }), // nullable — lead capture from interstitial
+  // Marketing consent audit (GDPR/CASL: timestamp + wording version + source + IP)
+  marketingOptIn: boolean("marketingOptIn").default(false).notNull(),
+  consentedAt: timestamp("consentedAt", { withTimezone: true }),
+  consentWordingVersion: varchar("consentWordingVersion", { length: 32 }),
+  consentSource: varchar("consentSource", { length: 64 }),
+  consentIp: varchar("consentIp", { length: 45 }),
   createdAt: createdAtColumn(),
 });
 

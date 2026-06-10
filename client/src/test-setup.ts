@@ -2,6 +2,33 @@
 // Provides a proper localStorage/sessionStorage implementation for tests
 // that run under @edge-runtime/vm which only provides a stub.
 
+// Polyfill IntersectionObserver for framer-motion whileInView in jsdom
+if (typeof window !== "undefined" && !window.IntersectionObserver) {
+  class MockIntersectionObserver {
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+  }
+  Object.defineProperty(window, "IntersectionObserver", {
+    value: MockIntersectionObserver,
+    writable: true,
+  });
+}
+
+// Polyfill ResizeObserver for Radix UI components (e.g. Checkbox, Select)
+// that use @radix-ui/react-use-size internally.
+if (typeof window !== "undefined" && !window.ResizeObserver) {
+  class MockResizeObserver {
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+  }
+  Object.defineProperty(window, "ResizeObserver", {
+    value: MockResizeObserver,
+    writable: true,
+  });
+}
+
 class InMemoryStorage implements Storage {
   private store = new Map<string, string>();
 

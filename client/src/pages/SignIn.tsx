@@ -5,6 +5,7 @@ import { trpc } from "@/lib/trpc";
 import { IS_NATIVE } from "@/lib/platform";
 import { AUTH_CALLBACK_URL } from "@/lib/deepLink";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
@@ -37,6 +38,7 @@ export default function SignIn() {
   const [otpCode, setOtpCode] = useState("");
   const [otpVerifying, setOtpVerifying] = useState(false);
   const [devLink, setDevLink] = useState<string | null>(null);
+  const [marketingOptIn, setMarketingOptIn] = useState(false);
 
   // Dev-only: skip the email round-trip entirely.
   const devGenerateLink = trpc.auth.devGenerateMagicLink.useMutation({
@@ -284,6 +286,25 @@ export default function SignIn() {
                   autoFocus
                   autoComplete="email"
                 />
+                {isSignUp && (
+                  <label className="flex items-start gap-2 cursor-pointer">
+                    <Checkbox
+                      data-testid="signup-optin"
+                      checked={marketingOptIn}
+                      onCheckedChange={(v) => {
+                        const on = v === true;
+                        setMarketingOptIn(on);
+                        if (on) localStorage.setItem("lyricpro_pending_optin", "signup-form");
+                        else localStorage.removeItem("lyricpro_pending_optin");
+                      }}
+                      className="mt-0.5"
+                    />
+                    <span className="text-xs text-muted-foreground leading-snug">
+                      Yes, I'd like to receive tips, game updates, and promotions from LyricPro by email.
+                      Unsubscribe anytime. <a href="/privacy" className="underline hover:text-foreground">Privacy Policy</a>
+                    </span>
+                  </label>
+                )}
                 <Button
                   type="submit"
                   disabled={loading || !email}

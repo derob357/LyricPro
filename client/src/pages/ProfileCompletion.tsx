@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { useLocation } from "wouter";
 import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { trpc } from "@/lib/trpc";
@@ -17,6 +18,10 @@ export default function ProfileCompletion() {
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
   const [email, setEmail] = useState("");
+  const [marketingOptIn, setMarketingOptIn] = useState(
+    () => !!localStorage.getItem("lyricpro_pending_optin")
+  );
+  const [consentTouched, setConsentTouched] = useState(false);
 
   // Pre-fill from OAuth data
   useEffect(() => {
@@ -43,10 +48,28 @@ export default function ProfileCompletion() {
     },
   });
 
+  const setMarketingConsent = trpc.auth.setMarketingConsent.useMutation();
+
   const handleSubmit = () => {
     if (!firstName.trim()) {
       toast.error("First name is required");
       return;
+    }
+    // Only write consent when the user actually touched the checkbox.
+    // If untouched, AuthCallback already recorded consent and cleared the relay
+    // key — calling mutate here would overwrite that with the seeded default.
+    if (consentTouched) {
+      // Fire-and-forget — failure must never block profile save.
+      try {
+        setMarketingConsent.mutate(
+          { optIn: marketingOptIn, source: "profile-completion" },
+          { onSettled: () => localStorage.removeItem("lyricpro_pending_optin") }
+        );
+      } catch {
+        localStorage.removeItem("lyricpro_pending_optin");
+      }
+    } else {
+      localStorage.removeItem("lyricpro_pending_optin");
     }
     updateProfileMutation.mutate({
       firstName: firstName.trim(),
@@ -146,6 +169,25 @@ export default function ProfileCompletion() {
               Email is managed by your sign-in provider and cannot be changed here.
             </p>
           </div>
+
+          <label className="flex items-start gap-2 cursor-pointer">
+            <Checkbox
+              data-testid="completion-optin"
+              checked={marketingOptIn}
+              onCheckedChange={(v) => {
+                const on = v === true;
+                setMarketingOptIn(on);
+                setConsentTouched(true);
+                if (on) localStorage.setItem("lyricpro_pending_optin", "profile-completion");
+                else localStorage.removeItem("lyricpro_pending_optin");
+              }}
+              className="mt-0.5"
+            />
+            <span className="text-xs text-muted-foreground leading-snug">
+              Yes, I'd like to receive tips, game updates, and promotions from LyricPro by email.
+              Unsubscribe anytime. <a href="/privacy" className="underline hover:text-foreground">Privacy Policy</a>
+            </span>
+          </label>
 
           <Button
             className="w-full bg-primary text-primary-foreground hover:bg-primary/90 glow-purple py-5 text-base font-semibold"

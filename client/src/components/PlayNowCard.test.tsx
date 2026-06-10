@@ -6,10 +6,8 @@ vi.mock("wouter", async () => {
   const actual: Record<string, unknown> = await vi.importActual("wouter");
   return { ...actual, useLocation: () => ["/", navigate] };
 });
-
 const authState = vi.hoisted(() => ({ value: { user: null as any, isAuthenticated: false } }));
 vi.mock("@/_core/hooks/useAuth", () => ({ useAuth: () => authState.value }));
-
 const createGuestSession = vi.hoisted(() => ({ mutateAsync: vi.fn() }));
 const createRoom = vi.hoisted(() => ({ mutateAsync: vi.fn() }));
 vi.mock("@/lib/trpc", () => ({
@@ -21,17 +19,15 @@ vi.mock("@/lib/trpc", () => ({
   },
 }));
 
-import Interstitial from "./Interstitial";
+import PlayNowCard from "./PlayNowCard";
 
-function selectGenreAndDecade() {
-  // Genre uses a native <select> for testability (see note in implementation).
+function fillRequired() {
   fireEvent.change(screen.getByTestId("genre-trigger"), { target: { value: "Pop" } });
-  // Decade multi-select popover
   fireEvent.click(screen.getByTestId("decade-trigger"));
   fireEvent.click(screen.getByTestId("decade-opt-1990–2000"));
 }
 
-describe("Interstitial Play Now", () => {
+describe("PlayNowCard", () => {
   beforeEach(() => {
     navigate.mockClear();
     createGuestSession.mutateAsync.mockReset().mockResolvedValue({ token: "guest-tok", nickname: "jamie" });
@@ -40,25 +36,45 @@ describe("Interstitial Play Now", () => {
     localStorage.clear();
   });
 
-  it("disables Start until email + genre + decade are all set (guest)", () => {
-    render(<Interstitial />);
+  it("guest: requires email + genre + decade before Start enables; opt-in NOT required", () => {
+    render(<PlayNowCard />);
     const start = screen.getByTestId("play-start") as HTMLButtonElement;
     expect(start.disabled).toBe(true);
     fireEvent.change(screen.getByTestId("email-input"), { target: { value: "jamie@example.com" } });
-    expect(start.disabled).toBe(true);
-    selectGenreAndDecade();
+    fillRequired();
     expect(start.disabled).toBe(false);
   });
 
-  it("guest flow: guest session + 3-round low/90s solo room + navigate", async () => {
-    render(<Interstitial />);
+  it("guest: opt-in checkbox is UNCHECKED by default and passes false", async () => {
+    render(<PlayNowCard />);
     fireEvent.change(screen.getByTestId("email-input"), { target: { value: "jamie@example.com" } });
-    selectGenreAndDecade();
+    fillRequired();
+    fireEvent.click(screen.getByTestId("play-start"));
+    await waitFor(() => expect(createGuestSession.mutateAsync).toHaveBeenCalled());
+    expect(createGuestSession.mutateAsync).toHaveBeenCalledWith({
+      email: "jamie@example.com",
+      marketingOptIn: false,
+      consentSource: "home-play-card",
+    });
+  });
+
+  it("guest: checking opt-in passes true", async () => {
+    render(<PlayNowCard />);
+    fireEvent.change(screen.getByTestId("email-input"), { target: { value: "jamie@example.com" } });
+    fireEvent.click(screen.getByTestId("optin-checkbox"));
+    fillRequired();
+    fireEvent.click(screen.getByTestId("play-start"));
+    await waitFor(() => expect(createGuestSession.mutateAsync).toHaveBeenCalled());
+    expect(createGuestSession.mutateAsync.mock.calls[0][0].marketingOptIn).toBe(true);
+  });
+
+  it("guest flow: quick-start config preserved + navigate", async () => {
+    render(<PlayNowCard />);
+    fireEvent.change(screen.getByTestId("email-input"), { target: { value: "jamie@example.com" } });
+    fillRequired();
     fireEvent.click(screen.getByTestId("play-start"));
     await waitFor(() => expect(createRoom.mutateAsync).toHaveBeenCalled());
-    expect(createGuestSession.mutateAsync).toHaveBeenCalledWith({ email: "jamie@example.com" });
     expect(localStorage.getItem("lyricpro_guest_token")).toBe("guest-tok");
-    expect(localStorage.getItem("lyricpro_guest_email")).toBe("jamie@example.com");
     expect(createRoom.mutateAsync).toHaveBeenCalledWith(expect.objectContaining({
       mode: "solo", genres: ["Pop"], decades: ["1990–2000"],
       difficulty: "low", timerSeconds: 90, rounds: 3, explicitFilter: false, guestToken: "guest-tok",
@@ -66,21 +82,14 @@ describe("Interstitial Play Now", () => {
     await waitFor(() => expect(navigate).toHaveBeenCalledWith("/play/ROOM42"));
   });
 
-  it("authenticated flow: no email field, no guest session, no guestToken", async () => {
-    authState.value = { user: { id: "u1", firstName: "Sam" }, isAuthenticated: true };
-    render(<Interstitial />);
+  it("authenticated: no email field, no opt-in checkbox, no guest session", async () => {
+    authState.value = { user: { id: "u1" }, isAuthenticated: true };
+    render(<PlayNowCard />);
     expect(screen.queryByTestId("email-input")).toBeNull();
-    selectGenreAndDecade();
+    expect(screen.queryByTestId("optin-checkbox")).toBeNull();
+    fillRequired();
     fireEvent.click(screen.getByTestId("play-start"));
     await waitFor(() => expect(createRoom.mutateAsync).toHaveBeenCalled());
     expect(createGuestSession.mutateAsync).not.toHaveBeenCalled();
-    expect(createRoom.mutateAsync.mock.calls[0][0].guestToken).toBeUndefined();
-    await waitFor(() => expect(navigate).toHaveBeenCalledWith("/play/ROOM42"));
-  });
-
-  it("MyDashboard navigates to /welcome", () => {
-    render(<Interstitial />);
-    fireEvent.click(screen.getByTestId("mydashboard-btn"));
-    expect(navigate).toHaveBeenCalledWith("/welcome");
   });
 });
