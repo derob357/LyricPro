@@ -929,6 +929,9 @@ export const goldenNoteTransactions = pgTable("golden_note_transactions", {
   stripePaymentIntentId: varchar("stripePaymentIntentId", { length: 256 }),
   balanceAfter: integer("balanceAfter").notNull(),
   // Client-retry dedupe for money-moving mutations (ante escrow, extra game).
+  // Backed by a PARTIAL unique index in 0020 (WHERE NOT NULL) — Drizzle's
+  // onConflictDoUpdate(target: idempotencyKey) would emit the wrong ON CONFLICT
+  // clause; idempotency MUST use select-first + unique-violation catch instead.
   idempotencyKey: varchar("idempotencyKey", { length: 64 }).unique(),
   createdAt: createdAtColumn(),
 });

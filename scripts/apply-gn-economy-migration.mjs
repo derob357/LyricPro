@@ -124,6 +124,14 @@ try {
   }
   console.log(`  gn_stake_state enum: ${expectedStates.join(", ")} — OK`);
 
+  // 6. Partial unique index on golden_note_transactions.idempotencyKey
+  const idemIdx = await sql`SELECT indexname FROM pg_indexes WHERE tablename = 'golden_note_transactions' AND indexname = 'golden_note_transactions_idem'`;
+  if (idemIdx.length !== 1) {
+    console.error("VERIFICATION FAILED: missing partial unique index golden_note_transactions_idem");
+    process.exit(1);
+  }
+  console.log(`  golden_note_transactions_idem (partial unique index) — OK`);
+
   console.log("\nAll verifications passed. Migration 0020 applied successfully.");
 } catch (err) {
   console.error("Migration FAILED.");
