@@ -180,9 +180,9 @@ export default function GameSetup() {
   ];
 
   const difficultyOptions = [
-    { value: "low", label: "Low", desc: "Full lyric shown — name song, artist & year (100 pts max)", color: "text-green-400" },
-    { value: "medium", label: "Medium", desc: "Full lyric shown — name song, artist & year (200 pts max)", color: "text-yellow-400" },
-    { value: "high", label: "High", desc: "Complete the lyric + name artist & year (450 pts max)", color: "text-red-400" },
+    { value: "low", label: "Low", desc: "4 questions per round — finish the lyric, name the title, artist & year (125 pts max)", color: "text-green-400" },
+    { value: "medium", label: "Medium", desc: "4 questions per round — finish the lyric, name the title, artist & year (250 pts max)", color: "text-yellow-400" },
+    { value: "high", label: "High", desc: "4 questions per round — finish the lyric, name the title, artist & year (400 pts max)", color: "text-red-400" },
   ];
 
   return (
@@ -363,7 +363,7 @@ export default function GameSetup() {
               <Trophy className="w-4 h-4 text-primary" />
               <h2 className="font-display font-semibold text-lg text-foreground">Point System</h2>
             </div>
-            <p className="text-muted-foreground text-sm mb-4">Points scale with difficulty. Low &amp; Medium show the full lyric — name the song, artist, and year.</p>
+            <p className="text-muted-foreground text-sm mb-4">Every round asks 4 questions — lyric, title, artist, and year. Points scale with difficulty.</p>
             <div className="space-y-2">
               {[
                 { diff: "Low", color: "text-green-400", bg: "bg-green-500/10", border: "border-green-500/30", lyric: null, title: 25, artist: 25, year: 50, total: 100 },
