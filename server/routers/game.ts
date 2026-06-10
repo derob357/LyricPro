@@ -19,6 +19,7 @@ import {
 } from "../_core/variantReader";
 import { computePlayerProfile } from "../_core/playerProfile";
 import { deriveGuestNickname } from "./guestNickname";
+import { buildConsentStamp } from "../_core/consent";
 import { resolveCommentary, resolveGameSummaryCommentary, type RoundContext, type GameSummaryContext } from "../_core/commentaryEngine";
 import { playerProfiles } from "../../drizzle/schema";
 import type { PlayerProfileData } from "../_core/playerProfile";
@@ -115,6 +116,8 @@ export const gameRouter = router({
     .input(z.object({
       nickname: z.string().min(1).max(64).optional(),
       email: z.string().email().max(254).optional(),
+      marketingOptIn: z.boolean().default(false),
+      consentSource: z.string().max(64).optional(),
     }))
     .mutation(async ({ input, ctx }) => {
       // Public, unauthenticated DB write + email capture — rate-limit by IP to
@@ -129,6 +132,7 @@ export const gameRouter = router({
         sessionToken: token,
         nickname,
         email: input.email ?? null,
+        ...buildConsentStamp(input.marketingOptIn, input.consentSource, ctx.req.ip),
       });
       return { token, nickname };
     }),
