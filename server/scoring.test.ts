@@ -115,6 +115,83 @@ describe("correctCount → celebration level", () => {
   it("level 3 for partial lyric + primary artist + year", () => expect(celebLevel("partial", "primary_only", 10)).toBe(3));
 });
 
+// ── MC exact-match mode (mcMode) ──────────────────────────────────────────────
+import { scoreRound, type ScoreRoundInput } from "./_core/scoring";
+
+function mcInput(overrides: Partial<ScoreRoundInput>): ScoreRoundInput {
+  return {
+    difficulty: "medium",
+    passUsed: false,
+    lyricAnswer: "shake it off shake it off",
+    titleAnswer: "Stay",
+    artistAnswer: "Nas",
+    yearAnswer: "1994",
+    correctLyricAnswer: "shake it off shake it off",
+    correctTitle: "Stay",
+    correctArtistName: "Nas",
+    correctReleaseYear: 1994,
+    artistAliases: [],
+    responseTimeSeconds: 10,
+    timerSeconds: 90,
+    rankingMode: "standard",
+    newStreak: 0,
+    mcMode: true,
+    ...overrides,
+  };
+}
+
+describe("scoreRound mcMode (multiple-choice exact matching)", () => {
+  it("wrong title option close in edit distance scores 0 (fuzzy would match)", () => {
+    const r = scoreRound(mcInput({ titleAnswer: "Stan" })); // lev("stan","stay")=2 ≤ fuzzy threshold
+    expect(r.titleCorrect).toBe(false);
+    expect(r.titlePoints).toBe(0);
+  });
+
+  it("wrong short artist option within edit distance 2 scores 0", () => {
+    const r = scoreRound(mcInput({ artistAnswer: "NAV" })); // lev("nav","nas")=1
+    expect(r.artistMatch).toBe("none");
+    expect(r.artistPoints).toBe(0);
+  });
+
+  it("wrong lyric option sharing >60% words scores 0", () => {
+    const r = scoreRound(mcInput({
+      correctLyricAnswer: "shake it off shake it off",
+      lyricAnswer: "shake it up shake it up",
+    }));
+    expect(r.lyricMatch).toBe("none");
+    expect(r.lyricPoints).toBe(0);
+  });
+
+  it("exact picks score full on all four axes (medium: 50/50/50/100)", () => {
+    const r = scoreRound(mcInput({}));
+    expect(r.lyricPoints).toBe(50);
+    expect(r.titlePoints).toBe(50);
+    expect(r.artistPoints).toBe(50);
+    expect(r.yearPoints).toBe(100);
+    expect(r.totalRoundPoints).toBe(250);
+  });
+
+  it("exact match tolerates case/punctuation differences (normalizeText)", () => {
+    const r = scoreRound(mcInput({ titleAnswer: "stay!", artistAnswer: "NAS" }));
+    expect(r.titleCorrect).toBe(true);
+    expect(r.artistMatch).toBe("full");
+  });
+
+  it("artist alias exact match counts as full in mcMode", () => {
+    const r = scoreRound(mcInput({
+      correctArtistName: "Sean Combs",
+      artistAliases: ["Diddy", "Puff Daddy"],
+      artistAnswer: "Puff Daddy",
+    }));
+    expect(r.artistMatch).toBe("full");
+  });
+
+  it("typed mode (mcMode absent) keeps fuzzy behavior", () => {
+    const r = scoreRound(mcInput({ mcMode: undefined, titleAnswer: "Stan" }));
+    expect(r.titleCorrect).toBe(true); // fuzzy threshold allows it — unchanged
+  });
+});
+
 // ── Full round integration ────────────────────────────────────────────────────
 describe("full round scoring integration", () => {
   it("perfect answer (high diff): 170 points + level 3 celebration", () => {

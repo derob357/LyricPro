@@ -148,6 +148,10 @@ export interface ScoreRoundInput {
   /** lyricCorrect flag — derived from lyricMatch but needed for streak bonus gate.
    *  Caller should pass the lyricMatch === "full" check, or leave undefined to
    *  let scoreRound derive it internally (default). */
+  /** Multiple-choice mode: answers are picked options, so lyric/title/artist
+   *  match by normalized exact equality (aliases allowed for artist). Fuzzy
+   *  matchers remain for typed/voice input when this is false/undefined. */
+  mcMode?: boolean;
 }
 
 export interface ScoreRoundResult {
@@ -182,6 +186,7 @@ export function scoreRound(input: ScoreRoundInput): ScoreRoundResult {
     timerSeconds,
     rankingMode,
     newStreak,
+    mcMode,
   } = input;
 
   // Difficulty-based point values
@@ -208,34 +213,47 @@ export function scoreRound(input: ScoreRoundInput): ScoreRoundResult {
   if (!passUsed) {
     // Lyric scoring (all difficulties) — use the variant the player saw,
     // not the legacy column, so variant rotation scores correctly.
-    lyricMatch = matchLyric(lyricAnswer, correctLyricAnswer);
+    lyricMatch = mcMode
+      ? (normalizeText(lyricAnswer) === normalizeText(correctLyricAnswer) ? "full" : "none")
+      : matchLyric(lyricAnswer, correctLyricAnswer);
     lyricPoints = lyricMatch === "full" ? pts.lyric : lyricMatch === "partial" ? pts.lyricPartial : 0;
 
     // Title scoring (Low/Medium/High all score title)
     const titleNorm = normalizeText(titleAnswer);
     const correctTitleNorm = normalizeText(correctTitle);
     if (titleNorm && correctTitleNorm) {
-      // Full match: exact, or up to 30% edit distance (generous for typos/voice input)
-      const titleEditDist = levenshtein(titleNorm, correctTitleNorm);
-      const titleThreshold = Math.max(2, Math.floor(correctTitleNorm.length * 0.30));
-      if (titleNorm === correctTitleNorm || titleEditDist <= titleThreshold) {
-        titleCorrect = true;
-        titlePoints = pts.title;
+      if (mcMode) {
+        if (titleNorm === correctTitleNorm) {
+          titleCorrect = true;
+          titlePoints = pts.title;
+        }
       } else {
-        // Partial: significant word overlap (allow levenshtein 2 per word)
-        const titleWords = correctTitleNorm.split(" ").filter(w => w.length > 1);
-        const userTitleWords = titleNorm.split(" ");
-        if (titleWords.length > 0) {
-          const matched = titleWords.filter(tw => userTitleWords.some(uw => uw === tw || levenshtein(uw, tw) <= 2));
-          if (matched.length / titleWords.length >= 0.5) {
-            titlePartial = true;
-            titlePoints = pts.titlePartial;
+        // Full match: exact, or up to 30% edit distance (generous for typos/voice input)
+        const titleEditDist = levenshtein(titleNorm, correctTitleNorm);
+        const titleThreshold = Math.max(2, Math.floor(correctTitleNorm.length * 0.30));
+        if (titleNorm === correctTitleNorm || titleEditDist <= titleThreshold) {
+          titleCorrect = true;
+          titlePoints = pts.title;
+        } else {
+          // Partial: significant word overlap (allow levenshtein 2 per word)
+          const titleWords = correctTitleNorm.split(" ").filter(w => w.length > 1);
+          const userTitleWords = titleNorm.split(" ");
+          if (titleWords.length > 0) {
+            const matched = titleWords.filter(tw => userTitleWords.some(uw => uw === tw || levenshtein(uw, tw) <= 2));
+            if (matched.length / titleWords.length >= 0.5) {
+              titlePartial = true;
+              titlePoints = pts.titlePartial;
+            }
           }
         }
       }
     }
 
-    artistMatch = matchArtist(artistAnswer, correctArtistName, artistAliases);
+    artistMatch = mcMode
+      ? ((normalizeText(artistAnswer) === normalizeText(correctArtistName) ||
+          (artistAliases ?? []).some(a => normalizeText(a) === normalizeText(artistAnswer)))
+          ? "full" : "none")
+      : matchArtist(artistAnswer, correctArtistName, artistAliases);
     artistPoints = artistMatch === "full" ? pts.artist : artistMatch === "primary_only" ? pts.artistPartial : 0;
 
     // Year scoring with new point values
