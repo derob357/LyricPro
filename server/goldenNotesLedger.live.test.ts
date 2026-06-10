@@ -8,6 +8,7 @@
 import { describe, it, expect, afterEach } from "vitest";
 import { eq, or } from "drizzle-orm";
 import { goldenNoteBalances, goldenNoteTransactions } from "../drizzle/schema";
+import { SIGNUP_GRANT } from "./_core/stakeMath";
 
 const DB_URL =
   process.env.SUPABASE_SESSION_POOLER_STRING ??
@@ -269,6 +270,99 @@ liveDescribe("goldenNotesLedger — pool-aware spend (live DB)", () => {
       .select()
       .from(goldenNoteTransactions)
       .where(eq(goldenNoteTransactions.userId, U1));
+    expect(txns).toHaveLength(1);
+  });
+});
+
+// ─── Task 6: Signup grant ──────────────────────────────────────────────────────
+// Tests mirror the exact idempotency-key format used by upsertUser:
+//   `signup-grant-${userId}`
+// Sentinel user ids U1/U2 are reused (cleanup from the suite above runs first).
+
+liveDescribe("goldenNotesLedger — signup grant (live DB)", () => {
+  const SG1 = -9011; // sentinel: signup-grant test user 1
+  const SG2 = -9012; // sentinel: signup-grant test user 2
+
+  afterEach(async () => {
+    const db = await getDb();
+    for (const uid of [SG1, SG2]) {
+      await db.delete(goldenNoteTransactions).where(eq(goldenNoteTransactions.userId, uid));
+      await db.delete(goldenNoteBalances).where(eq(goldenNoteBalances.userId, uid));
+    }
+  });
+
+  it("signup grant: 100 GN lands in earnedBalance, purchasedBalance untouched", async () => {
+    const db = await getDb();
+    const { creditGoldenNotes } = await import("./_core/goldenNotesLedger");
+
+    // Start from zero balance (no prior seed — creditGoldenNotes creates the row).
+    const result = await db.transaction(async (tx) =>
+      creditGoldenNotes(tx, SG1, SIGNUP_GRANT, "signup_grant", "Welcome bonus", undefined, {
+        pool: "earned",
+        idempotencyKey: `signup-grant-${SG1}`,
+      }),
+    );
+
+    expect(result.deduped).toBe(false);
+    expect(result.newBalance).toBe(SIGNUP_GRANT);
+
+    const [bal] = await db
+      .select()
+      .from(goldenNoteBalances)
+      .where(eq(goldenNoteBalances.userId, SG1));
+
+    expect(bal.balance).toBe(SIGNUP_GRANT);
+    expect(bal.earnedBalance).toBe(SIGNUP_GRANT);
+    expect(bal.purchasedBalance).toBe(0);
+    expect(bal.balance).toBe(bal.earnedBalance + bal.purchasedBalance);
+
+    const txns = await db
+      .select()
+      .from(goldenNoteTransactions)
+      .where(eq(goldenNoteTransactions.userId, SG1));
+    expect(txns).toHaveLength(1);
+    expect(txns[0].kind).toBe("signup_grant");
+    expect(txns[0].idempotencyKey).toBe(`signup-grant-${SG1}`);
+  });
+
+  it("signup grant: second call with same key dedupes — no double-credit", async () => {
+    const db = await getDb();
+    const { creditGoldenNotes } = await import("./_core/goldenNotesLedger");
+
+    const idemKey = `signup-grant-${SG2}`;
+
+    const first = await db.transaction(async (tx) =>
+      creditGoldenNotes(tx, SG2, SIGNUP_GRANT, "signup_grant", "Welcome bonus", undefined, {
+        pool: "earned",
+        idempotencyKey: idemKey,
+      }),
+    );
+
+    // Simulate a second login (or retry) — same idempotency key.
+    const second = await db.transaction(async (tx) =>
+      creditGoldenNotes(tx, SG2, SIGNUP_GRANT, "signup_grant", "Welcome bonus", undefined, {
+        pool: "earned",
+        idempotencyKey: idemKey,
+      }),
+    );
+
+    expect(first.deduped).toBe(false);
+    expect(second.deduped).toBe(true);
+    expect(second.newBalance).toBe(first.newBalance);
+
+    const [bal] = await db
+      .select()
+      .from(goldenNoteBalances)
+      .where(eq(goldenNoteBalances.userId, SG2));
+
+    // Credited exactly once.
+    expect(bal.balance).toBe(SIGNUP_GRANT);
+    expect(bal.earnedBalance).toBe(SIGNUP_GRANT);
+
+    const txns = await db
+      .select()
+      .from(goldenNoteTransactions)
+      .where(eq(goldenNoteTransactions.userId, SG2));
     expect(txns).toHaveLength(1);
   });
 });
