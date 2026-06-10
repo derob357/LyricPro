@@ -21,6 +21,7 @@ export default function ProfileCompletion() {
   const [marketingOptIn, setMarketingOptIn] = useState(
     () => !!localStorage.getItem("lyricpro_pending_optin")
   );
+  const [consentTouched, setConsentTouched] = useState(false);
 
   // Pre-fill from OAuth data
   useEffect(() => {
@@ -54,13 +55,20 @@ export default function ProfileCompletion() {
       toast.error("First name is required");
       return;
     }
-    // Fire consent write (fire-and-forget — failure must never block profile save).
-    try {
-      setMarketingConsent.mutate(
-        { optIn: marketingOptIn, source: "profile-completion" },
-        { onSettled: () => localStorage.removeItem("lyricpro_pending_optin") }
-      );
-    } catch {
+    // Only write consent when the user actually touched the checkbox.
+    // If untouched, AuthCallback already recorded consent and cleared the relay
+    // key — calling mutate here would overwrite that with the seeded default.
+    if (consentTouched) {
+      // Fire-and-forget — failure must never block profile save.
+      try {
+        setMarketingConsent.mutate(
+          { optIn: marketingOptIn, source: "profile-completion" },
+          { onSettled: () => localStorage.removeItem("lyricpro_pending_optin") }
+        );
+      } catch {
+        localStorage.removeItem("lyricpro_pending_optin");
+      }
+    } else {
       localStorage.removeItem("lyricpro_pending_optin");
     }
     updateProfileMutation.mutate({
@@ -169,13 +177,14 @@ export default function ProfileCompletion() {
               onCheckedChange={(v) => {
                 const on = v === true;
                 setMarketingOptIn(on);
+                setConsentTouched(true);
                 if (on) localStorage.setItem("lyricpro_pending_optin", "profile-completion");
                 else localStorage.removeItem("lyricpro_pending_optin");
               }}
               className="mt-0.5"
             />
             <span className="text-xs text-muted-foreground leading-snug">
-              Yes, I&rsquo;d like to receive tips, game updates, and promotions from LyricPro by email.
+              Yes, I'd like to receive tips, game updates, and promotions from LyricPro by email.
               Unsubscribe anytime. <a href="/privacy" className="underline hover:text-foreground">Privacy Policy</a>
             </span>
           </label>

@@ -300,7 +300,7 @@ export default function SignIn() {
                       className="mt-0.5"
                     />
                     <span className="text-xs text-muted-foreground leading-snug">
-                      Yes, I&rsquo;d like to receive tips, game updates, and promotions from LyricPro by email.
+                      Yes, I'd like to receive tips, game updates, and promotions from LyricPro by email.
                       Unsubscribe anytime. <a href="/privacy" className="underline hover:text-foreground">Privacy Policy</a>
                     </span>
                   </label>
@@ -361,7 +361,7 @@ export default function SignIn() {
                       className="mt-0.5"
                     />
                     <span className="text-xs text-muted-foreground leading-snug">
-                      Yes, I&rsquo;d like to receive tips, game updates, and promotions from LyricPro by email.
+                      Yes, I'd like to receive tips, game updates, and promotions from LyricPro by email.
                       Unsubscribe anytime. <a href="/privacy" className="underline hover:text-foreground">Privacy Policy</a>
                     </span>
                   </label>
