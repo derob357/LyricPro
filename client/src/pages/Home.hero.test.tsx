@@ -42,4 +42,10 @@ describe("Home hero", () => {
     fireEvent.click(host);
     expect(screen.getByRole("dialog")).toBeTruthy();
   });
+
+  it("multiplayer-ish mode cards open the auth dialog for guests; Solo scrolls", () => {
+    render(<Home />);
+    fireEvent.click(screen.getByText("Team Mode").closest("div[class]")!);
+    expect(screen.getByRole("dialog")).toBeTruthy();
+  });
 });

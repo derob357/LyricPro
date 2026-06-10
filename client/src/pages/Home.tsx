@@ -126,7 +126,7 @@ export default function Home() {
               Play solo or battle friends across every genre and decade.
             </motion.p>
 
-            <motion.div variants={fadeUp} className="w-full" id="play-now-anchor">
+            <motion.div variants={fadeUp} className="w-full scroll-mt-20" id="play-now-anchor">
               <PlayNowCard />
               <div className="flex justify-center mt-4">
                 <Button size="lg" variant="outline" onClick={handleHostGame}
@@ -240,18 +240,18 @@ export default function Home() {
           </h2>
           <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
             {[
-              { icon: User, title: "Solo Mode", desc: "Challenge yourself. Beat your personal best.", badge: "Any time", color: "text-primary", glow: "glow-purple" },
-              { icon: Repeat, title: "Turn-Based", desc: "Pass the device. Take turns. Battle it out.", badge: "1 device", color: "text-accent", glow: "glow-cyan" },
-              { icon: UsersRound, title: "Team Mode", desc: "Form teams. Collaborate. Crush the competition.", badge: "Group play", color: "text-yellow-400", glow: "glow-gold" },
-              { icon: Smartphone, title: "Remote Live", desc: "Join from anywhere. Play over FaceTime or Zoom.", badge: "Any device", color: "text-primary", glow: "glow-purple" },
-            ].map(({ icon: Icon, title, desc, badge, color, glow }) => (
+              { icon: User, title: "Solo Mode", desc: "Challenge yourself. Beat your personal best.", badge: "Any time", color: "text-primary", glow: "glow-purple", solo: true },
+              { icon: Repeat, title: "Turn-Based", desc: "Pass the device. Take turns. Battle it out.", badge: "1 device", color: "text-accent", glow: "glow-cyan", solo: false },
+              { icon: UsersRound, title: "Team Mode", desc: "Form teams. Collaborate. Crush the competition.", badge: "Group play", color: "text-yellow-400", glow: "glow-gold", solo: false },
+              { icon: Smartphone, title: "Remote Live", desc: "Join from anywhere. Play over FaceTime or Zoom.", badge: "Any device", color: "text-primary", glow: "glow-purple", solo: false },
+            ].map(({ icon: Icon, title, desc, badge, color, glow, solo }) => (
               <motion.div
                 key={title}
                 initial={{ opacity: 0, scale: 0.95 }}
                 whileInView={{ opacity: 1, scale: 1 }}
                 viewport={{ once: true }}
                 className="glass rounded-2xl p-6 text-center hover:border-primary/30 transition-all duration-300 cursor-pointer group"
-                onClick={() => document.getElementById("play-now-anchor")?.scrollIntoView({ behavior: "smooth" })}
+                onClick={() => solo ? document.getElementById("play-now-anchor")?.scrollIntoView({ behavior: "smooth" }) : handleHostGame()}
               >
                 <div className={`w-12 h-12 rounded-xl bg-card flex items-center justify-center mx-auto mb-4 ${glow}`}>
                   <Icon className={`w-6 h-6 ${color}`} />
