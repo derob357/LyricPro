@@ -70,7 +70,7 @@ export const appRouter = router({
         await db.update(users)
           .set(buildConsentStamp(input.optIn, input.source, ctx.req.ip))
           .where(eq(users.id, ctx.user.id));
-        return { ok: true };
+        return { success: true };
       }),
 
     // Public mutation: generate a magic-link URL with the Supabase
