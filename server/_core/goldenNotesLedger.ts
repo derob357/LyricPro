@@ -50,9 +50,29 @@ export interface CreditOptions {
  * the balance write + transaction-log write commit atomically.
  * Returns { newBalance, deduped }. Throws TRPCError BAD_REQUEST on insufficient funds.
  *
- * Idempotency: select-first + unique-violation catch (NOT onConflictDoUpdate —
- * the DB index on idempotencyKey is a PARTIAL unique index and Drizzle would
- * emit the wrong ON CONFLICT clause).
+ * Idempotency — lock-then-check ordering:
+ *   1. Acquire FOR UPDATE lock on the balance row first.
+ *   2. Under that lock, check the transactions table for the idempotencyKey.
+ *      The lock serializes same-user races so by the time we read, any in-flight
+ *      first request has either committed (key exists → safe to dedupe) or not
+ *      yet started (key absent → safe to proceed). The early check before the
+ *      lock is removed intentionally.
+ *   3. If deduped at step 2 → return immediately (no balance write).
+ *   4. Write balance update, then insert the audit row inside a NESTED
+ *      transaction (savepoint). 23505 here is a programming error (same-user
+ *      same-key slipped past the lock somehow) — throw loudly rather than
+ *      silently double-debit.
+ *
+ * Why NOT the old pattern (check-first before lock):
+ *   The old code checked for an existing key BEFORE locking the balance row.
+ *   Two concurrent requests could both pass the check (key absent), both run
+ *   the balance UPDATE, and then both attempt the INSERT — the loser catches
+ *   23505 AFTER having already deducted the balance, creating a double debit.
+ *   Moving the check to AFTER the FOR UPDATE lock closes that window.
+ *
+ * Drizzle on postgres-js: tx.transaction(inner) calls client.savepoint() —
+ * confirmed in node_modules/drizzle-orm/postgres-js/session.cjs. After a
+ * savepoint rollback, the outer transaction remains alive.
  */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export async function spendGoldenNotes(
@@ -67,7 +87,27 @@ export async function spendGoldenNotes(
     throw new TRPCError({ code: "BAD_REQUEST", message: "cost must be positive" });
   }
 
-  // ── Idempotency: check for an existing transaction with this key ──────────
+  // ── Step 1: Ensure the balance row exists, then lock it ───────────────────
+  // Locking first serializes same-user requests so the idempotency check below
+  // is authoritative (no race window between the check and the update).
+  await tx.insert(goldenNoteBalances).values({ userId }).onConflictDoNothing();
+
+  const [lockedRow] = await tx
+    .select({
+      balance: goldenNoteBalances.balance,
+      earnedBalance: goldenNoteBalances.earnedBalance,
+      purchasedBalance: goldenNoteBalances.purchasedBalance,
+    })
+    .from(goldenNoteBalances)
+    .where(eq(goldenNoteBalances.userId, userId))
+    .for("update");
+
+  // ── Step 2: Idempotency check — safe now because we hold the row lock ─────
+  // Any concurrent first request for the same user+key either committed before
+  // we acquired the lock (key exists → return deduped) or hasn't started yet
+  // (key absent → proceed). The lock makes this check race-safe for same-user
+  // same-key replays. Different-user same-key is not a real scenario (keys
+  // should embed userId).
   if (opts.idempotencyKey) {
     const [existing] = await tx
       .select({ balanceAfter: goldenNoteTransactions.balanceAfter })
@@ -78,20 +118,6 @@ export async function spendGoldenNotes(
       return { newBalance: existing.balanceAfter, deduped: true };
     }
   }
-
-  // Ensure a balance row exists (idempotent — ON CONFLICT DO NOTHING).
-  await tx.insert(goldenNoteBalances).values({ userId }).onConflictDoNothing();
-
-  // Lock the row and read pool balances for split computation.
-  const [lockedRow] = await tx
-    .select({
-      balance: goldenNoteBalances.balance,
-      earnedBalance: goldenNoteBalances.earnedBalance,
-      purchasedBalance: goldenNoteBalances.purchasedBalance,
-    })
-    .from(goldenNoteBalances)
-    .where(eq(goldenNoteBalances.userId, userId))
-    .for("update");
 
   const currentBalance = lockedRow?.balance ?? 0;
   const currentEarned = lockedRow?.earnedBalance ?? 0;
@@ -115,7 +141,7 @@ export async function spendGoldenNotes(
     });
   }
 
-  // Single atomic UPDATE: debit all three balance columns.
+  // ── Step 3: Update the balance ────────────────────────────────────────────
   const updated = await tx
     .update(goldenNoteBalances)
     .set({
@@ -143,28 +169,34 @@ export async function spendGoldenNotes(
 
   const newBalance = updated[0].newBalance;
 
-  // Insert the audit row. Catch unique-violation on idempotencyKey → treat as
-  // deduped (race: two concurrent requests both passed the check-first above).
+  // ── Step 4: Insert audit row inside a SAVEPOINT ───────────────────────────
+  // The nested tx.transaction() call issues SAVEPOINT / RELEASE SAVEPOINT via
+  // postgres-js client.savepoint(). If the INSERT fails (23505), the savepoint
+  // is rolled back but the outer transaction's balance UPDATE survives.
+  // After the lock-then-check above, 23505 here means a well-formed idempotency
+  // key somehow reached the INSERT twice — that is a programming error (should
+  // be unreachable for keys that embed userId). Throw loudly rather than
+  // silently absorbing a double debit.
   try {
-    await tx.insert(goldenNoteTransactions).values({
-      userId,
-      amount: -cost,
-      kind,
-      reason,
-      balanceAfter: newBalance,
-      idempotencyKey: opts.idempotencyKey ?? null,
+    await tx.transaction(async (inner: any) => {
+      await inner.insert(goldenNoteTransactions).values({
+        userId,
+        amount: -cost,
+        kind,
+        reason,
+        balanceAfter: newBalance,
+        idempotencyKey: opts.idempotencyKey ?? null,
+      });
     });
   } catch (insertErr: unknown) {
-    // Postgres unique-violation code = 23505
-    const msg = (insertErr as { code?: string })?.code;
-    if (msg === "23505" && opts.idempotencyKey) {
-      // Another concurrent request won the race — re-select and return.
-      const [dup] = await tx
-        .select({ balanceAfter: goldenNoteTransactions.balanceAfter })
-        .from(goldenNoteTransactions)
-        .where(eq(goldenNoteTransactions.idempotencyKey, opts.idempotencyKey))
-        .limit(1);
-      return { newBalance: dup?.balanceAfter ?? newBalance, deduped: true };
+    // Normalize: postgres-js puts SQLSTATE on err.code; Drizzle may wrap it
+    // as a DrizzleQueryError with .cause holding the original pg error.
+    const code =
+      (insertErr as any)?.code ?? (insertErr as any)?.cause?.code;
+    if (code === "23505" && opts.idempotencyKey) {
+      throw new Error(
+        "Idempotency key conflict — concurrent duplicate with non-identical scope (should be unreachable for well-formed keys)"
+      );
     }
     throw insertErr;
   }
@@ -177,7 +209,17 @@ export async function spendGoldenNotes(
  * and signup grants. Updates balance + the chosen pool atomically.
  * Returns { newBalance, deduped }. Auto-creates the balance row if missing.
  *
- * Idempotency: select-first + unique-violation catch (same pattern as spend).
+ * Idempotency — lock-then-check ordering (mirrors spendGoldenNotes):
+ *   1. Acquire FOR UPDATE lock on the balance row first.
+ *   2. Under that lock, check the transactions table for the idempotencyKey.
+ *      The lock serializes same-user races so the check is authoritative.
+ *   3. If deduped at step 2 → return immediately (no balance write).
+ *   4. Write balance update, then insert the audit row inside a NESTED
+ *      transaction (savepoint). 23505 here is a programming error — throw
+ *      loudly rather than silently double-credit.
+ *
+ * See spendGoldenNotes for full rationale on why the check must come AFTER
+ * the FOR UPDATE lock (moving it before re-opens a race window).
  */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export async function creditGoldenNotes(
@@ -193,7 +235,16 @@ export async function creditGoldenNotes(
     throw new TRPCError({ code: "BAD_REQUEST", message: "credit amount must be positive" });
   }
 
-  // ── Idempotency: check for an existing transaction with this key ──────────
+  // ── Step 1: Ensure the balance row exists, then lock it ───────────────────
+  await tx.insert(goldenNoteBalances).values({ userId }).onConflictDoNothing();
+
+  await tx
+    .select({ balance: goldenNoteBalances.balance })
+    .from(goldenNoteBalances)
+    .where(eq(goldenNoteBalances.userId, userId))
+    .for("update");
+
+  // ── Step 2: Idempotency check — safe now because we hold the row lock ─────
   if (opts.idempotencyKey) {
     const [existing] = await tx
       .select({ balanceAfter: goldenNoteTransactions.balanceAfter })
@@ -205,8 +256,7 @@ export async function creditGoldenNotes(
     }
   }
 
-  await tx.insert(goldenNoteBalances).values({ userId }).onConflictDoNothing();
-
+  // ── Step 3: Update the balance ────────────────────────────────────────────
   const pool = opts.pool ?? "purchased";
   const poolColumn =
     pool === "earned"
@@ -227,26 +277,30 @@ export async function creditGoldenNotes(
 
   const newBalance = updated[0].newBalance;
 
-  // Insert audit row. Catch unique-violation on idempotencyKey → dedupe.
+  // ── Step 4: Insert audit row inside a SAVEPOINT ───────────────────────────
+  // Same rationale as spendGoldenNotes: the lock-then-check above makes 23505
+  // here unreachable for well-formed keys. Throw loudly if it happens anyway.
   try {
-    await tx.insert(goldenNoteTransactions).values({
-      userId,
-      amount,
-      kind,
-      reason,
-      relatedUserId: relatedUserId ?? null,
-      balanceAfter: newBalance,
-      idempotencyKey: opts.idempotencyKey ?? null,
+    await tx.transaction(async (inner: any) => {
+      await inner.insert(goldenNoteTransactions).values({
+        userId,
+        amount,
+        kind,
+        reason,
+        relatedUserId: relatedUserId ?? null,
+        balanceAfter: newBalance,
+        idempotencyKey: opts.idempotencyKey ?? null,
+      });
     });
   } catch (insertErr: unknown) {
-    const msg = (insertErr as { code?: string })?.code;
-    if (msg === "23505" && opts.idempotencyKey) {
-      const [dup] = await tx
-        .select({ balanceAfter: goldenNoteTransactions.balanceAfter })
-        .from(goldenNoteTransactions)
-        .where(eq(goldenNoteTransactions.idempotencyKey, opts.idempotencyKey))
-        .limit(1);
-      return { newBalance: dup?.balanceAfter ?? newBalance, deduped: true };
+    // Normalize: postgres-js puts SQLSTATE on err.code; Drizzle may wrap it
+    // as a DrizzleQueryError with .cause holding the original pg error.
+    const code =
+      (insertErr as any)?.code ?? (insertErr as any)?.cause?.code;
+    if (code === "23505" && opts.idempotencyKey) {
+      throw new Error(
+        "Idempotency key conflict — concurrent duplicate with non-identical scope (should be unreachable for well-formed keys)"
+      );
     }
     throw insertErr;
   }

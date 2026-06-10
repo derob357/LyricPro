@@ -181,6 +181,58 @@ liveDescribe("goldenNotesLedger — pool-aware spend (live DB)", () => {
     expect(bal.balance).toBe(bal.earnedBalance + bal.purchasedBalance);
   });
 
+  it("sequential retry idempotency: separate-tx replay of same spend key debits balance exactly once", async () => {
+    // Simulates a realistic client-retry scenario: first request succeeds and
+    // commits, then the client retries (e.g. network timeout before ack) with
+    // the same idempotencyKey in a fresh transaction.
+    //
+    // A true concurrent race test is impractical in a serial live-test suite.
+    // The lock-then-check restructure makes the sequential test + code
+    // inspection sufficient: the FOR UPDATE lock serializes same-user same-key
+    // races, so the post-lock idempotency check is always authoritative.
+    const db = await getDb();
+    const { spendGoldenNotes } = await import("./_core/goldenNotesLedger");
+
+    await seedBalance(U4, 0, 100);
+    const idem = `test-idem-seq-retry-${U4}-${Date.now()}`;
+
+    // First request — committed transaction.
+    const first = await db.transaction(async (tx) =>
+      spendGoldenNotes(tx, U4, 20, "spend_extra_game", "seq-retry first", {
+        idempotencyKey: idem,
+      }),
+    );
+
+    // Second request — separate transaction, same key (client retry).
+    const second = await db.transaction(async (tx) =>
+      spendGoldenNotes(tx, U4, 20, "spend_extra_game", "seq-retry second", {
+        idempotencyKey: idem,
+      }),
+    );
+
+    expect(first.deduped).toBe(false);
+    expect(second.deduped).toBe(true);
+    // The deduplicated call returns the recorded balanceAfter, not a new debit.
+    expect(second.newBalance).toBe(first.newBalance);
+
+    const [bal] = await db
+      .select()
+      .from(goldenNoteBalances)
+      .where(eq(goldenNoteBalances.userId, U4));
+    // Balance debited exactly once: 100 - 20 = 80.
+    expect(bal.balance).toBe(80);
+    expect(bal.purchasedBalance).toBe(80);
+    expect(bal.balance).toBe(bal.earnedBalance + bal.purchasedBalance);
+
+    // Exactly one audit row for this key.
+    const txns = await db
+      .select()
+      .from(goldenNoteTransactions)
+      .where(eq(goldenNoteTransactions.userId, U4));
+    expect(txns).toHaveLength(1);
+    expect(txns[0].idempotencyKey).toBe(idem);
+  });
+
   it("credit idempotency: replay with same key dedupes without double-credit", async () => {
     const db = await getDb();
     const { creditGoldenNotes } = await import("./_core/goldenNotesLedger");
