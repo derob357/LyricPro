@@ -32,6 +32,7 @@ import Shop from "./pages/Shop";
 import Avatars from "./pages/Avatars";
 import ChatPage from "./pages/Chat";
 import TournamentsPage from "@/pages/Tournaments";
+import Privacy from "./pages/Privacy";
 // import JoinInvite from "./pages/JoinInvite"; // Disabled - invite codes removed
 import { PersistentHeader } from "./components/PersistentHeader";
 import { NotificationContainer } from "./components/NotificationToast";
@@ -81,6 +82,7 @@ function Router() {
       <Route path="/shop" component={Shop} />
       <Route path="/avatars" component={Avatars} />
       <Route path="/chat" component={ChatPage} />
+      <Route path="/privacy" component={Privacy} />
       {/* <Route path="/join" component={JoinInvite} /> */} {/* Disabled - invite codes removed */}
       <Route path="/404" component={NotFound} />
       <Route component={NotFound} />
