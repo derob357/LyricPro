@@ -14,8 +14,10 @@ import {
   matchLyric,
   matchArtist,
   scoreYear,
+  scoreRound,
   type LyricMatch,
   type ArtistMatch,
+  type ScoreRoundInput,
 } from "./_core/scoring";
 
 function lyricPts(m: LyricMatch) { return m === "full" ? 10 : m === "partial" ? 5 : 0; }
@@ -116,8 +118,6 @@ describe("correctCount → celebration level", () => {
 });
 
 // ── MC exact-match mode (mcMode) ──────────────────────────────────────────────
-import { scoreRound, type ScoreRoundInput } from "./_core/scoring";
-
 function mcInput(overrides: Partial<ScoreRoundInput>): ScoreRoundInput {
   return {
     difficulty: "medium",
@@ -189,6 +189,21 @@ describe("scoreRound mcMode (multiple-choice exact matching)", () => {
   it("typed mode (mcMode absent) keeps fuzzy behavior", () => {
     const r = scoreRound(mcInput({ mcMode: undefined, titleAnswer: "Stan" }));
     expect(r.titleCorrect).toBe(true); // fuzzy threshold allows it — unchanged
+  });
+
+  it("passUsed short-circuits everything to zero in mcMode", () => {
+    const r = scoreRound(mcInput({ passUsed: true }));
+    expect(r.totalRoundPoints).toBe(0);
+    expect(r.lyricMatch).toBe("none");
+    expect(r.titlePoints).toBe(0);
+    expect(r.artistPoints).toBe(0);
+    expect(r.yearPoints).toBe(0);
+  });
+
+  it("empty lyric answer scores none in mcMode even if correct answer normalizes empty", () => {
+    const r = scoreRound(mcInput({ lyricAnswer: "", correctLyricAnswer: "" }));
+    expect(r.lyricMatch).toBe("none");
+    expect(r.lyricPoints).toBe(0);
   });
 });
 

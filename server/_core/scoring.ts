@@ -213,8 +213,11 @@ export function scoreRound(input: ScoreRoundInput): ScoreRoundResult {
   if (!passUsed) {
     // Lyric scoring (all difficulties) — use the variant the player saw,
     // not the legacy column, so variant rotation scores correctly.
+    // NOTE(mcMode): exact-match is only as strong as normalizeText's injectivity
+    // over the served option set — the distractor builder in getNextSong must
+    // reject distractors whose normalizeText collides with the correct answer.
     lyricMatch = mcMode
-      ? (normalizeText(lyricAnswer) === normalizeText(correctLyricAnswer) ? "full" : "none")
+      ? ((normalizeText(lyricAnswer) && normalizeText(lyricAnswer) === normalizeText(correctLyricAnswer)) ? "full" : "none")
       : matchLyric(lyricAnswer, correctLyricAnswer);
     lyricPoints = lyricMatch === "full" ? pts.lyric : lyricMatch === "partial" ? pts.lyricPartial : 0;
 
@@ -250,8 +253,9 @@ export function scoreRound(input: ScoreRoundInput): ScoreRoundResult {
     }
 
     artistMatch = mcMode
-      ? ((normalizeText(artistAnswer) === normalizeText(correctArtistName) ||
-          (artistAliases ?? []).some(a => normalizeText(a) === normalizeText(artistAnswer)))
+      ? ((normalizeText(artistAnswer) && (
+          normalizeText(artistAnswer) === normalizeText(correctArtistName) ||
+          artistAliases.some(a => normalizeText(a) === normalizeText(artistAnswer))))
           ? "full" : "none")
       : matchArtist(artistAnswer, correctArtistName, artistAliases);
     artistPoints = artistMatch === "full" ? pts.artist : artistMatch === "primary_only" ? pts.artistPartial : 0;
