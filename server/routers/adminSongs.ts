@@ -6,6 +6,7 @@ import { getDb } from "../db";
 import { songs } from "../../drizzle/schema";
 import { TRPCError } from "@trpc/server";
 import { recordAdminAction } from "../_core/audit";
+import { normalizeLyricText, validateLyricFields } from "../_core/lyricNormalize";
 
 const songStatusValues = ["active", "disabled", "pending"] as const;
 
@@ -166,14 +167,25 @@ export const adminSongsRouter = router({
     .mutation(async ({ ctx, input }) => {
       const db = await getDb();
       if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "DB unavailable" });
+      // Normalize lyric text fields before insert.
+      const normalizedPrompt = normalizeLyricText(input.lyricPrompt);
+      const normalizedAnswer = normalizeLyricText(input.lyricAnswer);
+      const validation = validateLyricFields(normalizedPrompt, normalizedAnswer);
+      if (!validation.ok) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: `Lyric validation failed: ${validation.issues.join(" ")}`,
+        });
+      }
+      const normalizedInput = { ...input, lyricPrompt: normalizedPrompt, lyricAnswer: normalizedAnswer };
       return await db.transaction(async (tx) => {
-        const [inserted] = await tx.insert(songs).values(input as any).returning();
+        const [inserted] = await tx.insert(songs).values(normalizedInput as any).returning();
         await recordAdminAction({
           ctx, tx,
           action: "song.create",
           targetType: "song",
           targetId: String(inserted.id),
-          payload: { after: inserted, params: input },
+          payload: { after: inserted, params: normalizedInput },
         });
         return inserted;
       });

@@ -117,6 +117,14 @@ export default function SongNew() {
             <Label>Lyric answer</Label>
             <Input value={draft.lyricAnswer} onChange={(e) => setDraft({ ...draft, lyricAnswer: e.target.value })} />
           </div>
+          {(draft.lyricPrompt || draft.lyricAnswer) && (
+            <div className="mt-2 text-sm text-muted-foreground">
+              <span className="uppercase text-xs tracking-wide">Preview</span>
+              <p className="text-foreground font-medium">
+                &ldquo;{draft.lyricPrompt}<span className="text-accent">...</span>&rdquo; &rarr; <span className="text-primary">{draft.lyricAnswer}</span>
+              </p>
+            </div>
+          )}
           <div className="flex justify-end">
             <Button onClick={() => create.mutate(draft)} disabled={!canCreate || create.isPending}>
               {create.isPending ? "Creating..." : "Create"}

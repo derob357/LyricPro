@@ -332,12 +332,16 @@ export const songs = pgTable("songs", {
   // scripts/generate-lyric-variants.mjs (LLM-rewritten variants[1..]).
   // getNextSong picks an unseen variant per user within the dedup window
   // so the same song can be re-shown with a different lyric line.
+  // NOTE(difficulty): per-variant difficulty lives here (the layer gameplay
+  // reads by default). gameplay_items.difficulty (layer 3) is NOT synced —
+  // layer 3 is flag-off with a known drift issue; sync belongs to Phase 5c.
   lyricVariants: jsonb("lyricVariants").$type<
     Array<{
       prompt: string;
       answer: string;
       distractors: string[];
       sectionType: string;
+      difficulty?: "low" | "medium" | "high";
     }>
   >(),
   lyricSectionType: lyricSectionTypeEnum("lyricSectionType").notNull(),
