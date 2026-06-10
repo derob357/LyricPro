@@ -9,7 +9,7 @@ import { toast } from "sonner";
 import {
   Check, X, ChevronRight, ExternalLink, Music, Instagram,
   Youtube, Globe, Trophy, Flame, Zap, Home,
-  MicVocal
+  MicVocal, Coins
 } from "lucide-react";
 import Celebration, { type CelebrationLevel } from "@/components/Celebration";
 import {
@@ -44,6 +44,7 @@ type RoundResult = {
   celebrationCount?: number;
   difficulty?: string;
   commentary?: string | null;
+  stake?: { staked: number; burned: number; win: number; burn: number; remaining: number } | null;
   song: {
     id: number;
     title: string;
@@ -255,6 +256,19 @@ export default function RoundResults() {
                     {result.commentary && (
                       <p className="text-sm text-muted-foreground italic mt-2">{result.commentary}</p>
                     )}
+                    {result.stake && (
+                      <div data-testid="stake-line" className="flex items-center justify-center sm:justify-start gap-1 mt-2">
+                        <Coins className="w-4 h-4 text-yellow-400" />
+                        {result.stake.win > 0 ? (
+                          <span className="text-yellow-400 font-medium text-sm">+{result.stake.win} GN won</span>
+                        ) : result.stake.burn > 0 ? (
+                          <span className="text-orange-400 font-medium text-sm">−{result.stake.burn} GN from stake</span>
+                        ) : (
+                          <span className="text-muted-foreground text-sm">Stake unchanged</span>
+                        )}
+                        <span className="text-muted-foreground text-xs ml-1">· {result.stake.remaining} staked remaining</span>
+                      </div>
+                    )}
                   </>
                 ) : (
                   <>
@@ -275,6 +289,19 @@ export default function RoundResults() {
                     )}
                     {result.commentary && (
                       <p className="text-sm text-muted-foreground italic mt-2">{result.commentary}</p>
+                    )}
+                    {result.stake && (
+                      <div data-testid="stake-line" className="flex items-center justify-center sm:justify-start gap-1 mt-2">
+                        <Coins className="w-4 h-4 text-yellow-400" />
+                        {result.stake.win > 0 ? (
+                          <span className="text-yellow-400 font-medium text-sm">+{result.stake.win} GN won</span>
+                        ) : result.stake.burn > 0 ? (
+                          <span className="text-orange-400 font-medium text-sm">−{result.stake.burn} GN from stake</span>
+                        ) : (
+                          <span className="text-muted-foreground text-sm">Stake unchanged</span>
+                        )}
+                        <span className="text-muted-foreground text-xs ml-1">· {result.stake.remaining} staked remaining</span>
+                      </div>
                     )}
                   </>
                 )}

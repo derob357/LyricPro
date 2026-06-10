@@ -1,6 +1,7 @@
 import { Link, useLocation } from "wouter";
 import { MessageSquare, Music, Music2, ShoppingCart } from "lucide-react";
 import { trpc } from "@/lib/trpc";
+import AnimatedGnBalance from "@/components/AnimatedGnBalance";
 import { supabase } from "@/lib/supabase";
 import { Button } from "@/components/ui/button";
 import { getLoginUrl } from "@/const";
@@ -78,7 +79,7 @@ export function PersistentHeader() {
               >
                 <Music2 className="w-4 h-4 text-yellow-400 neon-gold-sm" />
                 <span className="font-display font-bold text-yellow-400 neon-gold-sm text-sm">
-                  {balance?.balance?.toLocaleString() ?? 0}
+                  <AnimatedGnBalance value={balance?.balance ?? 0} />
                 </span>
               </Link>
               {/* Shop link */}
