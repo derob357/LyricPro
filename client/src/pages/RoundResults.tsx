@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useLocation, useParams } from "wouter";
 import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
@@ -101,6 +101,8 @@ export default function RoundResults() {
     if (lvl > 0) setCelebrationLevel(lvl);
   }, [result]);
 
+  const handleCelebrationComplete = useCallback(() => setCelebrationLevel(0), []);
+
   const handleNext = () => { advanceRound(); };
 
   const advanceRound = () => {
@@ -177,7 +179,7 @@ export default function RoundResults() {
       <Celebration
         level={celebrationLevel}
         muted={muted}
-        onComplete={() => setCelebrationLevel(0)}
+        onComplete={handleCelebrationComplete}
       />
       {/* Header */}
       <div className="glass border-b border-border/50 sticky top-0 z-40">

@@ -23,10 +23,10 @@ vi.mock("@/lib/trpc", () => ({
   },
 }));
 // Celebration: props-capturing stub (replaces null mock so we can assert level)
-const celebrationProps = vi.hoisted(() => ({ last: null as { level: number } | null }));
+const celebrationProps = vi.hoisted(() => ({ last: null as { level: number; onComplete?: () => void } | null }));
 vi.mock("@/components/Celebration", () => ({
   __esModule: true,
-  default: (props: { level: number }) => { celebrationProps.last = props; return null; },
+  default: (props: { level: number; onComplete?: () => void }) => { celebrationProps.last = props; return null; },
 }));
 
 import RoundResults from "./RoundResults";
@@ -112,5 +112,13 @@ describe("RoundResults score breakdown", () => {
     render(<RoundResults />);
     fireEvent.click(screen.getByRole("button", { name: /Next Round/i }));
     expect(nextRound.mutate).toHaveBeenCalled();
+  });
+
+  it("passes a stable onComplete to Celebration across re-renders", () => {
+    seedResult({ celebrationCount: 4 });
+    const { rerender } = render(<RoundResults />);
+    const first = celebrationProps.last?.onComplete;
+    rerender(<RoundResults />);
+    expect(celebrationProps.last?.onComplete).toBe(first);
   });
 });
