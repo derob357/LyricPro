@@ -160,4 +160,16 @@ describe("MultiplayerGameplay", () => {
     render(<MultiplayerGameplay />);
     await waitFor(() => expect(navigate).toHaveBeenCalledWith("/results/final/ROOM42"));
   });
+
+  it("calls revealRound early when all active players have answered before the countdown expires", async () => {
+    // Both active players (ids 11 and 12) have answered; timer is still running (30 s left).
+    matchState.value = {
+      ...inQuestionState(),
+      answeredPlayerIds: [11, 12],
+    };
+    render(<MultiplayerGameplay />);
+    await waitFor(() =>
+      expect(revealRound).toHaveBeenCalledWith({ roomCode: "ROOM42" }),
+    );
+  });
 });

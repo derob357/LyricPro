@@ -147,12 +147,13 @@ export default function MultiplayerGameplay() {
   const phase = room?.roundPhase ?? null;
   const status = room?.status ?? null;
 
-  // Did everyone active answer? Server is authoritative; we approximate from
-  // standings (a non-zero score implies they've been scored this round is not
-  // reliable), so we only use the local "all answered" hint conservatively: we
-  // rely primarily on the countdown reaching 0. The local-answered case still
-  // calls reveal when the timer expires, which is safe + idempotent.
-  const everyoneAnswered = false;
+  // Did every active player answer? Driven by server-authoritative answeredPlayerIds
+  // (populated by getMatchState, refetched on every player_answered broadcast).
+  const answeredPlayerIds: number[] = state.data?.answeredPlayerIds ?? [];
+  const activePlayers = players.filter((p) => p.isActive);
+  const allAnswered =
+    activePlayers.length > 0 &&
+    activePlayers.every((p) => answeredPlayerIds.includes(p.id));
 
   useEffect(() => {
     if (!roomCode) return;
@@ -168,9 +169,10 @@ export default function MultiplayerGameplay() {
     }
 
     if (phase === "in_question") {
-      // Reveal when the local countdown expires (or all answered). Idempotent
+      // Reveal when the local countdown expires OR all active players have
+      // answered (server-authoritative via answeredPlayerIds). Idempotent
       // server-side, so multiple clients firing is safe.
-      if ((secondsLeft <= 0 || (hasSubmitted && everyoneAnswered)) && endsAtMs != null) {
+      if ((secondsLeft <= 0 || allAnswered) && endsAtMs != null) {
         const key = `reveal:${currentRound}`;
         if (handledRef.current !== key) {
           handledRef.current = key;
@@ -196,7 +198,7 @@ export default function MultiplayerGameplay() {
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [roomCode, status, phase, currentRound, secondsLeft, hasSubmitted, endsAtMs]);
+  }, [roomCode, status, phase, currentRound, secondsLeft, allAnswered, endsAtMs]);
 
   // ── Render ──────────────────────────────────────────────────────────────────
   if (!room) {

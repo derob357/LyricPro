@@ -136,6 +136,23 @@ export const matchEngineRouter = router({
         .where(eq(roomPlayers.roomId, room.id))
         .orderBy(roomPlayers.joinOrder);
       const standings = [...players].sort((a, b) => b.currentScore - a.currentScore);
+      // Who has submitted an answer for the current round?
+      // Only meaningful during in_question; return empty for all other phases.
+      const answered =
+        room.roundPhase === "in_question" && room.currentRound > 0
+          ? await db
+              .select({ pid: roundResults.activePlayerId })
+              .from(roundResults)
+              .where(
+                and(
+                  eq(roundResults.roomId, room.id),
+                  eq(roundResults.roundNumber, room.currentRound),
+                ),
+              )
+          : [];
+      const answeredPlayerIds = answered
+        .map((a) => a.pid)
+        .filter((x): x is number => x != null);
       return {
         room: {
           id: room.id,
@@ -168,6 +185,9 @@ export const matchEngineRouter = router({
           playerId: p.id,
           score: p.currentScore,
         })),
+        // IDs of players who have submitted an answer for the current round.
+        // Empty array when not in in_question phase (intermission, complete, etc.).
+        answeredPlayerIds,
       };
     }),
 
