@@ -39,6 +39,7 @@ const daysArg = (() => {
   if (idx !== -1 && process.argv[idx + 1]) {
     const v = parseInt(process.argv[idx + 1], 10);
     if (!isNaN(v) && v > 0) return v;
+    console.warn(`Invalid --days value; using default 14`);
   }
   return 14;
 })();
@@ -62,7 +63,7 @@ const sql = postgres(DB_URL, { max: 1, prepare: false });
 
 // ── normalizeText — must be identical to server/_core/scoring.ts ──────────────
 function normalizeText(text) {
-  if (!text && text !== 0) return "";
+  if (text == null) return "";
   return String(text)
     .toLowerCase()
     .replace(/[^\w\s]/g, "")
@@ -192,6 +193,7 @@ try {
     // ── Year axis ──
     if (row.userYearAnswer !== null && row.userYearAnswer !== undefined) {
       const submittedYear = parseInt(row.userYearAnswer, 10);
+      // songs.releaseYear is a Postgres integer — the driver returns a JS number, so numeric comparison is correct.
       const correctYear = row.songYear;
       const hasPoints = row.yearPoints > 0;
 
@@ -258,8 +260,8 @@ try {
 
   const overmatchByAxis = { lyric: 0, artist: 0, year: 0 };
   const undermatchByAxis = { lyric: 0, artist: 0, year: 0 };
-  for (const f of overmatch) overmatchByAxis[f.axis] = (overmatchByAxis[f.axis] ?? 0) + 1;
-  for (const f of undermatch) undermatchByAxis[f.axis] = (undermatchByAxis[f.axis] ?? 0) + 1;
+  for (const f of overmatch) overmatchByAxis[f.axis] = overmatchByAxis[f.axis] + 1;
+  for (const f of undermatch) undermatchByAxis[f.axis] = undermatchByAxis[f.axis] + 1;
 
   console.log("=== SUMMARY ===");
   console.log(`Total audited        : ${rows.length}`);
