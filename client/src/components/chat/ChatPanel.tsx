@@ -1,6 +1,7 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { ChatTabs } from "./ChatTabs";
+import { useMarkAllReadOnClose } from "@/lib/chat/useMarkAllReadOnClose";
 
 interface Props {
   open: boolean;
@@ -21,6 +22,21 @@ function useIsMobile(): boolean {
 
 export function ChatPanel({ open, onOpenChange }: Props) {
   const mobile = useIsMobile();
+  const markAllRead = useMarkAllReadOnClose();
+
+  // Detect the open → closed transition so we can zero the unread badge.
+  // We track the previous `open` value; when it flips true→false we fire
+  // markAllRead (regardless of how the panel was closed: close button,
+  // backdrop click, or keyboard Escape).
+  const prevOpenRef = useRef(open);
+  useEffect(() => {
+    const wasOpen = prevOpenRef.current;
+    prevOpenRef.current = open;
+    if (wasOpen && !open) {
+      markAllRead();
+    }
+  }, [open, markAllRead]);
+
   if (mobile) {
     // Mobile takes the full-page route at /chat — Panel is desktop-only.
     return null;

@@ -26,4 +26,15 @@ describe("chatRouter", () => {
   it("exposes the Phase 2 postMessage procedure", () => {
     expect(Object.keys(chatRouter._def.record)).toContain("postMessage");
   });
+
+  it("exposes the markAllRead procedure", () => {
+    expect(Object.keys(chatRouter._def.record)).toContain("markAllRead");
+  });
+
+  it("markAllRead is a mutation (not a query)", () => {
+    const def = (chatRouter._def.record as Record<string, { _def?: { type?: string } }>)
+      .markAllRead?._def;
+    // tRPC procedure _def.type is "mutation" for .mutation() calls.
+    expect(def?.type).toBe("mutation");
+  });
 });

@@ -616,6 +616,85 @@ export const chatRouter = router({
       }),
   }),
 
+  markAllRead: protectedProcedure.mutation(async ({ ctx }) => {
+    const db = await getDb();
+    if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "DB unavailable" });
+
+    // Advance lastReadSeq for every channel the user belongs to, in one shot.
+    // Global room (id = 1): upsert chat_room_members.
+    const globalMax = await db.execute(sql`
+      SELECT COALESCE(MAX(id), 0)::int AS max_id
+      FROM chat_messages
+      WHERE scope = 'global' AND room_id = 1 AND deleted_at IS NULL
+    `);
+    const globalMaxId: number = ((globalMax as unknown as { rows?: Array<{ max_id: number }> }).rows
+      ?? (Array.isArray(globalMax) ? (globalMax as unknown as Array<{ max_id: number }>) : []))[0]?.max_id ?? 0;
+
+    await db
+      .insert(chatRoomMembers)
+      .values({ userId: ctx.user.id, roomId: 1, lastReadSeq: globalMaxId })
+      .onConflictDoUpdate({
+        target: [chatRoomMembers.userId, chatRoomMembers.roomId],
+        set: { lastReadSeq: globalMaxId, lastReadAt: new Date() },
+      });
+
+    // Friends feed: upsert chat_friends_read_state.
+    const friendsMax = await db.execute(sql`
+      SELECT COALESCE(MAX(id), 0)::int AS max_id
+      FROM chat_messages
+      WHERE scope = 'friends'
+        AND deleted_at IS NULL
+        AND (
+          author_id = ${ctx.user.id}
+          OR author_id IN (
+            SELECT favorite_id FROM user_favorites WHERE follower_id = ${ctx.user.id}
+          )
+        )
+    `);
+    const friendsMaxId: number = ((friendsMax as unknown as { rows?: Array<{ max_id: number }> }).rows
+      ?? (Array.isArray(friendsMax) ? (friendsMax as unknown as Array<{ max_id: number }>) : []))[0]?.max_id ?? 0;
+
+    await db
+      .insert(chatFriendsReadState)
+      .values({ userId: ctx.user.id, lastReadSeq: friendsMaxId })
+      .onConflictDoUpdate({
+        target: chatFriendsReadState.userId,
+        set: { lastReadSeq: friendsMaxId, lastReadAt: new Date() },
+      });
+
+    // Tournament rooms the user is actively a member of.
+    const tournamentRooms = await db.execute(sql`
+      SELECT t.chat_room_id
+      FROM tournament_members tm
+      JOIN tournaments t ON t.id = tm.tournament_id
+      WHERE tm.user_id = ${ctx.user.id}
+        AND tm.left_at IS NULL
+        AND t.chat_room_id IS NOT NULL
+    `);
+    const roomRows = ((tournamentRooms as unknown as { rows?: Array<{ chat_room_id: number }> }).rows
+      ?? (Array.isArray(tournamentRooms) ? (tournamentRooms as unknown as Array<{ chat_room_id: number }>) : []));
+
+    for (const row of roomRows) {
+      const maxRes = await db.execute(sql`
+        SELECT COALESCE(MAX(id), 0)::int AS max_id
+        FROM chat_messages
+        WHERE scope = 'tournament' AND room_id = ${row.chat_room_id} AND deleted_at IS NULL
+      `);
+      const maxId: number = ((maxRes as unknown as { rows?: Array<{ max_id: number }> }).rows
+        ?? (Array.isArray(maxRes) ? (maxRes as unknown as Array<{ max_id: number }>) : []))[0]?.max_id ?? 0;
+
+      await db
+        .insert(chatRoomMembers)
+        .values({ userId: ctx.user.id, roomId: row.chat_room_id, lastReadSeq: maxId })
+        .onConflictDoUpdate({
+          target: [chatRoomMembers.userId, chatRoomMembers.roomId],
+          set: { lastReadSeq: maxId, lastReadAt: new Date() },
+        });
+    }
+
+    return { success: true as const };
+  }),
+
   unreadCounts: protectedProcedure.query(async ({ ctx }) => {
     const db = await getDb();
     if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "DB unavailable" });
