@@ -69,6 +69,12 @@ function getOpt(name) {
 }
 const RESET = getFlag("reset");
 const LIMIT = parseInt(getOpt("limit") ?? "0", 10);
+// --ids 1,2,3 → verify ONLY these song ids, bypassing the checkpoint for them
+// (used to spot-verify freshly inserted songs without a full-catalog run).
+const IDS = (getOpt("ids") ?? "")
+  .split(",")
+  .map((s) => parseInt(s.trim(), 10))
+  .filter(Number.isFinite);
 
 // ─── Tiny utils ───────────────────────────────────────────────────────────────
 function sleep(ms) {
@@ -217,7 +223,8 @@ async function main() {
     ORDER BY id ASC
   `;
 
-  const todo = allSongs.filter((s) => !cp.results[s.id]);
+  const pool = IDS.length ? allSongs.filter((s) => IDS.includes(s.id)) : allSongs;
+  const todo = IDS.length ? pool : pool.filter((s) => !cp.results[s.id]);
   const slice = LIMIT > 0 ? todo.slice(0, LIMIT) : todo;
 
   console.log("─".repeat(60));
