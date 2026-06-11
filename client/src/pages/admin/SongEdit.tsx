@@ -9,10 +9,10 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { ChevronLeft, Save } from "lucide-react";
+import { ChevronLeft, Save, Plus } from "lucide-react";
 import { SongwriterEditor, type Songwriter } from "./components/SongwriterEditor";
 import { PublisherEditor, type Publisher } from "./components/PublisherEditor";
-import { VariantEditor, type Variant, type VariantDraftEntry } from "./components/VariantEditor";
+import { VariantEditor, type Variant, type VariantDraftEntry, type VariantEditorHandle } from "./components/VariantEditor";
 import { SongNavCluster } from "./components/SongNavCluster";
 
 // ─── Registry types ────────────────────────────────────────────────────────────
@@ -52,6 +52,7 @@ export default function SongEdit() {
     onSuccess: () => refetch(),
   });
   const updateVariant = trpc.adminVariants.update.useMutation();
+  const createVariant = trpc.adminVariants.create.useMutation();
   const statusPending = disable.isPending || enable.isPending;
 
   // ── Section registry ──────────────────────────────────────────────────────
@@ -99,19 +100,41 @@ export default function SongEdit() {
         await Promise.all(sectionSaves);
       }
 
-      // 2. Variant saves MUST be sequential — each update re-reads the song
-      //    row's lyricVariants jsonb and splices in the new value at the given
-      //    index. Running them in parallel risks two writes racing to read a
-      //    stale array and one clobbering the other's changes.
-      const dirtyVariants = variantEntries
+      // 2. Variant updates and creates MUST be sequential — each operation
+      //    re-reads the song row's lyricVariants jsonb; parallel writes risk
+      //    two reads of a stale array with one clobbering the other.
+      //    Order: existing-variant updates first (by index), then staged creates.
+      const existingDirtyVariants = variantEntries
         .map((e, i) => ({ entry: e, index: i }))
-        .filter(({ entry }) => entry.dirty);
-      for (const { entry, index } of dirtyVariants) {
+        .filter(({ entry }) => entry.dirty && !entry.isNew);
+      for (const { entry, index } of existingDirtyVariants) {
         const patch = entry.buildPatch();
         await new Promise<void>((resolve, reject) => {
           updateVariant.mutate(
             { songId, variantIndex: index, patch },
             { onSuccess: () => resolve(), onError: (err) => reject(err) },
+          );
+        });
+      }
+
+      // Staged creates (isNew entries) come after all updates.
+      const newVariantEntries = variantEntries.filter((e) => e.isNew);
+      const existingVariantCount = variantEntries.filter((e) => !e.isNew).length;
+      for (let i = 0; i < newVariantEntries.length; i++) {
+        const entry = newVariantEntries[i];
+        const payload = entry.buildCreatePayload!();
+        // Display number = existing count + position among new cards (1-based).
+        const displayNum = existingVariantCount + i + 1;
+        await new Promise<void>((resolve, reject) => {
+          createVariant.mutate(
+            { songId, variant: payload },
+            {
+              onSuccess: () => resolve(),
+              onError: (err) => {
+                const base = err instanceof Error ? err.message : "Save failed";
+                reject(new Error(`New variant ${displayNum}: ${base}`));
+              },
+            },
           );
         });
       }
@@ -241,6 +264,7 @@ export default function SongEdit() {
           variants={(song.lyricVariants ?? []) as Variant[]}
           onChanged={refetch}
           onDirtyChange={setVariantEntries}
+          defaultSectionType={song.lyricSectionType ?? "verse"}
         />
         <SectionNotes
           song={song}
@@ -262,14 +286,18 @@ export default function SongEdit() {
 function SectionCard({
   title,
   children,
+  headerAction,
 }: {
   title: string;
   children: React.ReactNode;
+  /** Optional element rendered to the right of the section title. */
+  headerAction?: React.ReactNode;
 }) {
   return (
     <Card className="p-6 mb-4">
       <div className="flex items-center justify-between mb-4">
         <h2 className="font-semibold text-lg">{title}</h2>
+        {headerAction}
       </div>
       {children}
     </Card>
@@ -495,24 +523,55 @@ function SectionLicensing({
 
 // ─── SectionVariants ──────────────────────────────────────────────────────────
 
+const MAX_VARIANTS = 3;
+
 function SectionVariants({
   songId,
   variants,
   onChanged,
   onDirtyChange,
+  defaultSectionType,
 }: {
   songId: number;
   variants: Variant[];
   onChanged: () => void;
   onDirtyChange: (entries: VariantDraftEntry[]) => void;
+  defaultSectionType?: string;
 }) {
+  const editorRef = useRef<VariantEditorHandle>(null);
+  const [stagedCount, setStagedCount] = useState(0);
+
+  const totalCount = variants.length + stagedCount;
+  const atMax = totalCount >= MAX_VARIANTS;
+
+  const addButton = (
+    <Button
+      variant="ghost"
+      size="sm"
+      className="gap-1 text-xs h-7 px-2"
+      disabled={atMax}
+      onClick={() => editorRef.current?.stageNew()}
+      title={atMax ? "Maximum of 3 lyric variants" : undefined}
+      data-testid="add-variant-btn"
+    >
+      <Plus className="w-3.5 h-3.5" />
+      Add another lyric (max of 3)
+    </Button>
+  );
+
   return (
-    <SectionCard title={`Lyric variants (${variants.length})`}>
+    <SectionCard
+      title={`Lyric variants (${totalCount})`}
+      headerAction={addButton}
+    >
       <VariantEditor
+        ref={editorRef}
         songId={songId}
         variants={variants}
         onChanged={onChanged}
         onDirtyChange={onDirtyChange}
+        defaultSectionType={defaultSectionType ?? "verse"}
+        onStagedCountChange={setStagedCount}
       />
     </SectionCard>
   );

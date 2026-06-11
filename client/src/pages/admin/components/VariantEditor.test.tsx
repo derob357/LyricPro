@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent, act } from "@testing-library/react";
+import { useRef } from "react";
 
 // ── trpc mock ──────────────────────────────────────────────────────────────────
 // Only the delete mutation is needed now; update is no longer called from VariantEditor.
@@ -19,7 +20,7 @@ vi.mock("@/lib/trpc", () => ({
 }));
 
 import { VariantEditor } from "./VariantEditor";
-import type { Variant, VariantDraftEntry } from "./VariantEditor";
+import type { Variant, VariantDraftEntry, VariantEditorHandle } from "./VariantEditor";
 
 const SONG_ID = 42;
 
@@ -195,5 +196,149 @@ describe("VariantEditor", () => {
     expect(latestEntries[0].dirty).toBe(true);
     const patch = latestEntries[0].buildPatch();
     expect(patch.answer).toBe("never");
+  });
+
+  // ── Staged-new variant tests ──────────────────────────────────────────────
+
+  /**
+   * Helper: render VariantEditor with a forwarded ref and return the ref.
+   * We use a wrapper component so we can call ref.current.stageNew() from tests.
+   */
+  function renderWithRef(
+    variants: Variant[],
+    onDirtyChange?: (entries: VariantDraftEntry[]) => void,
+    defaultSectionType = "chorus",
+  ) {
+    let capturedRef: React.RefObject<VariantEditorHandle | null> | null = null;
+
+    function Wrapper() {
+      const ref = useRef<VariantEditorHandle>(null);
+      capturedRef = ref;
+      return (
+        <VariantEditor
+          ref={ref}
+          songId={SONG_ID}
+          variants={variants}
+          onChanged={() => {}}
+          onDirtyChange={onDirtyChange}
+          defaultSectionType={defaultSectionType}
+        />
+      );
+    }
+
+    render(<Wrapper />);
+    return capturedRef!;
+  }
+
+  it("stageNew adds a new variant card with 'New — not saved yet' badge", async () => {
+    const ref = renderWithRef([baseVariant]);
+
+    await act(async () => {
+      ref.current?.stageNew();
+    });
+
+    // The new card should render with a badge
+    expect(screen.getByTestId("new-variant-card-2")).toBeTruthy();
+    expect(screen.getByTestId("new-variant-badge-2")).toBeTruthy();
+  });
+
+  it("staged new card publishes isNew=true entry via onDirtyChange", async () => {
+    const onDirtyChange = vi.fn<(entries: VariantDraftEntry[]) => void>();
+    const ref = renderWithRef([baseVariant], onDirtyChange);
+
+    await act(async () => {
+      ref.current?.stageNew();
+    });
+
+    const latestEntries: VariantDraftEntry[] =
+      onDirtyChange.mock.calls[onDirtyChange.mock.calls.length - 1][0];
+    // 1 existing + 1 new = 2 entries total
+    expect(latestEntries).toHaveLength(2);
+    expect(latestEntries[1].isNew).toBe(true);
+    expect(latestEntries[1].dirty).toBe(true);
+    expect(typeof latestEntries[1].buildCreatePayload).toBe("function");
+  });
+
+  it("unstaging a new card (X button) removes it from the registry", async () => {
+    const onDirtyChange = vi.fn<(entries: VariantDraftEntry[]) => void>();
+    const ref = renderWithRef([baseVariant], onDirtyChange);
+
+    await act(async () => {
+      ref.current?.stageNew();
+    });
+
+    // Confirm it was added
+    expect(screen.getByTestId("new-variant-card-2")).toBeTruthy();
+
+    // Click the X button on the new card
+    const removeBtn = screen.getByTestId("new-variant-remove-2");
+    await act(async () => {
+      fireEvent.click(removeBtn);
+    });
+
+    // Card should be gone
+    expect(screen.queryByTestId("new-variant-card-2")).toBeNull();
+
+    // Registry should be back to 1 entry (the existing variant)
+    const latestEntries: VariantDraftEntry[] =
+      onDirtyChange.mock.calls[onDirtyChange.mock.calls.length - 1][0];
+    expect(latestEntries).toHaveLength(1);
+    expect(latestEntries[0].isNew).toBeUndefined();
+  });
+
+  it("buildCreatePayload reflects edited fields on the new card", async () => {
+    const onDirtyChange = vi.fn<(entries: VariantDraftEntry[]) => void>();
+    const ref = renderWithRef([], onDirtyChange, "verse");
+
+    await act(async () => {
+      ref.current?.stageNew();
+    });
+
+    // Edit the answer field on the new card (displayIndex=1)
+    const answerInputs = screen.getAllByRole("textbox");
+    // The new card renders Prompt (textarea), Answer (input), Distractors (input)
+    // In order: 0=prompt textarea, 1=answer input, 2=distractors input
+    // Find answer input by its position — it follows the Answer label
+    const answerLabel = screen.getByText("Answer");
+    const answerInput = answerLabel.nextElementSibling as HTMLInputElement;
+    await act(async () => {
+      fireEvent.change(answerInput, { target: { value: "the sky" } });
+    });
+
+    const latestEntries: VariantDraftEntry[] =
+      onDirtyChange.mock.calls[onDirtyChange.mock.calls.length - 1][0];
+    expect(latestEntries[0].isNew).toBe(true);
+    const payload = latestEntries[0].buildCreatePayload!();
+    expect(payload.answer).toBe("the sky");
+    expect(payload.sectionType).toBe("verse");
+  });
+
+  it("two staged cards count separately; removing one leaves the other", async () => {
+    const onDirtyChange = vi.fn<(entries: VariantDraftEntry[]) => void>();
+    const ref = renderWithRef([baseVariant], onDirtyChange);
+
+    await act(async () => {
+      ref.current?.stageNew();
+    });
+    await act(async () => {
+      ref.current?.stageNew();
+    });
+
+    // 1 existing + 2 new = 3 entries
+    let latestEntries: VariantDraftEntry[] =
+      onDirtyChange.mock.calls[onDirtyChange.mock.calls.length - 1][0];
+    expect(latestEntries).toHaveLength(3);
+    expect(latestEntries[1].isNew).toBe(true);
+    expect(latestEntries[2].isNew).toBe(true);
+
+    // Remove the first new card (displayIndex=2)
+    const removeBtn = screen.getByTestId("new-variant-remove-2");
+    await act(async () => {
+      fireEvent.click(removeBtn);
+    });
+
+    latestEntries = onDirtyChange.mock.calls[onDirtyChange.mock.calls.length - 1][0];
+    expect(latestEntries).toHaveLength(2);
+    expect(latestEntries[1].isNew).toBe(true);
   });
 });

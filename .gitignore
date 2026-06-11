@@ -160,3 +160,6 @@ scripts/*.report.json
 # Local-only analysis docs (not for the remote)
 docs/gap-analysis-game-economy-brief.md
 docs/gap-analysis-game-economy-brief.pdf
+
+# Generated content reports (contain lyric text — never push)
+docs/reports/
