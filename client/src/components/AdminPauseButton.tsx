@@ -19,7 +19,7 @@ export function AdminPauseButton() {
       onClick={() => setPaused(!paused)}
       title={paused ? "Resume — admin freeze active" : "Pause — freeze animations and game timer (admin)"}
       aria-label={paused ? "Resume admin freeze" : "Pause admin freeze"}
-      className="fixed bottom-4 right-4 z-[60] w-12 h-12 rounded-full border border-border bg-card shadow-lg hover:bg-primary/10 flex items-center justify-center text-foreground transition-colors"
+      className="fixed bottom-24 right-6 z-[60] w-12 h-12 rounded-full border border-border bg-card shadow-lg hover:bg-primary/10 flex items-center justify-center text-foreground transition-colors"
     >
       {paused ? <Play className="w-5 h-5" /> : <Pause className="w-5 h-5" />}
     </button>
