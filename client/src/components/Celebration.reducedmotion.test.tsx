@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { render } from "@testing-library/react";
+import { render, screen } from "@testing-library/react";
 
 // Mock sharedAudio to return null so jsdom doesn't try to instantiate AudioContext
 vi.mock("@/lib/sharedAudio", () => ({
@@ -55,5 +55,19 @@ describe("Celebration — reduced-motion path", () => {
     vi.advanceTimersByTime(900);
     expect(getContextSpy).not.toHaveBeenCalled();
     getContextSpy.mockRestore();
+  });
+
+  it("renders message text instead of generic label when message prop is provided", () => {
+    const message = "Three out of four — that's a strong round";
+    render(<Celebration level={1} muted={true} message={message} />);
+    expect(screen.getByText(message)).toBeTruthy();
+    expect(screen.queryByText("Not bad!")).toBeNull();
+    expect(screen.getByText(/Tap anywhere to continue/i)).toBeTruthy();
+  });
+
+  it("renders generic label when message prop is absent", () => {
+    render(<Celebration level={1} muted={true} />);
+    expect(screen.getByText("Not bad!")).toBeTruthy();
+    expect(screen.getByText(/Tap anywhere to continue/i)).toBeTruthy();
   });
 });

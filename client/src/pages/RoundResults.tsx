@@ -181,6 +181,7 @@ export default function RoundResults() {
         level={celebrationLevel}
         muted={muted}
         onComplete={handleCelebrationComplete}
+        message={result.commentary ?? null}
       />
       {/* Header */}
       <div className="glass border-b border-border/50 sticky top-0 z-40">

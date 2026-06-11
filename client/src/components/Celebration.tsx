@@ -21,6 +21,8 @@ interface CelebrationProps {
   /** Duration in ms. Defaults: L1=3000, L2=4000, L3=5000 */
   duration?: number;
   muted: boolean;
+  /** AI round commentary. When provided, replaces the generic label (Perfect!/Nice!/Not bad!) */
+  message?: string | null;
 }
 
 // ── Particle / confetti / firework types ─────────────────────────────────────
@@ -207,7 +209,7 @@ function drawStar(ctx2d: CanvasRenderingContext2D, x: number, y: number, r: numb
 }
 
 // ── Main component ────────────────────────────────────────────────────────────
-export default function Celebration({ level, onComplete, duration, muted }: CelebrationProps) {
+export default function Celebration({ level, onComplete, duration, muted, message }: CelebrationProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const animRef = useRef<number>(0);
   const particlesRef = useRef<Particle[]>([]);
@@ -343,7 +345,8 @@ export default function Celebration({ level, onComplete, duration, muted }: Cele
   if (level === 0) return null;
 
   // Level 3 = perfect round (all 4 correct), Level 2 = 3/4, Level 1 = 2/4
-  const label = level === 3 ? "Perfect!" : level === 2 ? "Nice!" : "Not bad!";
+  const genericLabel = level === 3 ? "Perfect!" : level === 2 ? "Nice!" : "Not bad!";
+  const displayMessage = message && message.trim() ? message.trim() : null;
 
   return (
     <div
@@ -357,14 +360,23 @@ export default function Celebration({ level, onComplete, duration, muted }: Cele
         className="absolute inset-0 pointer-events-none"
         style={{ width: "100vw", height: "100vh" }}
       />
-      {/* Score label */}
-      <div className="relative z-10 flex flex-col items-center gap-3 select-none">
-        <span
-          className="text-3xl font-bold gradient-text drop-shadow-lg"
-          style={{ textShadow: "0 0 24px rgba(139,92,246,0.8)" }}
-        >
-          {label}
-        </span>
+      {/* Score label / AI commentary */}
+      <div className="relative z-10 flex flex-col items-center gap-3 select-none px-6 max-w-sm text-center">
+        {displayMessage ? (
+          <span
+            className="text-xl font-semibold gradient-text drop-shadow-lg leading-snug"
+            style={{ textShadow: "0 0 24px rgba(139,92,246,0.8)" }}
+          >
+            {displayMessage}
+          </span>
+        ) : (
+          <span
+            className="text-3xl font-bold gradient-text drop-shadow-lg"
+            style={{ textShadow: "0 0 24px rgba(139,92,246,0.8)" }}
+          >
+            {genericLabel}
+          </span>
+        )}
         <span className="text-sm text-white/70 bg-black/40 backdrop-blur-sm px-4 py-1.5 rounded-full border border-white/10 animate-pulse">
           Tap anywhere to continue
         </span>

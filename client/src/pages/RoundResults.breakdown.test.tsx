@@ -22,11 +22,11 @@ vi.mock("@/lib/trpc", () => ({
     },
   },
 }));
-// Celebration: props-capturing stub (replaces null mock so we can assert level)
-const celebrationProps = vi.hoisted(() => ({ last: null as { level: number; onComplete?: () => void } | null }));
+// Celebration: props-capturing stub (replaces null mock so we can assert level + message)
+const celebrationProps = vi.hoisted(() => ({ last: null as { level: number; onComplete?: () => void; message?: string | null } | null }));
 vi.mock("@/components/Celebration", () => ({
   __esModule: true,
-  default: (props: { level: number; onComplete?: () => void }) => { celebrationProps.last = props; return null; },
+  default: (props: { level: number; onComplete?: () => void; message?: string | null }) => { celebrationProps.last = props; return null; },
 }));
 
 import RoundResults from "./RoundResults";
@@ -136,5 +136,13 @@ describe("RoundResults score breakdown", () => {
     seedResult(); // no stake field
     render(<RoundResults />);
     expect(screen.queryByTestId("stake-line")).toBeNull();
+  });
+
+  it("passes commentary as message prop to Celebration when celebrationCount >= 2", () => {
+    const commentary = "Three out of four — that's a strong round";
+    seedResult({ celebrationCount: 3, commentary });
+    render(<RoundResults />);
+    expect(celebrationProps.last?.level).toBe(2);
+    expect(celebrationProps.last?.message).toBe(commentary);
   });
 });
