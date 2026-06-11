@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback } from "react";
+import { useState, useRef, useCallback, useEffect } from "react";
 import { useParams, useLocation } from "wouter";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { trpc } from "@/lib/trpc";
@@ -242,8 +242,9 @@ export default function SongEdit() {
         <SectionIdentity
           song={song}
           onRegister={(handle) => {
+            const prevDirty = identityRef.current?.dirty;
             identityRef.current = handle;
-            notifyDirty();
+            if (prevDirty !== handle.dirty) notifyDirty();
           }}
           onSave={(patch) =>
             update.mutateAsync({ id: songId, patch })
@@ -252,8 +253,9 @@ export default function SongEdit() {
         <SectionLicensing
           song={song}
           onRegister={(handle) => {
+            const prevDirty = licensingRef.current?.dirty;
             licensingRef.current = handle;
-            notifyDirty();
+            if (prevDirty !== handle.dirty) notifyDirty();
           }}
           onSave={(patch) =>
             update.mutateAsync({ id: songId, patch })
@@ -269,8 +271,9 @@ export default function SongEdit() {
         <SectionNotes
           song={song}
           onRegister={(handle) => {
+            const prevDirty = notesRef.current?.dirty;
             notesRef.current = handle;
-            notifyDirty();
+            if (prevDirty !== handle.dirty) notifyDirty();
           }}
           onSave={(patch) =>
             update.mutateAsync({ id: songId, patch })
@@ -338,15 +341,19 @@ function SectionIdentity({
   };
   const dirty = JSON.stringify(draft) !== JSON.stringify(baseline);
 
-  // Register with parent on every render so dirty reflects current state.
-  onRegister({
-    dirty,
-    save: () =>
-      onSave({
-        ...draft,
-        featuredArtist: draft.featuredArtist || null,
-        subgenre: draft.subgenre || null,
-      }).then(() => undefined),
+  // Register with parent after every render so dirty reflects current state.
+  // Must be an effect (not during render) to avoid calling parent setState
+  // during the child render phase, which would cause an infinite loop.
+  useEffect(() => {
+    onRegister({
+      dirty,
+      save: () =>
+        onSave({
+          ...draft,
+          featuredArtist: draft.featuredArtist || null,
+          subgenre: draft.subgenre || null,
+        }).then(() => undefined),
+    });
   });
 
   const topGenres = allGenres?.filter((g) => !g.parentId && g.isActive) ?? [];
@@ -448,19 +455,22 @@ function SectionLicensing({
   };
   const dirty = JSON.stringify(draft) !== JSON.stringify(baseline);
 
-  onRegister({
-    dirty,
-    save: () =>
-      onSave({
-        iswc: draft.iswc || null,
-        isrc: draft.isrc || null,
-        lyricSourceProvider: draft.lyricSourceProvider,
-        providerTrackId: draft.providerTrackId || null,
-        songwriters: draft.songwriters,
-        publishers: draft.publishers,
-        approvedForGame: draft.approvedForGame,
-        inCuratedBank: draft.inCuratedBank,
-      }).then(() => undefined),
+  // Register with parent after every render so dirty reflects current state.
+  useEffect(() => {
+    onRegister({
+      dirty,
+      save: () =>
+        onSave({
+          iswc: draft.iswc || null,
+          isrc: draft.isrc || null,
+          lyricSourceProvider: draft.lyricSourceProvider,
+          providerTrackId: draft.providerTrackId || null,
+          songwriters: draft.songwriters,
+          publishers: draft.publishers,
+          approvedForGame: draft.approvedForGame,
+          inCuratedBank: draft.inCuratedBank,
+        }).then(() => undefined),
+    });
   });
 
   return (
@@ -594,9 +604,12 @@ function SectionNotes({
   const [draft, setDraft] = useState(song.curatorNotes ?? "");
   const dirty = (song.curatorNotes ?? "") !== draft;
 
-  onRegister({
-    dirty,
-    save: () => onSave({ curatorNotes: draft || null }).then(() => undefined),
+  // Register with parent after every render so dirty reflects current state.
+  useEffect(() => {
+    onRegister({
+      dirty,
+      save: () => onSave({ curatorNotes: draft || null }).then(() => undefined),
+    });
   });
 
   return (
