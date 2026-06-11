@@ -135,6 +135,13 @@ export default function SongsList() {
               <SelectItem value="pending">Pending</SelectItem>
             </SelectContent>
           </Select>
+          <span className="ml-auto text-sm text-muted-foreground" data-testid="songs-total">
+            {data != null
+              ? `${data.total.toLocaleString()} song${data.total === 1 ? "" : "s"}`
+              : isLoading
+              ? <span className="inline-block w-16 h-4 rounded bg-muted animate-pulse" />
+              : null}
+          </span>
         </div>
 
         {isLoading && (

@@ -60,25 +60,35 @@ export const adminSongsRouter = router({
     .query(async ({ input }) => {
       const db = await getDb();
       if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "DB unavailable" });
-      const where: any[] = [];
-      if (input.cursor) where.push(gt(songs.id, input.cursor));
+
+      // Build filter conditions shared by both the data query and the COUNT query.
+      // The cursor condition is intentionally excluded — total reflects all matching
+      // rows regardless of pagination position.
+      const filterConditions: any[] = [];
       if (input.search) {
         const pattern = `%${input.search}%`;
-        where.push(
+        filterConditions.push(
           sql`(${songs.title} ILIKE ${pattern} OR ${songs.artistName} ILIKE ${pattern})`
         );
       }
-      if (input.genre) where.push(eq(songs.genre, input.genre));
-      if (input.decade) where.push(eq(songs.decadeRange, input.decade));
+      if (input.genre) filterConditions.push(eq(songs.genre, input.genre));
+      if (input.decade) filterConditions.push(eq(songs.decadeRange, input.decade));
       if (input.status === "active") {
-        where.push(eq(songs.isActive, true));
-        where.push(eq(songs.approvedForGame, true));
+        filterConditions.push(eq(songs.isActive, true));
+        filterConditions.push(eq(songs.approvedForGame, true));
       }
-      if (input.status === "disabled") where.push(eq(songs.isActive, false));
-      if (input.status === "pending") where.push(eq(songs.approvalStatus, "pending"));
+      if (input.status === "disabled") filterConditions.push(eq(songs.isActive, false));
+      if (input.status === "pending") filterConditions.push(eq(songs.approvalStatus, "pending"));
       if (input.inCuratedBank !== undefined) {
-        where.push(eq(songs.inCuratedBank, input.inCuratedBank));
+        filterConditions.push(eq(songs.inCuratedBank, input.inCuratedBank));
       }
+
+      // Cursor condition applied only to the data query (keeps pagination working
+      // while the total stays filter-scoped, not cursor-scoped).
+      const dataConditions = input.cursor
+        ? [...filterConditions, gt(songs.id, input.cursor)]
+        : filterConditions;
+
       const sortColumnMap: Record<string, AnyColumn> = {
         title: songs.title,
         artistName: songs.artistName,
@@ -90,31 +100,39 @@ export const adminSongsRouter = router({
       const sortCol = sortColumnMap[input.sortBy] ?? songs.title;
       const orderFn = input.sortDir === "desc" ? desc : asc;
 
-      const rows = await db
-        .select({
-          id: songs.id,
-          title: songs.title,
-          artistName: songs.artistName,
-          genre: songs.genre,
-          releaseYear: songs.releaseYear,
-          decadeRange: songs.decadeRange,
-          isActive: songs.isActive,
-          approvedForGame: songs.approvedForGame,
-          approvalStatus: songs.approvalStatus,
-          inCuratedBank: songs.inCuratedBank,
-          displayCount: songs.displayCount,
-          variantCount: sql<number>`COALESCE(jsonb_array_length(${songs.lyricVariants}), 0)::int`,
-          updatedAt: songs.updatedAt,
-        })
-        .from(songs)
-        .where(where.length ? and(...where) : undefined)
-        .orderBy(orderFn(sortCol), asc(songs.id))
-        .limit(input.limit + 1);
+      const [rows, countResult] = await Promise.all([
+        db
+          .select({
+            id: songs.id,
+            title: songs.title,
+            artistName: songs.artistName,
+            genre: songs.genre,
+            releaseYear: songs.releaseYear,
+            decadeRange: songs.decadeRange,
+            isActive: songs.isActive,
+            approvedForGame: songs.approvedForGame,
+            approvalStatus: songs.approvalStatus,
+            inCuratedBank: songs.inCuratedBank,
+            displayCount: songs.displayCount,
+            variantCount: sql<number>`COALESCE(jsonb_array_length(${songs.lyricVariants}), 0)::int`,
+            updatedAt: songs.updatedAt,
+          })
+          .from(songs)
+          .where(dataConditions.length ? and(...dataConditions) : undefined)
+          .orderBy(orderFn(sortCol), asc(songs.id))
+          .limit(input.limit + 1),
+        db
+          .select({ total: sql<number>`COUNT(*)::int` })
+          .from(songs)
+          .where(filterConditions.length ? and(...filterConditions) : undefined),
+      ]);
+
       const hasMore = rows.length > input.limit;
       const trimmed = hasMore ? rows.slice(0, input.limit) : rows;
       return {
         rows: trimmed,
         nextCursor: hasMore ? trimmed[trimmed.length - 1].id : null,
+        total: countResult[0]?.total ?? 0,
       };
     }),
 

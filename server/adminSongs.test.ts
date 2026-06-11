@@ -34,6 +34,8 @@ liveDescribe("admin.songs.list", () => {
     const result = await caller.adminSongs.list({ limit: 5 });
     expect(result).toHaveProperty("rows");
     expect(result).toHaveProperty("nextCursor");
+    expect(result).toHaveProperty("total");
+    expect(typeof result.total).toBe("number");
     expect(Array.isArray(result.rows)).toBe(true);
     if (result.rows.length > 0) {
       const r = result.rows[0];
@@ -61,6 +63,50 @@ liveDescribe("admin.songs.list", () => {
     const page1Ids = new Set(page1.rows.map((r: any) => r.id));
     const page2Ids = new Set(page2.rows.map((r: any) => r.id));
     expect([...page1Ids].some((id) => page2Ids.has(id))).toBe(false);
+  });
+
+  it("total reflects all matching rows for a search filter, not just the page", async () => {
+    const caller = makeAdminCaller();
+    // Create two songs with a unique search token so we can count exactly them.
+    const token = `vitest-total-${Date.now()}`;
+    const callerCreate = appRouter.createCaller({
+      user: { id: 1, role: "admin", email: "admin@test" } as any,
+      req: {} as any, res: {} as any,
+      ip: "10.0.0.5", userAgent: "vitest",
+      requestId: `vitest-total-create-${Date.now()}`,
+      countryCode: "US",
+    });
+    const song1 = await callerCreate.adminSongs.create({
+      title: `${token}-A`,
+      artistName: "VitestArtistTotal",
+      genre: "Pop",
+      releaseYear: 2024,
+      decadeRange: "2020s",
+      difficulty: "medium",
+      lyricSectionType: "verse",
+      lyricPrompt: "Test prompt [____]",
+      lyricAnswer: "test",
+    });
+    const song2 = await callerCreate.adminSongs.create({
+      title: `${token}-B`,
+      artistName: "VitestArtistTotal",
+      genre: "Pop",
+      releaseYear: 2024,
+      decadeRange: "2020s",
+      difficulty: "medium",
+      lyricSectionType: "verse",
+      lyricPrompt: "Test prompt [____]",
+      lyricAnswer: "test",
+    });
+
+    // Request only 1 row — total should still be 2.
+    const result = await caller.adminSongs.list({ limit: 1, search: token });
+    expect(result.rows.length).toBe(1);
+    expect(result.total).toBe(2);
+
+    // Cleanup
+    await callerCreate.adminSongs.disable({ id: song1.id, reason: "vitest total cleanup" });
+    await callerCreate.adminSongs.disable({ id: song2.id, reason: "vitest total cleanup" });
   });
 });
 
