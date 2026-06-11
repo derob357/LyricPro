@@ -48,7 +48,7 @@ describe("VariantEditor", () => {
     deleteMutate.mockClear();
   });
 
-  it("renders a variant card with the difficulty select defaulting to Inherit", () => {
+  it("renders a variant card with the difficulty pills defaulting to Inherit selected", () => {
     render(
       <VariantEditor
         songId={SONG_ID}
@@ -56,12 +56,15 @@ describe("VariantEditor", () => {
         onChanged={() => {}}
       />,
     );
-    const select = screen.getByTestId("variant-difficulty-0") as HTMLSelectElement;
-    expect(select.value).toBe("");
-    expect(select.options[0].text).toMatch(/inherit/i);
+    const container = screen.getByTestId("variant-difficulty-0");
+    expect(container).toBeTruthy();
+    const inheritPill = screen.getByTestId("variant-difficulty-0-inherit");
+    expect(inheritPill.textContent).toMatch(/inherit/i);
+    // Inherit pill should carry the selected style (border-primary class)
+    expect(inheritPill.className).toMatch(/border-primary/);
   });
 
-  it("when variant already has difficulty='high', the select shows 'high'", () => {
+  it("when variant already has difficulty='high', the high pill is selected", () => {
     render(
       <VariantEditor
         songId={SONG_ID}
@@ -69,11 +72,12 @@ describe("VariantEditor", () => {
         onChanged={() => {}}
       />,
     );
-    const select = screen.getByTestId("variant-difficulty-0") as HTMLSelectElement;
-    expect(select.value).toBe("high");
+    const highPill = screen.getByTestId("variant-difficulty-0-high");
+    // Selected high pill carries the red accent style
+    expect(highPill.className).toMatch(/border-red-500/);
   });
 
-  it("choosing 'high' and saving calls adminVariants.update with patch.difficulty === 'high'", () => {
+  it("clicking 'High' pill and saving calls adminVariants.update with patch.difficulty === 'high'", () => {
     render(
       <VariantEditor
         songId={SONG_ID}
@@ -81,8 +85,8 @@ describe("VariantEditor", () => {
         onChanged={() => {}}
       />,
     );
-    const select = screen.getByTestId("variant-difficulty-0");
-    fireEvent.change(select, { target: { value: "high" } });
+    const highPill = screen.getByTestId("variant-difficulty-0-high");
+    fireEvent.click(highPill);
 
     const saveBtn = screen.getByRole("button", { name: /save variant/i });
     fireEvent.click(saveBtn);
@@ -94,7 +98,7 @@ describe("VariantEditor", () => {
     expect(call.patch.difficulty).toBe("high");
   });
 
-  it("clearing difficulty to Inherit sends patch.difficulty === null", () => {
+  it("clicking Inherit pill (clearing difficulty) sends patch.difficulty === null", () => {
     render(
       <VariantEditor
         songId={SONG_ID}
@@ -102,9 +106,9 @@ describe("VariantEditor", () => {
         onChanged={() => {}}
       />,
     );
-    const select = screen.getByTestId("variant-difficulty-0");
-    // clear from "high" back to Inherit
-    fireEvent.change(select, { target: { value: "" } });
+    // click Inherit to clear from "high"
+    const inheritPill = screen.getByTestId("variant-difficulty-0-inherit");
+    fireEvent.click(inheritPill);
 
     const saveBtn = screen.getByRole("button", { name: /save variant/i });
     fireEvent.click(saveBtn);

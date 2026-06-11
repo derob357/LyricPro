@@ -134,19 +134,32 @@ function VariantCard({
           value={distractorsText}
           onChange={(e) => setDistractorsText(e.target.value)}
         />
-        <label className="text-xs text-muted-foreground">Difficulty</label>
-        <select
+        <label className="text-xs text-muted-foreground uppercase tracking-wide">Difficulty</label>
+        <div
           data-testid={`variant-difficulty-${index}`}
-          aria-label={`Difficulty for variant ${index + 1}`}
-          className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-          value={difficultyValue}
-          onChange={(e) => setDifficultyValue(e.target.value)}
+          className="flex gap-1.5 flex-wrap"
         >
-          <option value="">Inherit (use song default)</option>
-          <option value="low">Low</option>
-          <option value="medium">Medium</option>
-          <option value="high">High</option>
-        </select>
+          {([
+            { value: "", label: "Inherit", selectedColor: "bg-primary/20 border-primary/60 text-primary font-semibold" },
+            { value: "low", label: "Low", selectedColor: "bg-green-500/20 border-green-500/60 text-green-400 font-semibold" },
+            { value: "medium", label: "Medium", selectedColor: "bg-yellow-500/20 border-yellow-500/60 text-yellow-400 font-semibold" },
+            { value: "high", label: "High", selectedColor: "bg-red-500/20 border-red-500/60 text-red-400 font-semibold" },
+          ] as const).map(({ value, label, selectedColor }) => (
+            <button
+              key={value || "inherit"}
+              type="button"
+              data-testid={`variant-difficulty-${index}-${value || "inherit"}`}
+              onClick={() => setDifficultyValue(value)}
+              className={`rounded-full px-2.5 py-0.5 text-xs border transition-colors ${
+                difficultyValue === value
+                  ? selectedColor
+                  : "border-border/40 text-muted-foreground hover:border-primary/40"
+              }`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
       </div>
       <div className="mt-2 text-sm text-muted-foreground">
         <span className="uppercase text-xs tracking-wide">Preview</span>
