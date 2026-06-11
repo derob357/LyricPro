@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useLocation } from "wouter";
 import { trpc } from "@/lib/trpc";
 import { useAuth } from "@/_core/hooks/useAuth";
@@ -8,6 +8,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Play, ChevronDown } from "lucide-react";
 import { toast } from "sonner";
+import { availableDecades } from "@/lib/decadeFilter";
 
 const GENRES = ["Country", "Hip Hop", "R&B", "Pop", "Rock", "Gospel", "Soul", "Jazz", "Blues", "Alternative", "Reggae", "Mixed"];
 const DECADES = ["1940–1950", "1950–1960", "1960–1970", "1970–1980", "1980–1990", "1990–2000", "2000–2010", "2010–2020", "2020–Present"];
@@ -28,6 +29,16 @@ export default function PlayNowCard() {
 
   const createGuestSession = trpc.game.createGuestSession.useMutation();
   const createRoom = trpc.game.createRoom.useMutation();
+  const { data: countsData } = trpc.game.genreDecadeCounts.useQuery(undefined, {
+    staleTime: 5 * 60 * 1000, // 5 min — cheap query, no need to hammer the server
+  });
+
+  const visibleDecades = availableDecades(countsData?.counts, genre ? [genre] : [], DECADES);
+
+  // Drop any selected decades that are no longer visible after genre change
+  useEffect(() => {
+    setDecades((prev) => prev.filter((d) => visibleDecades.includes(d)));
+  }, [genre]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const emailOk = isAuthenticated || EMAIL_RE.test(email);
   const canStart = emailOk && !!genre && decades.length > 0 && !isStarting;
@@ -137,7 +148,7 @@ export default function PlayNowCard() {
               </PopoverTrigger>
               <PopoverContent className="w-56 p-2">
                 <div className="max-h-64 overflow-auto space-y-1">
-                  {DECADES.map((d) => (
+                  {visibleDecades.map((d) => (
                     <label key={d} className="flex items-center gap-2 rounded-md px-2 py-1.5 hover:bg-white/5 cursor-pointer">
                       <Checkbox
                         data-testid={`decade-opt-${d}`}

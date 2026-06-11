@@ -10,11 +10,21 @@ const authState = vi.hoisted(() => ({ value: { user: null as any, isAuthenticate
 vi.mock("@/_core/hooks/useAuth", () => ({ useAuth: () => authState.value }));
 const createGuestSession = vi.hoisted(() => ({ mutateAsync: vi.fn() }));
 const createRoom = vi.hoisted(() => ({ mutateAsync: vi.fn() }));
+// Default counts: Pop/1990–2000 has ≥5 songs so existing tests stay green.
+// Individual tests may override `genreDecadeCountsData.value` to exercise filtering.
+const genreDecadeCountsData = vi.hoisted(() => ({
+  value: {
+    counts: {
+      Pop: { "1990–2000": 10, "2000–2010": 8, "2010–2020": 7, "2020–Present": 6 },
+    } as Record<string, Record<string, number>>,
+  } as { counts: Record<string, Record<string, number>> } | undefined,
+}));
 vi.mock("@/lib/trpc", () => ({
   trpc: {
     game: {
       createGuestSession: { useMutation: () => createGuestSession },
       createRoom: { useMutation: () => createRoom },
+      genreDecadeCounts: { useQuery: () => ({ data: genreDecadeCountsData.value }) },
     },
   },
 }));
@@ -34,6 +44,12 @@ describe("PlayNowCard", () => {
     createRoom.mutateAsync.mockReset().mockResolvedValue({ roomCode: "ROOM42" });
     authState.value = { user: null, isAuthenticated: false };
     localStorage.clear();
+    // Reset to default counts (Pop 1990–2000 has ≥5 so all existing tests pass)
+    genreDecadeCountsData.value = {
+      counts: {
+        Pop: { "1990–2000": 10, "2000–2010": 8, "2010–2020": 7, "2020–Present": 6 },
+      },
+    };
   });
 
   it("guest: requires email + genre + decade before Start enables; opt-in NOT required", () => {
@@ -91,5 +107,23 @@ describe("PlayNowCard", () => {
     fireEvent.click(screen.getByTestId("play-start"));
     await waitFor(() => expect(createRoom.mutateAsync).toHaveBeenCalled());
     expect(createGuestSession.mutateAsync).not.toHaveBeenCalled();
+  });
+
+  it("hides a decade option when it has <5 songs for the chosen genre", () => {
+    // Pop only has 2 songs in 1940–1950 (below threshold) — 1990–2000 has 10 (above)
+    genreDecadeCountsData.value = {
+      counts: {
+        Pop: { "1940–1950": 2, "1990–2000": 10 },
+      },
+    };
+    render(<PlayNowCard />);
+    // Select Pop
+    fireEvent.change(screen.getByTestId("genre-trigger"), { target: { value: "Pop" } });
+    // Open the decades popover
+    fireEvent.click(screen.getByTestId("decade-trigger"));
+    // 1940–1950 should NOT appear (only 2 songs for Pop)
+    expect(screen.queryByTestId("decade-opt-1940–1950")).toBeNull();
+    // 1990–2000 should still appear (10 songs for Pop)
+    expect(screen.getByTestId("decade-opt-1990–2000")).toBeTruthy();
   });
 });

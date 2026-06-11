@@ -1450,4 +1450,32 @@ export const gameRouter = router({
         .limit(10);
       return { user, recentGames };
     }),
+
+  // Genre × decade song counts — used client-side to hide decades with
+  // fewer than 5 active songs for the selected genre(s) so the picker
+  // never presents options with too little content.
+  // Public so guests can call it without signing in (PlayNowCard).
+  genreDecadeCounts: publicProcedure
+    .query(async () => {
+      const db = await getDb();
+      if (!db) return { counts: {} as Record<string, Record<string, number>> };
+
+      const rows = await db
+        .select({
+          genre: songs.genre,
+          decade: songs.decadeRange,
+          count: sql<number>`count(*)::int`,
+        })
+        .from(songs)
+        .where(and(eq(songs.isActive, true), eq(songs.approvalStatus, "approved")))
+        .groupBy(songs.genre, songs.decadeRange);
+
+      const counts: Record<string, Record<string, number>> = {};
+      for (const row of rows) {
+        if (!row.genre || !row.decade) continue;
+        if (!counts[row.genre]) counts[row.genre] = {};
+        counts[row.genre][row.decade] = row.count;
+      }
+      return { counts };
+    }),
 });

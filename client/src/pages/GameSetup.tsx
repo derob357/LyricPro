@@ -11,6 +11,7 @@ import { toast } from "sonner";
 import { ArrowLeft, Users, User, UsersRound, Video, Wifi, Clock, Layers, BarChart3, Music, Music2, Calendar, ChevronRight, ChevronDown, Mic, Star, Crown, Trophy, LogOut, Coins, Plus, Minus } from "lucide-react";
 import { getLoginUrl, getSignUpUrl } from "@/const";
 import type { GameMode, Difficulty } from "@/contexts/GameContext";
+import { availableDecades } from "@/lib/decadeFilter";
 
 const GENRES = ["Country", "Hip Hop", "R&B", "Pop", "Rock", "Gospel", "Soul", "Jazz", "Blues", "Alternative", "Reggae", "Mixed"];
 const DECADES = ["1940–1950", "1950–1960", "1960–1970", "1970–1980", "1980–1990", "1990–2000", "2000–2010", "2010–2020", "2020–Present"];
@@ -84,6 +85,18 @@ export default function GameSetup() {
 
     hasHydratedRef.current = true;
   }, [isAuthenticated, serverPrefs, prefsLoading]);
+
+  // Genre × decade song counts — used to hide decades with < 5 songs for the selection.
+  const { data: countsData } = trpc.game.genreDecadeCounts.useQuery(undefined, {
+    staleTime: 5 * 60 * 1000,
+  });
+
+  const visibleDecades = availableDecades(countsData?.counts, selectedGenres, DECADES);
+
+  // When the genre selection changes, drop any selected decades no longer visible.
+  useEffect(() => {
+    setSelectedDecades((prev) => prev.filter((d) => visibleDecades.includes(d)));
+  }, [selectedGenres]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Ante stepper (solo + authenticated only): fetch earned balance to compute max stake.
   const { data: balanceData } = trpc.goldenNotes.getMyBalance.useQuery(
@@ -339,7 +352,7 @@ export default function GameSetup() {
               <span className="text-muted-foreground text-sm">(select one or more)</span>
             </div>
             <div className="flex flex-wrap gap-2">
-              {DECADES.map((decade) => (
+              {visibleDecades.map((decade) => (
                 <button
                   key={decade}
                   onClick={() => toggleDecade(decade)}

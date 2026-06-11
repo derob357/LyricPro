@@ -37,6 +37,9 @@ vi.mock("@/lib/trpc", () => ({
           ...opts,
         }),
       },
+      // Returning undefined counts triggers loading-passthrough in availableDecades
+      // so all existing decades remain visible and existing tests stay green.
+      genreDecadeCounts: { useQuery: () => ({ data: undefined }) },
     },
     liveRoom: {
       createLiveRoom: {
