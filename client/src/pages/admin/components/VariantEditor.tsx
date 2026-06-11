@@ -121,9 +121,6 @@ export function VariantEditor({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [drafts]);
 
-  const updateVariant = trpc.adminVariants.update.useMutation({
-    onSuccess: onChanged,
-  });
   const deleteVariant = trpc.adminVariants.delete.useMutation({
     onSuccess: onChanged,
   });
@@ -143,9 +140,6 @@ export function VariantEditor({
           variant={v}
           draft={drafts[i] ?? toDraftState(v)}
           onDraftChange={(patch) => updateDraft(i, patch)}
-          onSave={(patch) =>
-            updateVariant.mutate({ songId, variantIndex: i, patch })
-          }
           onDelete={() => deleteVariant.mutate({ songId, variantIndex: i })}
         />
       ))}
@@ -160,18 +154,14 @@ function VariantCard({
   variant,
   draft,
   onDraftChange,
-  onSave,
   onDelete,
 }: {
   index: number;
   variant: Variant;
   draft: DraftState;
   onDraftChange: (patch: Partial<DraftState>) => void;
-  onSave: (p: VariantPatch) => void;
   onDelete: () => void;
 }) {
-  const dirty = isDirty(draft, variant);
-
   return (
     <Card className="p-4 space-y-3">
       <div className="flex items-center justify-between">
@@ -234,20 +224,6 @@ function VariantCard({
         <p className="text-foreground font-medium">
           &ldquo;{draft.prompt}<span className="text-accent">...</span>&rdquo; &rarr; <span className="text-primary">{draft.answer}</span>
         </p>
-      </div>
-      {/* Per-variant Save button retained for test compatibility (existing tests
-          click it to assert the correct patch shape). Hidden from the primary
-          UI flow — page-level Save is the intended action for end users. */}
-      <div className="flex justify-end">
-        <Button
-          size="sm"
-          disabled={!dirty}
-          onClick={() => onSave(buildPatchFromDraft(draft))}
-          className="gap-2"
-          aria-label="Save variant"
-        >
-          Save variant
-        </Button>
       </div>
     </Card>
   );

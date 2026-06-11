@@ -2,19 +2,12 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent, act } from "@testing-library/react";
 
 // ── trpc mock ──────────────────────────────────────────────────────────────────
-// Capture the mutate spy so tests can assert on it.
-const updateMutate = vi.fn();
+// Only the delete mutation is needed now; update is no longer called from VariantEditor.
 const deleteMutate = vi.fn();
 
 vi.mock("@/lib/trpc", () => ({
   trpc: {
     adminVariants: {
-      update: {
-        useMutation: ({ onSuccess }: { onSuccess?: () => void }) => ({
-          mutate: updateMutate,
-          isPending: false,
-        }),
-      },
       delete: {
         useMutation: ({ onSuccess }: { onSuccess?: () => void }) => ({
           mutate: deleteMutate,
@@ -44,7 +37,6 @@ const taggedVariant: Variant = {
 
 describe("VariantEditor", () => {
   beforeEach(() => {
-    updateMutate.mockClear();
     deleteMutate.mockClear();
   });
 
@@ -77,7 +69,7 @@ describe("VariantEditor", () => {
     expect(highPill.className).toMatch(/border-red-500/);
   });
 
-  it("clicking 'High' pill and saving calls adminVariants.update with patch.difficulty === 'high'", () => {
+  it("no Save button exists inside variant cards", () => {
     render(
       <VariantEditor
         songId={SONG_ID}
@@ -85,37 +77,59 @@ describe("VariantEditor", () => {
         onChanged={() => {}}
       />,
     );
-    const highPill = screen.getByTestId("variant-difficulty-0-high");
-    fireEvent.click(highPill);
-
-    const saveBtn = screen.getByRole("button", { name: /save variant/i });
-    fireEvent.click(saveBtn);
-
-    expect(updateMutate).toHaveBeenCalledOnce();
-    const call = updateMutate.mock.calls[0][0];
-    expect(call.songId).toBe(SONG_ID);
-    expect(call.variantIndex).toBe(0);
-    expect(call.patch.difficulty).toBe("high");
+    // There must be no button with a save-variant label
+    expect(screen.queryByRole("button", { name: /save variant/i })).toBeNull();
   });
 
-  it("clicking Inherit pill (clearing difficulty) sends patch.difficulty === null", () => {
-    render(
-      <VariantEditor
-        songId={SONG_ID}
-        variants={[taggedVariant]}
-        onChanged={() => {}}
-      />,
-    );
+  it("clicking 'High' pill stages patch.difficulty === 'high' via onDirtyChange", async () => {
+    const onDirtyChange = vi.fn<(entries: VariantDraftEntry[]) => void>();
+    await act(async () => {
+      render(
+        <VariantEditor
+          songId={SONG_ID}
+          variants={[baseVariant]}
+          onChanged={() => {}}
+          onDirtyChange={onDirtyChange}
+        />,
+      );
+    });
+
+    const highPill = screen.getByTestId("variant-difficulty-0-high");
+    await act(async () => {
+      fireEvent.click(highPill);
+    });
+
+    const latestEntries: VariantDraftEntry[] =
+      onDirtyChange.mock.calls[onDirtyChange.mock.calls.length - 1][0];
+    expect(latestEntries[0].dirty).toBe(true);
+    const patch = latestEntries[0].buildPatch();
+    expect(patch.difficulty).toBe("high");
+  });
+
+  it("clicking Inherit pill (clearing difficulty) stages patch.difficulty === null via onDirtyChange", async () => {
+    const onDirtyChange = vi.fn<(entries: VariantDraftEntry[]) => void>();
+    await act(async () => {
+      render(
+        <VariantEditor
+          songId={SONG_ID}
+          variants={[taggedVariant]}
+          onChanged={() => {}}
+          onDirtyChange={onDirtyChange}
+        />,
+      );
+    });
+
     // click Inherit to clear from "high"
     const inheritPill = screen.getByTestId("variant-difficulty-0-inherit");
-    fireEvent.click(inheritPill);
+    await act(async () => {
+      fireEvent.click(inheritPill);
+    });
 
-    const saveBtn = screen.getByRole("button", { name: /save variant/i });
-    fireEvent.click(saveBtn);
-
-    expect(updateMutate).toHaveBeenCalledOnce();
-    const call = updateMutate.mock.calls[0][0];
-    expect(call.patch.difficulty).toBeNull();
+    const latestEntries: VariantDraftEntry[] =
+      onDirtyChange.mock.calls[onDirtyChange.mock.calls.length - 1][0];
+    expect(latestEntries[0].dirty).toBe(true);
+    const patch = latestEntries[0].buildPatch();
+    expect(patch.difficulty).toBeNull();
   });
 
   it("preview shows the prompt and answer text", () => {
