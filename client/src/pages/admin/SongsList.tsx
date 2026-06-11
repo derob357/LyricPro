@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Link } from "wouter";
+import { Link, useLocation } from "wouter";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { trpc } from "@/lib/trpc";
 import { Card } from "@/components/ui/card";
@@ -8,12 +8,14 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { Plus, Search, ArrowUp, ArrowDown, ArrowUpDown } from "lucide-react";
+import { SONG_NAV_KEY, type SongNavState } from "./components/SongNavCluster";
 
 type SortColumn = "title" | "artistName" | "genre" | "releaseYear" | "status" | "displayCount";
 type SortDir = "asc" | "desc";
 
 export default function SongsList() {
   const { user } = useAuth();
+  const [, navigate] = useLocation();
   const { data: allGenres } = trpc.adminGenres.list.useQuery();
   const topGenres = allGenres?.filter(g => !g.parentId && g.isActive) ?? [];
   const [search, setSearch] = useState("");
@@ -52,6 +54,25 @@ export default function SongsList() {
       setSortDir("asc");
     }
     setCursor(undefined);
+  }
+
+  function handleRowClick(clickedId: number) {
+    if (data?.rows) {
+      const labelParts: string[] = [];
+      if (search) labelParts.push(`Search: '${search}'`);
+      if (genre) labelParts.push(`Genre: ${genre}`);
+      if (status) labelParts.push(`Status: ${status}`);
+      const navState: SongNavState = {
+        ids: data.rows.map((s) => s.id),
+        label: labelParts.length > 0 ? labelParts.join(" · ") : "All songs",
+      };
+      try {
+        sessionStorage.setItem(SONG_NAV_KEY, JSON.stringify(navState));
+      } catch {
+        // sessionStorage unavailable — degrade silently
+      }
+    }
+    navigate(`/admin/songs/${clickedId}`);
   }
 
   return (
@@ -139,9 +160,7 @@ export default function SongsList() {
                   <tr
                     key={s.id}
                     className="border-t hover:bg-muted/20 cursor-pointer"
-                    onClick={() => {
-                      window.location.href = `/admin/songs/${s.id}`;
-                    }}
+                    onClick={() => handleRowClick(s.id)}
                   >
                     <td className="px-4 py-3 font-medium">{s.title}</td>
                     <td className="px-4 py-3">{s.artistName}</td>

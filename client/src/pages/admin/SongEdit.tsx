@@ -13,6 +13,7 @@ import { ChevronLeft } from "lucide-react";
 import { SongwriterEditor, type Songwriter } from "./components/SongwriterEditor";
 import { PublisherEditor, type Publisher } from "./components/PublisherEditor";
 import { VariantEditor, type Variant } from "./components/VariantEditor";
+import { SongNavCluster } from "./components/SongNavCluster";
 
 export default function SongEdit() {
   const { user } = useAuth();
@@ -50,14 +51,17 @@ export default function SongEdit() {
   return (
     <div className="min-h-screen bg-background p-4 md:p-8">
       <div className="max-w-4xl mx-auto">
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={() => navigate("/admin/songs")}
-          className="mb-4 gap-2"
-        >
-          <ChevronLeft className="w-4 h-4" /> Back to songs
-        </Button>
+        <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => navigate("/admin/songs")}
+            className="gap-2"
+          >
+            <ChevronLeft className="w-4 h-4" /> Back to songs
+          </Button>
+          <SongNavCluster currentId={songId} />
+        </div>
         <h1 className="text-3xl font-bold mb-1">{song.title}</h1>
         <p className="text-muted-foreground mb-4">
           {song.artistName}
