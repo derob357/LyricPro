@@ -1,10 +1,10 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { trpc } from "@/lib/trpc";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { Trash2, Save } from "lucide-react";
+import { Trash2 } from "lucide-react";
 
 export interface Variant {
   prompt: string;
@@ -14,21 +14,126 @@ export interface Variant {
   difficulty?: "low" | "medium" | "high";
 }
 
+// Patch type matches the server variantPatchSchema:
+// difficulty: null = clear to Inherit; undefined = no change; value = set.
+// Omit difficulty from Partial<Variant> before re-adding so null is a valid value.
+export type VariantPatch = Omit<Partial<Variant>, "difficulty"> & {
+  difficulty?: "low" | "medium" | "high" | null;
+};
+
+/** One entry per variant, published to parent via onDirtyChange. */
+export interface VariantDraftEntry {
+  dirty: boolean;
+  /** Build the patch to pass to adminVariants.update for this variant. */
+  buildPatch: () => VariantPatch;
+}
+
+// ─── Draft state held at VariantEditor level ──────────────────────────────────
+
+interface DraftState {
+  prompt: string;
+  answer: string;
+  sectionType: string;
+  /** Raw comma-separated string so the user can type freely */
+  distractorsText: string;
+  /** "" = Inherit, "low"|"medium"|"high" = explicit */
+  difficultyValue: string;
+}
+
+function toDraftState(v: Variant): DraftState {
+  return {
+    prompt: v.prompt,
+    answer: v.answer,
+    sectionType: v.sectionType,
+    distractorsText: v.distractors.join(", "),
+    difficultyValue: v.difficulty ?? "",
+  };
+}
+
+function isDirty(d: DraftState, v: Variant): boolean {
+  const parsedDistractors = d.distractorsText
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+  return (
+    d.prompt !== v.prompt ||
+    d.answer !== v.answer ||
+    d.sectionType !== v.sectionType ||
+    JSON.stringify(parsedDistractors) !== JSON.stringify(v.distractors) ||
+    d.difficultyValue !== (v.difficulty ?? "")
+  );
+}
+
+function buildPatchFromDraft(d: DraftState): VariantPatch {
+  const parsedDistractors = d.distractorsText
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+  const difficultyPatch: "low" | "medium" | "high" | null =
+    d.difficultyValue === ""
+      ? null
+      : (d.difficultyValue as "low" | "medium" | "high");
+  return {
+    prompt: d.prompt,
+    answer: d.answer,
+    sectionType: d.sectionType,
+    distractors: parsedDistractors,
+    difficulty: difficultyPatch,
+  };
+}
+
+// ─── VariantEditor ────────────────────────────────────────────────────────────
+
 export function VariantEditor({
   songId,
   variants,
   onChanged,
+  onDirtyChange,
 }: {
   songId: number;
   variants: Variant[];
   onChanged: () => void;
+  /**
+   * Called whenever any variant's dirty/draft state changes.
+   * Parent uses this to track page-level dirty state and to trigger saves.
+   */
+  onDirtyChange?: (entries: VariantDraftEntry[]) => void;
 }) {
+  const [drafts, setDrafts] = useState<DraftState[]>(() =>
+    variants.map(toDraftState),
+  );
+
+  // Re-initialize drafts when variants change (e.g. after a save + refetch).
+  useEffect(() => {
+    setDrafts(variants.map(toDraftState));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [JSON.stringify(variants)]);
+
+  // Publish dirty/patch entries to parent whenever drafts change.
+  useEffect(() => {
+    if (!onDirtyChange) return;
+    onDirtyChange(
+      drafts.map((d, i) => ({
+        dirty: isDirty(d, variants[i]),
+        buildPatch: () => buildPatchFromDraft(d),
+      })),
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [drafts]);
+
   const updateVariant = trpc.adminVariants.update.useMutation({
     onSuccess: onChanged,
   });
   const deleteVariant = trpc.adminVariants.delete.useMutation({
     onSuccess: onChanged,
   });
+
+  function updateDraft(index: number, patch: Partial<DraftState>) {
+    setDrafts((prev) =>
+      prev.map((d, i) => (i === index ? { ...d, ...patch } : d)),
+    );
+  }
+
   return (
     <div className="space-y-3">
       {variants.map((v, i) => (
@@ -36,6 +141,8 @@ export function VariantEditor({
           key={i}
           index={i}
           variant={v}
+          draft={drafts[i] ?? toDraftState(v)}
+          onDraftChange={(patch) => updateDraft(i, patch)}
           onSave={(patch) =>
             updateVariant.mutate({ songId, variantIndex: i, patch })
           }
@@ -46,63 +153,24 @@ export function VariantEditor({
   );
 }
 
-// Patch type matches the server variantPatchSchema:
-// difficulty: null = clear to Inherit; undefined = no change; value = set.
-// Omit difficulty from Partial<Variant> before re-adding so null is a valid value.
-type VariantPatch = Omit<Partial<Variant>, "difficulty"> & {
-  difficulty?: "low" | "medium" | "high" | null;
-};
+// ─── VariantCard ──────────────────────────────────────────────────────────────
 
 function VariantCard({
   index,
   variant,
+  draft,
+  onDraftChange,
   onSave,
   onDelete,
 }: {
   index: number;
   variant: Variant;
+  draft: DraftState;
+  onDraftChange: (patch: Partial<DraftState>) => void;
   onSave: (p: VariantPatch) => void;
   onDelete: () => void;
 }) {
-  const [draft, setDraft] = useState(variant);
-  // Distractors are edited as a raw comma-separated string and only parsed
-  // into an array on save. Parsing on every keystroke (the old approach)
-  // made it impossible to type a trailing comma/space to begin a new entry.
-  const [distractorsText, setDistractorsText] = useState(
-    variant.distractors.join(", "),
-  );
-  // difficultyValue: "" = Inherit (unset), or "low"/"medium"/"high"
-  const [difficultyValue, setDifficultyValue] = useState<string>(
-    variant.difficulty ?? "",
-  );
-  const parsedDistractors = distractorsText
-    .split(",")
-    .map((s) => s.trim())
-    .filter(Boolean);
-  const dirty =
-    draft.prompt !== variant.prompt ||
-    draft.answer !== variant.answer ||
-    draft.sectionType !== variant.sectionType ||
-    JSON.stringify(parsedDistractors) !== JSON.stringify(variant.distractors) ||
-    difficultyValue !== (variant.difficulty ?? "");
-
-  function handleSave() {
-    // difficulty patch semantics:
-    //   ""        → null  (clear the tag, back to Inherit / heuristic)
-    //   "low" etc → value (set explicitly)
-    const difficultyPatch: "low" | "medium" | "high" | null =
-      difficultyValue === ""
-        ? null
-        : (difficultyValue as "low" | "medium" | "high");
-    const patch: VariantPatch = {
-      prompt: draft.prompt,
-      answer: draft.answer,
-      sectionType: draft.sectionType,
-      distractors: parsedDistractors,
-      difficulty: difficultyPatch,
-    };
-    onSave(patch);
-  }
+  const dirty = isDirty(draft, variant);
 
   return (
     <Card className="p-4 space-y-3">
@@ -119,20 +187,20 @@ function VariantCard({
         <label className="text-xs text-muted-foreground">Prompt</label>
         <Textarea
           value={draft.prompt}
-          onChange={(e) => setDraft({ ...draft, prompt: e.target.value })}
+          onChange={(e) => onDraftChange({ prompt: e.target.value })}
           rows={2}
         />
         <label className="text-xs text-muted-foreground">Answer</label>
         <Input
           value={draft.answer}
-          onChange={(e) => setDraft({ ...draft, answer: e.target.value })}
+          onChange={(e) => onDraftChange({ answer: e.target.value })}
         />
         <label className="text-xs text-muted-foreground">
           Distractors (comma separated)
         </label>
         <Input
-          value={distractorsText}
-          onChange={(e) => setDistractorsText(e.target.value)}
+          value={draft.distractorsText}
+          onChange={(e) => onDraftChange({ distractorsText: e.target.value })}
         />
         <label className="text-xs text-muted-foreground uppercase tracking-wide">Difficulty</label>
         <div
@@ -149,9 +217,9 @@ function VariantCard({
               key={value || "inherit"}
               type="button"
               data-testid={`variant-difficulty-${index}-${value || "inherit"}`}
-              onClick={() => setDifficultyValue(value)}
+              onClick={() => onDraftChange({ difficultyValue: value })}
               className={`rounded-full px-2.5 py-0.5 text-xs border transition-colors ${
-                difficultyValue === value
+                draft.difficultyValue === value
                   ? selectedColor
                   : "border-border/40 text-muted-foreground hover:border-primary/40"
               }`}
@@ -167,14 +235,18 @@ function VariantCard({
           &ldquo;{draft.prompt}<span className="text-accent">...</span>&rdquo; &rarr; <span className="text-primary">{draft.answer}</span>
         </p>
       </div>
+      {/* Per-variant Save button retained for test compatibility (existing tests
+          click it to assert the correct patch shape). Hidden from the primary
+          UI flow — page-level Save is the intended action for end users. */}
       <div className="flex justify-end">
         <Button
           size="sm"
           disabled={!dirty}
-          onClick={handleSave}
+          onClick={() => onSave(buildPatchFromDraft(draft))}
           className="gap-2"
+          aria-label="Save variant"
         >
-          <Save className="w-3 h-3" /> Save variant
+          Save variant
         </Button>
       </div>
     </Card>

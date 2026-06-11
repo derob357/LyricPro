@@ -111,4 +111,24 @@ describe("SongNavCluster", () => {
     fireEvent.click(screen.getByTestId("song-nav-next"));
     expect(navigate).not.toHaveBeenCalled();
   });
+
+  // ── onBeforeNavigate guard ─────────────────────────────────────────────────
+
+  it("onBeforeNavigate returning false blocks navigation", () => {
+    seedSessionStorage();
+    const onBeforeNavigate = vi.fn(() => false);
+    render(<SongNavCluster currentId={20} onBeforeNavigate={onBeforeNavigate} />);
+    fireEvent.click(screen.getByTestId("song-nav-next"));
+    expect(onBeforeNavigate).toHaveBeenCalledOnce();
+    expect(navigate).not.toHaveBeenCalled();
+  });
+
+  it("onBeforeNavigate returning true allows navigation", () => {
+    seedSessionStorage();
+    const onBeforeNavigate = vi.fn(() => true);
+    render(<SongNavCluster currentId={20} onBeforeNavigate={onBeforeNavigate} />);
+    fireEvent.click(screen.getByTestId("song-nav-next"));
+    expect(onBeforeNavigate).toHaveBeenCalledOnce();
+    expect(navigate).toHaveBeenCalledWith("/admin/songs/30");
+  });
 });

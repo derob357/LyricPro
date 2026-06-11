@@ -31,6 +31,12 @@ export function readSongNavState(): SongNavState | null {
 
 interface Props {
   currentId: number;
+  /**
+   * Called before navigating to the previous/next song.
+   * Return `true` to allow navigation, `false` to block it.
+   * Typically used to show a "unsaved changes" confirmation.
+   */
+  onBeforeNavigate?: () => boolean;
 }
 
 /**
@@ -38,7 +44,7 @@ interface Props {
  * is present in the sessionStorage nav list written by SongsList.
  * Renders nothing if the key is absent or the id is not in the list.
  */
-export function SongNavCluster({ currentId }: Props) {
+export function SongNavCluster({ currentId, onBeforeNavigate }: Props) {
   const [, navigate] = useLocation();
   const nav = readSongNavState();
 
@@ -52,6 +58,7 @@ export function SongNavCluster({ currentId }: Props) {
   const nextId = idx < total - 1 ? nav.ids[idx + 1] : null;
 
   function go(id: number) {
+    if (onBeforeNavigate && !onBeforeNavigate()) return;
     navigate(`/admin/songs/${id}`);
   }
 

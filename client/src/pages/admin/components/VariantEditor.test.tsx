@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, fireEvent } from "@testing-library/react";
+import { render, screen, fireEvent, act } from "@testing-library/react";
 
 // ── trpc mock ──────────────────────────────────────────────────────────────────
 // Capture the mutate spy so tests can assert on it.
@@ -26,7 +26,7 @@ vi.mock("@/lib/trpc", () => ({
 }));
 
 import { VariantEditor } from "./VariantEditor";
-import type { Variant } from "./VariantEditor";
+import type { Variant, VariantDraftEntry } from "./VariantEditor";
 
 const SONG_ID = 42;
 
@@ -134,5 +134,52 @@ describe("VariantEditor", () => {
     const previewPara = preview.nextElementSibling as HTMLElement;
     expect(previewPara.textContent).toContain("Ain't no mountain high");
     expect(previewPara.textContent).toContain("enough");
+  });
+
+  // ── onDirtyChange contract ────────────────────────────────────────────────
+
+  it("onDirtyChange is called on mount with dirty=false for each variant", async () => {
+    const onDirtyChange = vi.fn<(entries: VariantDraftEntry[]) => void>();
+    await act(async () => {
+      render(
+        <VariantEditor
+          songId={SONG_ID}
+          variants={[baseVariant]}
+          onChanged={() => {}}
+          onDirtyChange={onDirtyChange}
+        />,
+      );
+    });
+    expect(onDirtyChange).toHaveBeenCalled();
+    const latestEntries: VariantDraftEntry[] =
+      onDirtyChange.mock.calls[onDirtyChange.mock.calls.length - 1][0];
+    expect(latestEntries).toHaveLength(1);
+    expect(latestEntries[0].dirty).toBe(false);
+  });
+
+  it("onDirtyChange reports dirty=true after editing a field, and buildPatch returns updated values", async () => {
+    const onDirtyChange = vi.fn<(entries: VariantDraftEntry[]) => void>();
+    await act(async () => {
+      render(
+        <VariantEditor
+          songId={SONG_ID}
+          variants={[baseVariant]}
+          onChanged={() => {}}
+          onDirtyChange={onDirtyChange}
+        />,
+      );
+    });
+
+    // Edit the answer field
+    const answerInput = screen.getByDisplayValue("enough");
+    await act(async () => {
+      fireEvent.change(answerInput, { target: { value: "never" } });
+    });
+
+    const latestEntries: VariantDraftEntry[] =
+      onDirtyChange.mock.calls[onDirtyChange.mock.calls.length - 1][0];
+    expect(latestEntries[0].dirty).toBe(true);
+    const patch = latestEntries[0].buildPatch();
+    expect(patch.answer).toBe("never");
   });
 });
