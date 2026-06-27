@@ -498,6 +498,10 @@ export const gameRooms = pgTable("game_rooms", {
   roundEndsAt: timestamp("roundEndsAt", { withTimezone: true }),
   usedSongIds: text("usedSongIds"), // JSON array as text, nullable
   customPackSongIds: jsonb("customPackSongIds").$type<number[]>(),
+  // Per-song lyric overrides aligned by index with customPackSongIds. A null
+  // entry => engine picks the variant normally (variant 0); a number => forced
+  // variant index. Set by curated-contest launch.
+  customPackVariants: jsonb("customPackVariants").$type<Array<number | null>>(),
   isVideoRoom: boolean("isVideoRoom").default(false).notNull(),
   videoRoomName: text("videoRoomName"),
   maxPlayers: integer("maxPlayers").default(8).notNull(),
@@ -1038,6 +1042,28 @@ export const userInsights = pgTable("user_insights", {
 });
 
 export type UserInsights = typeof userInsights.$inferSelect;
+
+// ─── Curated Song Sets (admin-built contest packs) ──────────────────────────
+export const curatedSetStatusEnum = pgEnum("curated_set_status", ["active", "draft"]);
+
+export const curatedSongSets = pgTable("curated_song_sets", {
+  id: serial("id").primaryKey(),
+  name: varchar("name", { length: 256 }).notNull(),
+  description: text("description"),
+  // Ordered list. variantIndex null => use the song's default lyric (variant 0);
+  // a number => force that index into songs.lyricVariants.
+  items: jsonb("items")
+    .$type<Array<{ songId: number; variantIndex: number | null }>>()
+    .default([])
+    .notNull(),
+  status: curatedSetStatusEnum("status").default("active").notNull(),
+  createdBy: integer("created_by").notNull(),
+  createdAt: createdAtColumn(),
+  updatedAt: updatedAtColumn(),
+});
+
+export type CuratedSongSet = typeof curatedSongSets.$inferSelect;
+export type InsertCuratedSongSet = typeof curatedSongSets.$inferInsert;
 
 // ─── Layer 2: Lyric Moments (Phase 5b) ───────────────────────────────────────
 // One row per CANDIDATE lyric moment. A song typically has 3-10 candidates;
