@@ -12,7 +12,9 @@
     "test": "pnpm test:server && pnpm test:client",
     "test:server": "vitest run --config vitest.config.ts",
     "test:client": "vitest run --config vitest.client.config.ts",
-    "db:push": "drizzle-kit generate && drizzle-kit migrate"
+    "db:generate": "drizzle-kit generate",
+    "db:check": "node scripts/check-drizzle-sync.mjs",
+    "db:push": "node scripts/db-push-disabled.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.92.0",

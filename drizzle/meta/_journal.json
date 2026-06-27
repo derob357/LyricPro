@@ -5,57 +5,8 @@
     {
       "idx": 0,
       "version": "7",
-      "when": 1776698871000,
-      "tag": "0000_conscious_shinko_yamashiro",
-      "breakpoints": true
-    },
-    {
-      "idx": 1,
-      "version": "7",
-      "when": 1776709413259,
-      "tag": "0001_faithful_richard_fisk",
-      "breakpoints": true
-    },
-    {
-      "idx": 2,
-      "version": "7",
-      "when": 1777381617397,
-      "tag": "0002_fresh_magneto",
-      "breakpoints": true
-    },
-    {
-      "idx": 3,
-      "version": "7",
-      "when": 1777570386887,
-      "tag": "0003_right_terror",
-      "breakpoints": true
-    },
-    {
-      "idx": 4,
-      "version": "7",
-      "when": 1777655662940,
-      "tag": "0004_curly_paper_doll",
-      "breakpoints": true
-    },
-    {
-      "idx": 5,
-      "version": "7",
-      "when": 1777658027683,
-      "tag": "0005_warm_morgan_stark",
-      "breakpoints": true
-    },
-    {
-      "idx": 6,
-      "version": "7",
-      "when": 1778256282018,
-      "tag": "0006_puzzling_turbo",
-      "breakpoints": true
-    },
-    {
-      "idx": 7,
-      "version": "7",
-      "when": 1778769319457,
-      "tag": "0007_quick_dagger",
+      "when": 1782588626476,
+      "tag": "0000_baseline",
       "breakpoints": true
     }
   ]
