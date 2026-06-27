@@ -1,7 +1,6 @@
 import { useState } from "react";
 import { useLocation } from "wouter";
 import { motion } from "framer-motion";
-import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
@@ -349,20 +348,14 @@ export default function Home() {
   );
 }
 
-// Live song count + static stats. Pulled out of Home so the trpc query
-// has its own component scope and re-renders don't churn the whole page.
+// Static catalog/stats bar.
 function StatsBar() {
-  const { data } = trpc.system.libraryStats.useQuery(undefined, {
-    refetchOnWindowFocus: false,
-    staleTime: 5 * 60_000,
-  });
-  const songCount = (data?.totalSongs ?? 0).toLocaleString();
   return (
     <section className="py-8 border-y border-border/30">
       <div className="container">
         <div className="grid grid-cols-2 md:grid-cols-4 gap-6 text-center">
           {[
-            { icon: Music, label: "Song Catalog", value: songCount },
+            { icon: Music, label: "Song Catalog", value: "Thousands" },
             { icon: Users, label: "Game Modes", value: "4" },
             { icon: Radio, label: "Genres", value: "9" },
             { icon: Clock, label: "Decades Covered", value: "7" },
