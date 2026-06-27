@@ -401,9 +401,9 @@ export default function GameSetup() {
             <p className="text-muted-foreground text-sm mb-4">Every round asks 4 questions — lyric, title, artist, and year. Points scale with difficulty.</p>
             <div className="space-y-2">
               {[
-                { diff: "Low", color: "text-green-400", bg: "bg-green-500/10", border: "border-green-500/30", lyric: null, title: 25, artist: 25, year: 50, total: 100 },
-                { diff: "Medium", color: "text-yellow-400", bg: "bg-yellow-500/10", border: "border-yellow-500/30", lyric: null, title: 50, artist: 50, year: 100, total: 200 },
-                { diff: "High", color: "text-red-400", bg: "bg-red-500/10", border: "border-red-500/30", lyric: 50, title: 100, artist: 100, year: 200, total: 450 },
+                { diff: "Low", color: "text-green-400", bg: "bg-green-500/10", border: "border-green-500/30", lyric: 25, title: 25, artist: 25, year: 50, total: 125 },
+                { diff: "Medium", color: "text-yellow-400", bg: "bg-yellow-500/10", border: "border-yellow-500/30", lyric: 50, title: 50, artist: 50, year: 100, total: 250 },
+                { diff: "High", color: "text-red-400", bg: "bg-red-500/10", border: "border-red-500/30", lyric: 50, title: 50, artist: 100, year: 200, total: 400 },
               ].map(({ diff, color, bg, border, lyric, title, artist, year, total }) => {
                 const isOpen = openDifficulty === diff;
                 return (

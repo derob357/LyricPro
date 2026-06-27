@@ -205,7 +205,7 @@ export default function Home() {
                 step: "03",
                 icon: Trophy,
                 title: "Score & Compete",
-                desc: "Points scale with difficulty: Low (100 max), Medium (200 max), High (450 max). Streak bonuses multiply your score. See who rules the room.",
+                desc: "Points scale with difficulty: Low (125 max), Medium (250 max), High (400 max). Streak bonuses multiply your score. See who rules the room.",
                 color: "text-yellow-400",
                 glow: "glow-gold",
               },
