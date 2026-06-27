@@ -1,0 +1,18 @@
+# Block a drizzle/schema.ts change that lacks its regenerated migration — the
+# exact mistake that caused the 0007→0020 snapshot drift. Only runs when the
+# schema is actually staged, so normal commits are unaffected. See drizzle/README.md.
+if git diff --cached --name-only | grep -q '^drizzle/schema\.ts$'; then
+  echo "drizzle/schema.ts staged — checking the snapshot is in sync…"
+  before=$(git status --porcelain drizzle/ | sort)
+  pnpm exec drizzle-kit generate >/dev/null 2>&1 || true
+  after=$(git status --porcelain drizzle/ | sort)
+  if [ "$before" != "$after" ]; then
+    echo ""
+    echo "❌ Drizzle drift: you staged a schema.ts change without its migration."
+    echo "   I just generated the missing migration under drizzle/. Review it, then:"
+    echo "       git add drizzle && git commit"
+    echo "   (Details: drizzle/README.md)"
+    exit 1
+  fi
+  echo "✓ drizzle snapshot in sync."
+fi
