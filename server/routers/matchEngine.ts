@@ -6,7 +6,7 @@ import { router, publicProcedure, protectedProcedure } from "../_core/trpc";
 import { getDb } from "../db";
 import { gameRooms, roomPlayers, roundResults, songs, artistMetadata } from "../../drizzle/schema";
 import { selectSongForRoom } from "../_core/songSelection";
-import { selectCustomPackSong } from "../_core/customPack";
+import { selectCustomPackSong, resolveVariantIndex } from "../_core/customPack";
 import { scoreRound, matchLyric, type Difficulty } from "../_core/scoring";
 import { variantsForSong } from "../_core/variantReader";
 import { buildMatchQuestion, type MatchQuestion } from "../_core/buildMatchQuestion";
@@ -105,10 +105,7 @@ export const matchEngineRouter = router({
         songId = pick.song.id;
         candidateSongs = pick.candidateSongs;
         const allVariants = await variantsForSong(db, pickedSong);
-        const vIdx =
-          pick.variantIndex != null && pick.variantIndex >= 0 && pick.variantIndex < allVariants.length
-            ? pick.variantIndex
-            : 0;
+        const vIdx = resolveVariantIndex(pick.variantIndex, allVariants.length);
         pickedVariant = allVariants[vIdx] ?? { prompt: "", answer: "", distractors: [], sectionType: "" };
       } else {
         // ── Standard branch (unchanged behavior) ──
@@ -257,16 +254,21 @@ export const matchEngineRouter = router({
       if (!room.currentSongId) throw new TRPCError({ code: "BAD_REQUEST", message: "No active question." });
 
       // ── Load song + played variant (mirrors solo submitAnswer) ───────────────
-      // In synchronized multiplayer every player sees the same question
-      // (room.currentSongId, variant index 0 — startMatch writes no song_displays
-      // row, so there is no per-player variantIndex to look up; we always use
-      // allVariants[0] which is variant index 0, identical across all players).
+      // In synchronized multiplayer every player sees the same question.
+      // Standard rooms use variant index 0. Curated-pack rooms honor the admin's
+      // per-song lyric override so scoring matches what players were shown.
       const [song] = await db.select().from(songs).where(eq(songs.id, room.currentSongId)).limit(1);
       if (!song) throw new TRPCError({ code: "BAD_REQUEST", message: "Active song not found." });
 
       const allVariants = await variantsForSong(db, song);
-      // All match players see the same variant (index 0); no per-player rotation.
-      const playedVariant = allVariants[0] ?? { answer: song.lyricAnswer ?? "", prompt: "" };
+      // Curated-pack rooms honor the admin's per-song lyric override so scoring
+      // matches what players were shown. The current song was appended to
+      // usedSongIds when served, so its pack index is usedSongIds.length - 1.
+      // Standard rooms have customPackVariants = null → undefined → index 0.
+      const usedForScoring: number[] = room.usedSongIds ? JSON.parse(room.usedSongIds) : [];
+      const rawForced = (room.customPackVariants as Array<number | null> | null)?.[usedForScoring.length - 1];
+      const playedVariantIndex = resolveVariantIndex(rawForced, allVariants.length);
+      const playedVariant = allVariants[playedVariantIndex] ?? { answer: song.lyricAnswer ?? "", prompt: "" };
 
       // ── Artist aliases (mirrors solo submitAnswer) ───────────────────────────
       let aliases: string[] = [];
@@ -436,7 +438,7 @@ export const matchEngineRouter = router({
           songId = pick.song.id;
           candidateSongs = pick.candidateSongs;
           const allVariants = await variantsForSong(db, pick.song);
-          const vIdx = pick.variantIndex != null && pick.variantIndex >= 0 && pick.variantIndex < allVariants.length ? pick.variantIndex : 0;
+          const vIdx = resolveVariantIndex(pick.variantIndex, allVariants.length);
           pickedVariant = allVariants[vIdx] ?? pickedVariant;
         }
       } else {

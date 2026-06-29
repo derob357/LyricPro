@@ -4,7 +4,7 @@ vi.mock("stripe", () => ({ default: vi.fn().mockImplementation(() => ({ checkout
 
 import { appRouter } from "./app-router";
 import { getDb } from "./db";
-import { gameRooms, roomPlayers, songs } from "../drizzle/schema";
+import { gameRooms, roomPlayers, roundResults, songs } from "../drizzle/schema";
 import { and, eq } from "drizzle-orm";
 
 const DB_URL = process.env.SUPABASE_SESSION_POOLER_STRING ?? process.env.SUPABASE_DIRECT_CONNECTION_STRING ?? process.env.DATABASE_URL;
@@ -68,6 +68,49 @@ liveDescribe("matchEngine custom pack", () => {
     const [after] = await db.select().from(gameRooms).where(eq(gameRooms.id, room.id)).limit(1);
     expect(after.status).toBe("finished");
 
+    await db.delete(roomPlayers).where(eq(roomPlayers.roomId, room.id));
+    await db.delete(gameRooms).where(eq(gameRooms.id, room.id));
+  });
+
+  it("submitAnswer scores against forced variant index 1, not variant 0", async () => {
+    const db = (await getDb())!;
+    // Need a song with ≥2 entries in lyricVariants jsonb.
+    const candidates = await db.select().from(songs).where(eq(songs.isActive, true)).limit(50);
+    const song = candidates.find(
+      (s) => Array.isArray(s.lyricVariants) && (s.lyricVariants as any[]).length >= 2,
+    );
+    if (!song) return; // no multi-variant seeds — skip
+    const variants = song.lyricVariants as Array<{ answer: string; prompt: string }>;
+    const v1Answer = variants[1].answer;
+
+    // Create room already in active/in_question state so we bypass startMatch's
+    // 2-player minimum and directly test the submitAnswer scoring path.
+    const code = `VA${Date.now().toString().slice(-6)}`;
+    const endsAt = new Date(Date.now() + 30_000);
+    const [room] = await db.insert(gameRooms).values({
+      roomCode: code, hostUserId: 1, mode: "multiplayer",
+      selectedGenres: "[]", selectedDecades: "[]", difficulty: "medium",
+      roundsTotal: 1, status: "active", currentRound: 1, roundPhase: "in_question",
+      currentSongId: song.id,
+      // usedSongIds already contains the song (appended by startMatch when served).
+      usedSongIds: JSON.stringify([song.id]),
+      customPackSongIds: [song.id],
+      customPackVariants: [1], // force variant 1
+      roundEndsAt: endsAt,
+    }).returning();
+    await db.insert(roomPlayers).values({
+      roomId: room.id, userId: 1, joinOrder: 0, isReady: true, isActive: true,
+    });
+
+    const res = await adminCaller().matchEngine.submitAnswer({
+      roomCode: code,
+      lyricAnswer: v1Answer,
+    });
+    // A correct variant-1 lyric answer must earn lyric points (> 0 total).
+    expect(res.totalRoundPoints).toBeGreaterThan(0);
+
+    // cleanup
+    await db.delete(roundResults).where(eq(roundResults.roomId, room.id));
     await db.delete(roomPlayers).where(eq(roomPlayers.roomId, room.id));
     await db.delete(gameRooms).where(eq(gameRooms.id, room.id));
   });

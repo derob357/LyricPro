@@ -49,3 +49,12 @@ export async function selectCustomPackSong(
 
   return { song: song as SongRow, candidateSongs, variantIndex };
 }
+
+/** Clamp a raw forced-variant value to a valid variant index. Returns the
+ *  forced index when it's an in-range integer, else 0 (the default variant).
+ *  Single source of truth shared by the serve sites (startMatch/advanceRound)
+ *  and the scoring site (submitAnswer) so the displayed and scored variant
+ *  can never diverge. */
+export function resolveVariantIndex(raw: number | null | undefined, variantCount: number): number {
+  return typeof raw === "number" && raw >= 0 && raw < variantCount ? raw : 0;
+}
