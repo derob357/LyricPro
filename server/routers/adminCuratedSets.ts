@@ -3,9 +3,13 @@ import { z } from "zod";
 import { and, desc, eq, ilike, inArray } from "drizzle-orm";
 import { adminProcedure, router } from "../_core/trpc";
 import { getDb } from "../db";
-import { curatedSongSets, songs } from "../../drizzle/schema";
+import { curatedSongSets, gameRooms, roomPlayers, songs } from "../../drizzle/schema";
 import { TRPCError } from "@trpc/server";
 import { recordAdminAction } from "../_core/audit";
+import { customAlphabet } from "nanoid";
+
+const roomCodeAlphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; // no ambiguous chars
+const makeRoomCode = customAlphabet(roomCodeAlphabet, 6);
 
 const itemSchema = z.object({ songId: z.number().int(), variantIndex: z.number().int().nullable() });
 
@@ -104,5 +108,79 @@ export const adminCuratedSetsRouter = router({
         and(ilike(songs.artistName, `%${input.artist}%`), eq(songs.isActive, true), eq(songs.approvalStatus, "approved")),
       );
       return rows.map((s) => ({ id: s.id, title: s.title, artistName: s.artistName, variantPrompts: ((s.lyricVariants ?? []) as Array<{ prompt: string }>).map((v) => v.prompt) }));
+    }),
+
+  launch: adminProcedure
+    .input(z.object({
+      setId: z.number().int(),
+      mode: z.enum(["multiplayer", "team"]).default("multiplayer"),
+      difficulty: z.enum(["low", "medium", "high"]).default("medium"),
+      timerSeconds: z.number().int().min(15).max(90).default(30),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      const db = await getDb();
+      if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "DB unavailable" });
+
+      // Reads can happen outside the transaction.
+      const [set] = await db.select().from(curatedSongSets).where(eq(curatedSongSets.id, input.setId)).limit(1);
+      if (!set) throw new TRPCError({ code: "NOT_FOUND", message: "Set not found" });
+      if (set.items.length === 0) throw new TRPCError({ code: "BAD_REQUEST", message: "This set has no songs." });
+
+      // Validate songs are still active+approved; drop the rest, keep order.
+      const ids = set.items.map((i) => i.songId);
+      const live = await db.select({ id: songs.id }).from(songs)
+        .where(and(inArray(songs.id, ids), eq(songs.isActive, true), eq(songs.approvalStatus, "approved")));
+      const liveIds = new Set(live.map((s) => s.id));
+      const usable = set.items.filter((i) => liveIds.has(i.songId));
+      const droppedSongs = set.items.filter((i) => !liveIds.has(i.songId)).map((i) => i.songId);
+      if (usable.length === 0) throw new TRPCError({ code: "BAD_REQUEST", message: "No active songs remain in this set." });
+
+      // Generate a unique room code (retry up to 5 times on collision).
+      let roomCode = makeRoomCode();
+      for (let attempt = 0; attempt < 5; attempt++) {
+        const [exists] = await db.select({ id: gameRooms.id }).from(gameRooms).where(eq(gameRooms.roomCode, roomCode)).limit(1);
+        if (!exists) break;
+        roomCode = makeRoomCode();
+      }
+
+      // All writes inside a single transaction (same pattern as create/update/delete).
+      return await db.transaction(async (tx) => {
+        const [room] = await tx.insert(gameRooms).values({
+          roomCode,
+          hostUserId: ctx.user.id,
+          mode: input.mode,
+          difficulty: input.difficulty,
+          timerSeconds: input.timerSeconds,
+          roundsTotal: usable.length,
+          selectedGenres: "[]",
+          selectedDecades: "[]",
+          explicitFilter: false,
+          status: "waiting",
+          currentRound: 0,
+          currentPlayerIndex: 0,
+          usedSongIds: "[]",
+          customPackSongIds: usable.map((i) => i.songId),
+          customPackVariants: usable.map((i) => i.variantIndex),
+        }).returning();
+
+        await tx.insert(roomPlayers).values({
+          roomId: room.id,
+          userId: ctx.user.id,
+          joinOrder: 0,
+          isReady: false,
+          isActive: true,
+        });
+
+        await recordAdminAction({
+          ctx,
+          tx,
+          action: "curatedSet.launch",
+          targetType: "gameRoom",
+          targetId: String(room.id),
+          payload: { params: { setId: input.setId, roomCode, droppedSongs } },
+        });
+
+        return { roomCode, roomId: room.id, droppedSongs };
+      });
     }),
 });

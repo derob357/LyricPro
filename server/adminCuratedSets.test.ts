@@ -57,3 +57,26 @@ liveDescribe("adminCuratedSets CRUD", () => {
     expect(del.ok).toBe(true);
   });
 });
+
+liveDescribe("adminCuratedSets.launch", () => {
+  it("creates a multiplayer room with the set's songs as the custom pack", async () => {
+    const c = caller("admin");
+    const db = (await import("./db")).getDb && (await (await import("./db")).getDb())!;
+    const { songs } = await import("../drizzle/schema");
+    const { eq } = await import("drizzle-orm");
+    const seed = await db.select().from(songs).where(eq(songs.isActive, true)).limit(2);
+    if (seed.length < 2) return;
+    const set = await c.adminCuratedSets.create({ name: `Launch ${Date.now()}`, items: seed.map((s: any) => ({ songId: s.id, variantIndex: null })) });
+    const launched = await c.adminCuratedSets.launch({ setId: set.id, mode: "multiplayer" });
+    expect(launched.roomCode).toMatch(/^[A-Z2-9]{6}$/);
+    const { gameRooms } = await import("../drizzle/schema");
+    const [room] = await db.select().from(gameRooms).where(eq(gameRooms.roomCode, launched.roomCode)).limit(1);
+    expect(room.customPackSongIds).toEqual(seed.map((s: any) => s.id));
+    expect(room.roundsTotal).toBe(2);
+    // cleanup
+    const { roomPlayers } = await import("../drizzle/schema");
+    await db.delete(roomPlayers).where(eq(roomPlayers.roomId, room.id));
+    await db.delete(gameRooms).where(eq(gameRooms.id, room.id));
+    await c.adminCuratedSets.delete({ id: set.id });
+  });
+});

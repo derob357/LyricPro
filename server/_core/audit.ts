@@ -19,9 +19,10 @@ export type AdminAction =
   | "export.admin_actions_csv"
   | "curatedSet.create"
   | "curatedSet.update"
-  | "curatedSet.delete";
+  | "curatedSet.delete"
+  | "curatedSet.launch";
 
-export type AdminTargetType = "song" | "lyric_variant" | "system" | "export" | "curatedSet";
+export type AdminTargetType = "song" | "lyric_variant" | "system" | "export" | "curatedSet" | "gameRoom";
 
 interface RecordParams {
   ctx: TrpcContext;
