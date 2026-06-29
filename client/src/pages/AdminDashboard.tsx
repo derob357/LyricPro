@@ -4,7 +4,7 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell } from "recharts";
-import { TrendingUp, Users, DollarSign, Trophy, ListMusic } from "lucide-react";
+import { TrendingUp, Users, DollarSign, Trophy, ListMusic, Rocket, Music } from "lucide-react";
 import { Link, useSearch } from "wouter";
 import SongsTab from "./admin/tabs/SongsTab";
 import LogTab from "./admin/tabs/LogTab";
@@ -76,12 +76,26 @@ export function AdminDashboard() {
               LyricPro Ai Analytics & Management
             </p>
           </div>
-          <Link href="/admin/usage">
-            <Button variant="outline" className="gap-2">
-              <ListMusic className="w-4 h-4" />
-              Song Usage Report
-            </Button>
-          </Link>
+          <div className="flex gap-2 flex-wrap">
+            <Link href="/admin/usage">
+              <Button variant="outline" className="gap-2">
+                <ListMusic className="w-4 h-4" />
+                Song Usage Report
+              </Button>
+            </Link>
+            <Link href="/admin/curated-sets">
+              <Button variant="outline" className="gap-2">
+                <Rocket className="w-4 h-4" />
+                Curated Games
+              </Button>
+            </Link>
+            <Link href="/admin/songs">
+              <Button variant="outline" className="gap-2">
+                <Music className="w-4 h-4" />
+                Edit Songs
+              </Button>
+            </Link>
+          </div>
         </div>
 
         {/* Key Metrics */}
