@@ -415,26 +415,62 @@ export const matchEngineRouter = router({
       }
       // decision === "next"
       const used: number[] = room.usedSongIds ? JSON.parse(room.usedSongIds) : [];
-      let pick: Awaited<ReturnType<typeof selectSongForRoom>> = null;
-      try {
-        pick = await selectSongForRoom(db, { genres: JSON.parse(room.selectedGenres), decades: JSON.parse(room.selectedDecades), difficulty: room.difficulty, explicitFilter: room.explicitFilter, usedSongIds: used });
-      } catch { pick = null; }
-      if (!pick) {
-        // Pool exhausted mid-match — finish gracefully rather than hang.
-        const done = await db.update(gameRooms).set({ status: "finished", roundPhase: "complete", roundEndsAt: null, updatedAt: new Date() })
-          .where(and(eq(gameRooms.id, room.id), eq(gameRooms.currentRound, room.currentRound), eq(gameRooms.roundPhase, "intermission"))).returning({ id: gameRooms.id });
+      const pack =
+        Array.isArray(room.customPackSongIds) && room.customPackSongIds.length > 0
+          ? (room.customPackSongIds as number[])
+          : null;
+
+      let songId: number = 0;
+      let pickedSong: typeof songs.$inferSelect | null = null;
+      let candidateSongs: (typeof songs.$inferSelect)[] = [];
+      let pickedVariant = { prompt: "", answer: "", distractors: [] as string[], sectionType: "" };
+
+      if (pack) {
+        const pick = await selectCustomPackSong(db, {
+          customPackSongIds: pack,
+          customPackVariants: (room.customPackVariants as Array<number | null> | null) ?? null,
+          usedSongIds: used,
+        });
+        if (pick) {
+          pickedSong = pick.song;
+          songId = pick.song.id;
+          candidateSongs = pick.candidateSongs;
+          const allVariants = await variantsForSong(db, pick.song);
+          const vIdx = pick.variantIndex != null && pick.variantIndex >= 0 && pick.variantIndex < allVariants.length ? pick.variantIndex : 0;
+          pickedVariant = allVariants[vIdx] ?? pickedVariant;
+        }
+      } else {
+        let std: Awaited<ReturnType<typeof selectSongForRoom>> = null;
+        try {
+          std = await selectSongForRoom(db, { genres: JSON.parse(room.selectedGenres), decades: JSON.parse(room.selectedDecades), difficulty: room.difficulty, explicitFilter: room.explicitFilter, usedSongIds: used });
+        } catch { std = null; }
+        if (std) {
+          const found = std.candidateSongs.find((s) => s.id === std!.songId);
+          if (found) {
+            pickedSong = found;
+            songId = std.songId;
+            candidateSongs = std.candidateSongs;
+            const allVariants = await variantsForSong(db, found);
+            pickedVariant = allVariants[0] ?? pickedVariant;
+          }
+        }
+      }
+
+      if (!pickedSong) {
+        // Pool/pack exhausted — finish gracefully (mirrors existing behavior).
+        const done = await db.update(gameRooms)
+          .set({ status: "finished", roundPhase: "complete", roundEndsAt: null, updatedAt: new Date() })
+          .where(and(eq(gameRooms.id, room.id), eq(gameRooms.currentRound, room.currentRound), eq(gameRooms.roundPhase, "intermission")))
+          .returning({ id: gameRooms.id });
         return { advanced: done.length > 0, complete: true };
       }
+
       // Build the per-round answer-free question payload ONCE so getMatchState
       // returns a stable payload (no reshuffle on every poll).
-      const pickedSongAdv = pick.candidateSongs.find((s) => s.id === pick.songId);
-      if (!pickedSongAdv) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Picked song missing from candidate pool." });
-      const allVariantsAdv = await variantsForSong(db, pickedSongAdv);
-      const pickedVariantAdv = allVariantsAdv[0] ?? { prompt: "", answer: "", distractors: [], sectionType: "" };
       const questionAdv: MatchQuestion = buildMatchQuestion({
-        song: pickedSongAdv,
-        variant: pickedVariantAdv,
-        candidateSongs: pick.candidateSongs,
+        song: pickedSong,
+        variant: pickedVariant,
+        candidateSongs,
         difficulty: room.difficulty as "low" | "medium" | "high",
       });
 
@@ -445,8 +481,8 @@ export const matchEngineRouter = router({
         .set({
           currentRound: room.currentRound + 1,
           roundPhase: "in_question",
-          currentSongId: pick.songId,
-          usedSongIds: JSON.stringify([...used, pick.songId]),
+          currentSongId: songId,
+          usedSongIds: JSON.stringify([...used, songId]),
           roundEndsAt: endsAt,
           updatedAt: new Date(),
           currentQuestion: questionAdv,
