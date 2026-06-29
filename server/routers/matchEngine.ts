@@ -446,13 +446,12 @@ export const matchEngineRouter = router({
         } catch { std = null; }
         if (std) {
           const found = std.candidateSongs.find((s) => s.id === std!.songId);
-          if (found) {
-            pickedSong = found;
-            songId = std.songId;
-            candidateSongs = std.candidateSongs;
-            const allVariants = await variantsForSong(db, found);
-            pickedVariant = allVariants[0] ?? pickedVariant;
-          }
+          if (!found) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Picked song missing from candidate pool." });
+          pickedSong = found;
+          songId = std.songId;
+          candidateSongs = std.candidateSongs;
+          const allVariants = await variantsForSong(db, found);
+          pickedVariant = allVariants[0] ?? pickedVariant;
         }
       }
 
