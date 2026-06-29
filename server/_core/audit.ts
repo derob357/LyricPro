@@ -16,9 +16,12 @@ export type AdminAction =
   | "admin_pause.toggle"
   | "export.usage_csv"
   | "export.usage_ddex"
-  | "export.admin_actions_csv";
+  | "export.admin_actions_csv"
+  | "curatedSet.create"
+  | "curatedSet.update"
+  | "curatedSet.delete";
 
-export type AdminTargetType = "song" | "lyric_variant" | "system" | "export";
+export type AdminTargetType = "song" | "lyric_variant" | "system" | "export" | "curatedSet";
 
 interface RecordParams {
   ctx: TrpcContext;
