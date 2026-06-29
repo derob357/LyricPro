@@ -16,6 +16,7 @@ import { adminActionsRouter } from "./routers/adminActions";
 import { adminUsageRouter } from "./routers/adminUsage";
 import { adminSuggestionsRouter } from "./routers/adminSuggestions";
 import { adminGenresRouter } from "./routers/adminGenres";
+import { adminCuratedSetsRouter } from "./routers/adminCuratedSets";
 import { bannersRouter } from "./routers/banners";
 import { chatRouter } from "./routers/chat";
 import { favoritesRouter } from "./routers/favorites";
@@ -346,6 +347,7 @@ export const appRouter = router({
   adminUsage: adminUsageRouter,
   adminSuggestions: adminSuggestionsRouter,
   adminGenres: adminGenresRouter,
+  adminCuratedSets: adminCuratedSetsRouter,
   banners: bannersRouter,
   chat: chatRouter,
   favorites: favoritesRouter,
