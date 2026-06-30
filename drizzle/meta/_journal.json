@@ -8,6 +8,13 @@
       "when": 1782588626476,
       "tag": "0000_baseline",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1782589952714,
+      "tag": "0001_curated_contests",
+      "breakpoints": true
     }
   ]
 }

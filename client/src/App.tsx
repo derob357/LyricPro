@@ -23,6 +23,9 @@ import SongNew from "./pages/admin/SongNew";
 import TournamentsList from "@/pages/admin/TournamentsList";
 import TournamentNew from "@/pages/admin/TournamentNew";
 import TournamentEdit from "@/pages/admin/TournamentEdit";
+import CuratedSetsList from "./pages/admin/CuratedSetsList";
+import CuratedSetNew from "./pages/admin/CuratedSetNew";
+import CuratedSetEdit from "./pages/admin/CuratedSetEdit";
 import AdminChatDashboard from "@/pages/admin/chat/AdminChatDashboard";
 import SignIn from "./pages/SignIn";
 import AuthCallback from "./pages/AuthCallback";
@@ -73,6 +76,9 @@ function Router() {
       <Route path="/admin/tournaments" component={TournamentsList} />
       <Route path="/admin/tournaments/new" component={TournamentNew} />
       <Route path="/admin/tournaments/:id" component={TournamentEdit} />
+      <Route path="/admin/curated-sets" component={CuratedSetsList} />
+      <Route path="/admin/curated-sets/new" component={CuratedSetNew} />
+      <Route path="/admin/curated-sets/:id" component={CuratedSetEdit} />
       <Route path="/admin/chat" component={AdminChatDashboard} />
       <Route path="/admin/usage">{() => <Redirect to="/admin?tab=usage" />}</Route>
       <Route path="/signin" component={SignIn} />

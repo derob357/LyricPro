@@ -6,6 +6,7 @@ import { router, publicProcedure, protectedProcedure } from "../_core/trpc";
 import { getDb } from "../db";
 import { gameRooms, roomPlayers, roundResults, songs, artistMetadata } from "../../drizzle/schema";
 import { selectSongForRoom } from "../_core/songSelection";
+import { selectCustomPackSong, resolveVariantIndex } from "../_core/customPack";
 import { scoreRound, matchLyric, type Difficulty } from "../_core/scoring";
 import { variantsForSong } from "../_core/variantReader";
 import { buildMatchQuestion, type MatchQuestion } from "../_core/buildMatchQuestion";
@@ -82,22 +83,55 @@ export const matchEngineRouter = router({
       assertCanStart({ isHost, status: room.status, readyCount: players.filter(p => p.isReady).length, playerCount: players.length });
 
       const used: number[] = room.usedSongIds ? JSON.parse(room.usedSongIds) : [];
-      const pick = await selectSongForRoom(db, {
-        genres: JSON.parse(room.selectedGenres), decades: JSON.parse(room.selectedDecades),
-        difficulty: room.difficulty, explicitFilter: room.explicitFilter, usedSongIds: used,
-      });
-      if (!pick) throw new TRPCError({ code: "BAD_REQUEST", message: "No songs available for these filters." });
+      const pack =
+        Array.isArray(room.customPackSongIds) && room.customPackSongIds.length > 0
+          ? (room.customPackSongIds as number[])
+          : null;
+
+      let songId: number;
+      let pickedSong: typeof songs.$inferSelect;
+      let candidateSongs: (typeof songs.$inferSelect)[];
+      let pickedVariant: { prompt: string; answer: string; distractors: string[]; sectionType: string };
+
+      if (pack) {
+        // ── Curated-pack branch: serve the admin's list in order (decisions a + b) ──
+        const pick = await selectCustomPackSong(db, {
+          customPackSongIds: pack,
+          customPackVariants: (room.customPackVariants as Array<number | null> | null) ?? null,
+          usedSongIds: used,
+        });
+        if (!pick) throw new TRPCError({ code: "BAD_REQUEST", message: "Contest song list is empty." });
+        pickedSong = pick.song;
+        songId = pick.song.id;
+        candidateSongs = pick.candidateSongs;
+        const allVariants = await variantsForSong(db, pickedSong);
+        const vIdx = resolveVariantIndex(pick.variantIndex, allVariants.length);
+        pickedVariant = allVariants[vIdx] ?? { prompt: "", answer: "", distractors: [], sectionType: "" };
+      } else {
+        // ── Standard branch (unchanged behavior) ──
+        const pick = await selectSongForRoom(db, {
+          genres: JSON.parse(room.selectedGenres),
+          decades: JSON.parse(room.selectedDecades),
+          difficulty: room.difficulty,
+          explicitFilter: room.explicitFilter,
+          usedSongIds: used,
+        });
+        if (!pick) throw new TRPCError({ code: "BAD_REQUEST", message: "No songs available for these filters." });
+        songId = pick.songId;
+        const found = pick.candidateSongs.find((s) => s.id === pick.songId);
+        if (!found) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Picked song missing from candidate pool." });
+        pickedSong = found;
+        candidateSongs = pick.candidateSongs;
+        const allVariants = await variantsForSong(db, pickedSong);
+        pickedVariant = allVariants[0] ?? { prompt: "", answer: "", distractors: [], sectionType: "" };
+      }
 
       // Build the per-round answer-free question payload ONCE so getMatchState
       // returns a stable payload (no reshuffle on every poll).
-      const pickedSong = pick.candidateSongs.find((s) => s.id === pick.songId);
-      if (!pickedSong) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Picked song missing from candidate pool." });
-      const allVariants = await variantsForSong(db, pickedSong);
-      const pickedVariant = allVariants[0] ?? { prompt: "", answer: "", distractors: [], sectionType: "" };
       const question: MatchQuestion = buildMatchQuestion({
         song: pickedSong,
         variant: pickedVariant,
-        candidateSongs: pick.candidateSongs,
+        candidateSongs,
         difficulty: room.difficulty as "low" | "medium" | "high",
       });
 
@@ -105,7 +139,7 @@ export const matchEngineRouter = router({
       const endsAt = new Date(now.getTime() + room.timerSeconds * 1000);
       const res = await db.update(gameRooms).set({
         status: "active", currentRound: 1, roundPhase: "in_question",
-        currentSongId: pick.songId, usedSongIds: JSON.stringify([...used, pick.songId]),
+        currentSongId: songId, usedSongIds: JSON.stringify([...used, songId]),
         roundEndsAt: endsAt, updatedAt: now,
         currentQuestion: question,
       }).where(and(eq(gameRooms.id, room.id), eq(gameRooms.status, "waiting"))).returning({ id: gameRooms.id });
@@ -220,16 +254,21 @@ export const matchEngineRouter = router({
       if (!room.currentSongId) throw new TRPCError({ code: "BAD_REQUEST", message: "No active question." });
 
       // ── Load song + played variant (mirrors solo submitAnswer) ───────────────
-      // In synchronized multiplayer every player sees the same question
-      // (room.currentSongId, variant index 0 — startMatch writes no song_displays
-      // row, so there is no per-player variantIndex to look up; we always use
-      // allVariants[0] which is variant index 0, identical across all players).
+      // In synchronized multiplayer every player sees the same question.
+      // Standard rooms use variant index 0. Curated-pack rooms honor the admin's
+      // per-song lyric override so scoring matches what players were shown.
       const [song] = await db.select().from(songs).where(eq(songs.id, room.currentSongId)).limit(1);
       if (!song) throw new TRPCError({ code: "BAD_REQUEST", message: "Active song not found." });
 
       const allVariants = await variantsForSong(db, song);
-      // All match players see the same variant (index 0); no per-player rotation.
-      const playedVariant = allVariants[0] ?? { answer: song.lyricAnswer ?? "", prompt: "" };
+      // Curated-pack rooms honor the admin's per-song lyric override so scoring
+      // matches what players were shown. The current song was appended to
+      // usedSongIds when served, so its pack index is usedSongIds.length - 1.
+      // Standard rooms have customPackVariants = null → undefined → index 0.
+      const usedForScoring: number[] = room.usedSongIds ? JSON.parse(room.usedSongIds) : [];
+      const rawForced = (room.customPackVariants as Array<number | null> | null)?.[usedForScoring.length - 1];
+      const playedVariantIndex = resolveVariantIndex(rawForced, allVariants.length);
+      const playedVariant = allVariants[playedVariantIndex] ?? { answer: song.lyricAnswer ?? "", prompt: "" };
 
       // ── Artist aliases (mirrors solo submitAnswer) ───────────────────────────
       let aliases: string[] = [];
@@ -378,26 +417,61 @@ export const matchEngineRouter = router({
       }
       // decision === "next"
       const used: number[] = room.usedSongIds ? JSON.parse(room.usedSongIds) : [];
-      let pick: Awaited<ReturnType<typeof selectSongForRoom>> = null;
-      try {
-        pick = await selectSongForRoom(db, { genres: JSON.parse(room.selectedGenres), decades: JSON.parse(room.selectedDecades), difficulty: room.difficulty, explicitFilter: room.explicitFilter, usedSongIds: used });
-      } catch { pick = null; }
-      if (!pick) {
-        // Pool exhausted mid-match — finish gracefully rather than hang.
-        const done = await db.update(gameRooms).set({ status: "finished", roundPhase: "complete", roundEndsAt: null, updatedAt: new Date() })
-          .where(and(eq(gameRooms.id, room.id), eq(gameRooms.currentRound, room.currentRound), eq(gameRooms.roundPhase, "intermission"))).returning({ id: gameRooms.id });
+      const pack =
+        Array.isArray(room.customPackSongIds) && room.customPackSongIds.length > 0
+          ? (room.customPackSongIds as number[])
+          : null;
+
+      let songId: number = 0;
+      let pickedSong: typeof songs.$inferSelect | null = null;
+      let candidateSongs: (typeof songs.$inferSelect)[] = [];
+      let pickedVariant = { prompt: "", answer: "", distractors: [] as string[], sectionType: "" };
+
+      if (pack) {
+        const pick = await selectCustomPackSong(db, {
+          customPackSongIds: pack,
+          customPackVariants: (room.customPackVariants as Array<number | null> | null) ?? null,
+          usedSongIds: used,
+        });
+        if (pick) {
+          pickedSong = pick.song;
+          songId = pick.song.id;
+          candidateSongs = pick.candidateSongs;
+          const allVariants = await variantsForSong(db, pick.song);
+          const vIdx = resolveVariantIndex(pick.variantIndex, allVariants.length);
+          pickedVariant = allVariants[vIdx] ?? pickedVariant;
+        }
+      } else {
+        let std: Awaited<ReturnType<typeof selectSongForRoom>> = null;
+        try {
+          std = await selectSongForRoom(db, { genres: JSON.parse(room.selectedGenres), decades: JSON.parse(room.selectedDecades), difficulty: room.difficulty, explicitFilter: room.explicitFilter, usedSongIds: used });
+        } catch { std = null; }
+        if (std) {
+          const found = std.candidateSongs.find((s) => s.id === std!.songId);
+          if (!found) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Picked song missing from candidate pool." });
+          pickedSong = found;
+          songId = std.songId;
+          candidateSongs = std.candidateSongs;
+          const allVariants = await variantsForSong(db, found);
+          pickedVariant = allVariants[0] ?? pickedVariant;
+        }
+      }
+
+      if (!pickedSong) {
+        // Pool/pack exhausted — finish gracefully (mirrors existing behavior).
+        const done = await db.update(gameRooms)
+          .set({ status: "finished", roundPhase: "complete", roundEndsAt: null, updatedAt: new Date() })
+          .where(and(eq(gameRooms.id, room.id), eq(gameRooms.currentRound, room.currentRound), eq(gameRooms.roundPhase, "intermission")))
+          .returning({ id: gameRooms.id });
         return { advanced: done.length > 0, complete: true };
       }
+
       // Build the per-round answer-free question payload ONCE so getMatchState
       // returns a stable payload (no reshuffle on every poll).
-      const pickedSongAdv = pick.candidateSongs.find((s) => s.id === pick.songId);
-      if (!pickedSongAdv) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Picked song missing from candidate pool." });
-      const allVariantsAdv = await variantsForSong(db, pickedSongAdv);
-      const pickedVariantAdv = allVariantsAdv[0] ?? { prompt: "", answer: "", distractors: [], sectionType: "" };
       const questionAdv: MatchQuestion = buildMatchQuestion({
-        song: pickedSongAdv,
-        variant: pickedVariantAdv,
-        candidateSongs: pick.candidateSongs,
+        song: pickedSong,
+        variant: pickedVariant,
+        candidateSongs,
         difficulty: room.difficulty as "low" | "medium" | "high",
       });
 
@@ -408,8 +482,8 @@ export const matchEngineRouter = router({
         .set({
           currentRound: room.currentRound + 1,
           roundPhase: "in_question",
-          currentSongId: pick.songId,
-          usedSongIds: JSON.stringify([...used, pick.songId]),
+          currentSongId: songId,
+          usedSongIds: JSON.stringify([...used, songId]),
           roundEndsAt: endsAt,
           updatedAt: new Date(),
           currentQuestion: questionAdv,
