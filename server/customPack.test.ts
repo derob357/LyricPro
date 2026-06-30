@@ -10,8 +10,13 @@ function makeFakeDb(results: any[][]) {
     select: () => chain,
     from: () => chain,
     where: () => {
-      const p: any = Promise.resolve(nextResult());
-      p.limit = () => Promise.resolve(nextResult());
+      // Lazy: only the terminal that is actually awaited pulls a result, so a
+      // `.where(...).limit(1)` chain consumes ONE queued result (via .limit),
+      // not two. A bare awaited `.where(...)` consumes one (via then).
+      const p: any = {
+        then: (resolve: any, reject: any) => Promise.resolve(nextResult()).then(resolve, reject),
+        limit: () => Promise.resolve(nextResult()),
+      };
       return p;
     },
   };
