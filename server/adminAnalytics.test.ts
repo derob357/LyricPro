@@ -28,6 +28,12 @@ describe("adminAnalytics gate", () => {
   it("rejects non-admins from guestFunnel", async () => {
     await expect(caller("user").adminAnalytics.guestFunnel({})).rejects.toThrow();
   });
+  it("rejects non-admins from exportUsers", async () => {
+    await expect(caller("user").adminAnalytics.exportUsers()).rejects.toThrow();
+  });
+  it("rejects non-admins from exportPayoutHistory", async () => {
+    await expect(caller("user").adminAnalytics.exportPayoutHistory()).rejects.toThrow();
+  });
 });
 
 liveDescribe("adminAnalytics.payoutPipeline", () => {
@@ -110,5 +116,21 @@ liveDescribe("adminAnalytics.retention", () => {
       expect(p.wau).toBeGreaterThanOrEqual(p.dau);
       expect(p.mau).toBeGreaterThanOrEqual(p.wau);
     }
+  });
+});
+
+liveDescribe("adminAnalytics.exportUsers", () => {
+  it("returns csv starting with header and numeric rowCount", async () => {
+    const res = await caller("admin").adminAnalytics.exportUsers();
+    expect(res.csv.startsWith("id,email,firstName,role,lifetimeScore,gamesPlayed,totalWins")).toBe(true);
+    expect(typeof res.rowCount).toBe("number");
+  });
+});
+
+liveDescribe("adminAnalytics.exportPayoutHistory", () => {
+  it("returns csv starting with header and numeric rowCount", async () => {
+    const res = await caller("admin").adminAnalytics.exportPayoutHistory();
+    expect(res.csv.startsWith("id,status,amount,createdAt")).toBe(true);
+    expect(typeof res.rowCount).toBe("number");
   });
 });

@@ -4,11 +4,14 @@ import { count, countDistinct, eq, sql, sum } from "drizzle-orm";
 import { adminProcedure, router } from "../_core/trpc";
 import { getDb } from "../db";
 import { TRPCError } from "@trpc/server";
+import { recordAdminAction } from "../_core/audit";
 import { prizePayouts, payoutRequests, roundResults, songs, songDisplays, leaderboardEntries, goldenNoteBalances, goldenNoteTransactions, tournaments, tournamentMembers, prizePools, guestSessions, users } from "../../drizzle/schema";
 
 function requireDb(db: unknown): asserts db {
   if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "DB unavailable" });
 }
+
+function csvEsc(v: unknown): string { const s = String(v ?? ""); return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s; }
 
 export const adminAnalyticsRouter = router({
   payoutPipeline: adminProcedure.query(async () => {
@@ -143,6 +146,37 @@ export const adminAnalyticsRouter = router({
         newGuestsSeries: (arr as any[]).map((r) => ({ day: String(r.day), guests: Number(r.guests) })),
       };
     }),
+
+  exportUsers: adminProcedure.mutation(async ({ ctx }) => {
+    const db = await getDb();
+    requireDb(db);
+    const rows = await db.select({
+      id: users.id, email: users.email, firstName: users.firstName, role: users.role,
+      lifetimeScore: users.lifetimeScore, gamesPlayed: users.gamesPlayed, totalWins: users.totalWins,
+    }).from(users);
+    const head = ["id","email","firstName","role","lifetimeScore","gamesPlayed","totalWins"].join(",");
+    const lines = rows.map((r) => [r.id, csvEsc(r.email ?? ""), csvEsc(r.firstName ?? ""), r.role, r.lifetimeScore, r.gamesPlayed, r.totalWins].join(","));
+    const csv = [head, ...lines].join("\n");
+    await db.transaction(async (tx) => {
+      await recordAdminAction({ ctx, tx, action: "export.users_csv", targetType: "export", targetId: "all", payload: { params: { rowCount: rows.length } } });
+    });
+    return { csv, rowCount: rows.length };
+  }),
+
+  exportPayoutHistory: adminProcedure.mutation(async ({ ctx }) => {
+    const db = await getDb();
+    requireDb(db);
+    const rows = await db.select({
+      id: prizePayouts.id, status: prizePayouts.status, amount: prizePayouts.amount, createdAt: prizePayouts.createdAt,
+    }).from(prizePayouts);
+    const head = ["id","status","amount","createdAt"].join(",");
+    const lines = rows.map((r) => [r.id, r.status, r.amount ?? "", r.createdAt ? new Date(r.createdAt).toISOString() : ""].join(","));
+    const csv = [head, ...lines].join("\n");
+    await db.transaction(async (tx) => {
+      await recordAdminAction({ ctx, tx, action: "export.payouts_csv", targetType: "export", targetId: "all", payload: { params: { rowCount: rows.length } } });
+    });
+    return { csv, rowCount: rows.length };
+  }),
 
   gnEconomy: adminProcedure.query(async () => {
     const db = await getDb();
