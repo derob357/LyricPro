@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 interface Props {
   messages: ChatMessageShape[];
   viewerId: number | null;
-  viewerRole: "user" | "admin" | null;
+  viewerRole: "user" | "admin" | "vendor" | null;
   onLoadOlder?: () => void;
   hasMoreOlder?: boolean;
   onAdminAction?: (action: import("./ModerationActionModal").ModerationAction) => void;

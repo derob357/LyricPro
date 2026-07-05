@@ -12,7 +12,7 @@ import { type ModerationAction } from "./ModerationActionModal";
 interface Props {
   message: ChatMessageShape;
   viewerId: number | null;
-  viewerRole: "user" | "admin" | null;
+  viewerRole: "user" | "admin" | "vendor" | null;
   onAdminAction?: (action: ModerationAction) => void;
 }
 

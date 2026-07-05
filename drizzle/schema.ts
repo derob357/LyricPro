@@ -25,7 +25,7 @@ import {
 // Postgres requires enums be declared once at the top level and referenced by
 // name. Drizzle creates the CREATE TYPE statements automatically via
 // migrations. Enum values stay identical to the MySQL versions.
-export const userRoleEnum = pgEnum("user_role", ["user", "admin"]);
+export const userRoleEnum = pgEnum("user_role", ["user", "admin", "vendor"]);
 export const lyricSectionTypeEnum = pgEnum("lyric_section_type", [
   "chorus",
   "hook",
@@ -1511,3 +1511,48 @@ export const rollupRuns = pgTable("rollup_runs", {
   finishedAt: timestamp("finished_at", { withTimezone: true }),
   error: text("error"),
 });
+
+// ─── Vendor KPI Phase 2: vendor orgs, members, API keys ─────────────────────
+export const vendors = pgTable("vendors", {
+  id: serial("id").primaryKey(),
+  name: varchar("name", { length: 128 }).notNull(),
+  contactEmail: varchar("contact_email", { length: 320 }),
+  status: varchar("status", { length: 16 }).default("active").notNull(), // active | suspended
+  scopeGrowth: boolean("scope_growth").default(false).notNull(),
+  scopeEngagement: boolean("scope_engagement").default(false).notNull(),
+  scopeContent: boolean("scope_content").default(false).notNull(),
+  scopeMonetization: boolean("scope_monetization").default(false).notNull(),
+  catalogFilter: jsonb("catalog_filter").$type<{ songIds?: number[]; artists?: string[] } | null>(),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+});
+export type Vendor = typeof vendors.$inferSelect;
+
+export const vendorMembers = pgTable("vendor_members", {
+  id: serial("id").primaryKey(),
+  vendorId: integer("vendor_id").notNull().references(() => vendors.id, { onDelete: "cascade" }),
+  userId: integer("user_id").notNull().unique().references(() => users.id, { onDelete: "cascade" }),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+});
+
+export const vendorApiKeys = pgTable("vendor_api_keys", {
+  id: serial("id").primaryKey(),
+  vendorId: integer("vendor_id").notNull().references(() => vendors.id, { onDelete: "cascade" }),
+  label: varchar("label", { length: 64 }).notNull(),
+  keyPrefix: varchar("key_prefix", { length: 16 }).notNull(),
+  last4: varchar("last4", { length: 4 }).notNull(),
+  keyHash: varchar("key_hash", { length: 64 }).notNull().unique(),
+  lastUsedAt: timestamp("last_used_at", { withTimezone: true }),
+  expiresAt: timestamp("expires_at", { withTimezone: true }),
+  revokedAt: timestamp("revoked_at", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+});
+
+export const vendorApiUsage = pgTable(
+  "vendor_api_usage",
+  {
+    keyId: integer("key_id").notNull().references(() => vendorApiKeys.id, { onDelete: "cascade" }),
+    date: date("date").notNull(),
+    requestCount: integer("request_count").default(0).notNull(),
+  },
+  (t) => ({ pk: primaryKey({ columns: [t.keyId, t.date] }) }),
+);

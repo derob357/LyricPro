@@ -22,6 +22,13 @@
       "when": 1783281849650,
       "tag": "0002_dazzling_forge",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1783285188490,
+      "tag": "0003_vendor_tables",
+      "breakpoints": true
     }
   ]
 }
