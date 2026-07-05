@@ -10,6 +10,7 @@ import { appRouter } from "../app-router";
 import { createContext } from "./context";
 import { serveStatic, setupVite } from "./vite";
 import { handleStripeWebhook } from "./stripeWebhook";
+import { registerVendorRoutes } from "../vendor/vendorRest";
 
 // Comma-separated list of allowed origins, e.g.
 // "https://lyricpro.ai,https://www.lyricpro.ai". Empty string = only
@@ -138,6 +139,8 @@ async function startServer() {
   // than a few KB of JSON; the old 50 MB ceiling was a DoS vector.
   app.use(express.json({ limit: "1mb" }));
   app.use(express.urlencoded({ limit: "1mb", extended: true }));
+  // Vendor REST API (key-authenticated, rate-limited)
+  registerVendorRoutes(app);
   // tRPC API
   app.use(
     "/api/trpc",
