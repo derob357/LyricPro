@@ -15,6 +15,7 @@ export function UserDashboard() {
   const { user } = useAuth();
   const { data: stats, isLoading } = trpc.monetization.getMonetizationStats.useQuery();
   const { data: wallet } = trpc.monetization.getWallet.useQuery();
+  const { data: gameHistory, isLoading: historyLoading } = trpc.game.getGameHistory.useQuery({ limit: 20 });
 
   if (isLoading) {
     return <div className="p-8 text-center">Loading...</div>;
@@ -167,10 +168,33 @@ export function UserDashboard() {
           <TabsContent value="history" className="space-y-4">
             <Card className="p-6">
               <h3 className="font-semibold mb-4">Recent Activity</h3>
-              <div className="text-center text-muted-foreground py-8">
-                <TrendingUp className="w-8 h-8 mx-auto mb-2 opacity-50" />
-                <p>Game history coming soon</p>
-              </div>
+              {historyLoading ? (
+                <div className="text-center text-muted-foreground py-8">
+                  <TrendingUp className="w-8 h-8 mx-auto mb-2 opacity-50 animate-pulse" />
+                  <p>Loading history…</p>
+                </div>
+              ) : !gameHistory || gameHistory.length === 0 ? (
+                <div className="text-center text-muted-foreground py-8">
+                  <TrendingUp className="w-8 h-8 mx-auto mb-2 opacity-50" />
+                  <p>No games yet. Play your first game to see history here.</p>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {gameHistory.map((g, idx) => (
+                    <div key={idx} className="flex items-center justify-between text-sm border-b pb-2 last:border-0">
+                      <div className="flex flex-col gap-0.5">
+                        <span className="font-semibold capitalize">
+                          {g.mode}{g.genre ? ` · ${g.genre}` : ""}{g.decade ? ` · ${g.decade}` : ""}
+                        </span>
+                        <span className="text-muted-foreground text-xs">
+                          {g.playedAt ? new Date(g.playedAt).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" }) : ""}
+                        </span>
+                      </div>
+                      <span className="font-bold text-base">{g.score ?? 0} pts</span>
+                    </div>
+                  ))}
+                </div>
+              )}
             </Card>
           </TabsContent>
         </Tabs>
