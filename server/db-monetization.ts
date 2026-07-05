@@ -1,13 +1,14 @@
 import { getDb } from "./db";
-import { 
-  subscriptions, 
-  dailyGameTracking, 
-  entryFeeGames, 
+import {
+  subscriptions,
+  dailyGameTracking,
+  entryFeeGames,
   entryFeeParticipants,
   addOnGamePurchases,
   userWallets,
+  users,
 } from "../drizzle/schema";
-import { eq, and } from "drizzle-orm";
+import { eq, and, inArray, count } from "drizzle-orm";
 
 const getDatabase = async () => {
   const db = await getDb();
@@ -395,16 +396,23 @@ export async function getAdminMetrics() {
     .from(entryFeeParticipants)
     .where(eq(entryFeeParticipants.payoutStatus, "completed"));
 
-  // Active subscriptions (non-free, non-canceled)
-  const activeSubscriptions = await db
-    .select()
+  // Active subscriptions across ALL paid tiers (was player-only — bug).
+  const activeSubs = await db
+    .select({ tier: subscriptions.tier })
     .from(subscriptions)
     .where(
       and(
         eq(subscriptions.status, "active"),
-        eq(subscriptions.tier, "player")
-      )
+        inArray(subscriptions.tier, ["player", "pro", "elite"] as const),
+      ),
     );
+  const activeByTier = { player: 0, pro: 0, elite: 0 };
+  for (const s of activeSubs) {
+    if (s.tier === "player" || s.tier === "pro" || s.tier === "elite") activeByTier[s.tier]++;
+  }
+
+  // Real user count (was subscription-row count — bug).
+  const [{ userCount }] = await db.select({ userCount: count() }).from(users);
 
   // Calculate totals
   const tierCounts = tierStats.reduce((acc: any, sub: any) => {
@@ -419,7 +427,8 @@ export async function getAdminMetrics() {
     tierStats: tierCounts,
     totalRevenue,
     totalPayouts: totalPayoutAmount,
-    activeSubscriptions: activeSubscriptions.length,
-    totalUsers: tierStats.length,
+    activeSubscriptions: activeByTier.player + activeByTier.pro + activeByTier.elite,
+    activeByTier,
+    totalUsers: Number(userCount),
   };
 }
