@@ -4,7 +4,7 @@ import { count, eq, sql, sum } from "drizzle-orm";
 import { adminProcedure, router } from "../_core/trpc";
 import { getDb } from "../db";
 import { TRPCError } from "@trpc/server";
-import { prizePayouts, payoutRequests, roundResults, songs, songDisplays, leaderboardEntries, goldenNoteBalances, goldenNoteTransactions } from "../../drizzle/schema";
+import { prizePayouts, payoutRequests, roundResults, songs, songDisplays, leaderboardEntries, goldenNoteBalances, goldenNoteTransactions, tournaments, tournamentMembers, prizePools } from "../../drizzle/schema";
 
 function requireDb(db: unknown): asserts db {
   if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "DB unavailable" });
@@ -87,6 +87,35 @@ export const adminAnalyticsRouter = router({
       const byOverall = [...mapped].sort((a, b) => a.overallRate - b.overallRate);
       return { hardest: byOverall.slice(0, input.limit), easiest: byOverall.slice(-input.limit).reverse() };
     }),
+
+  tournamentFinancials: adminProcedure.query(async () => {
+    const db = await getDb();
+    requireDb(db);
+    const rosterRows = await db.select({ tournamentId: tournamentMembers.tournamentId, n: count() }).from(tournamentMembers).groupBy(tournamentMembers.tournamentId);
+    const roster = new Map(rosterRows.map((r) => [r.tournamentId, Number(r.n)]));
+    const rows = await db.select({
+      id: tournaments.id, name: tournaments.name, status: tournaments.status, capacity: tournaments.capacity,
+      poolTotal: prizePools.totalAmount, poolDistributed: prizePools.distributedAmount, poolRemaining: prizePools.remainingAmount,
+    }).from(tournaments).leftJoin(prizePools, eq(prizePools.id, tournaments.prizePoolId));
+    const tfs = rows.map((r) => {
+      const rosterSize = roster.get(r.id) ?? 0;
+      const capacity = r.capacity ?? null;
+      return { id: r.id, name: r.name, status: String(r.status), capacity, rosterSize,
+        fillRate: capacity && capacity > 0 ? rosterSize / capacity : null,
+        poolTotal: Number(r.poolTotal ?? 0), poolDistributed: Number(r.poolDistributed ?? 0), poolRemaining: Number(r.poolRemaining ?? 0) };
+    });
+    const byStatusMap = new Map<string, number>();
+    for (const t of tfs) byStatusMap.set(t.status, (byStatusMap.get(t.status) ?? 0) + 1);
+    return {
+      tournaments: tfs,
+      rollup: {
+        byStatus: Array.from(byStatusMap).map(([status, count]) => ({ status, count })),
+        poolTotal: tfs.reduce((s, t) => s + t.poolTotal, 0),
+        poolDistributed: tfs.reduce((s, t) => s + t.poolDistributed, 0),
+        poolRemaining: tfs.reduce((s, t) => s + t.poolRemaining, 0),
+      },
+    };
+  }),
 
   gnEconomy: adminProcedure.query(async () => {
     const db = await getDb();

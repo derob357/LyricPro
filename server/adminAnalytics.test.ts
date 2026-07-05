@@ -22,6 +22,9 @@ describe("adminAnalytics gate", () => {
   it("rejects non-admins from gnEconomy", async () => {
     await expect(caller("user").adminAnalytics.gnEconomy()).rejects.toThrow();
   });
+  it("rejects non-admins from tournamentFinancials", async () => {
+    await expect(caller("user").adminAnalytics.tournamentFinancials()).rejects.toThrow();
+  });
 });
 
 liveDescribe("adminAnalytics.payoutPipeline", () => {
@@ -60,6 +63,20 @@ liveDescribe("adminAnalytics.gnEconomy", () => {
       expect(typeof r.debited).toBe("number");
       expect(typeof r.net).toBe("number");
       expect(typeof r.count).toBe("number");
+    }
+  });
+});
+
+liveDescribe("adminAnalytics.tournamentFinancials", () => {
+  it("returns tournaments array, rollup.byStatus array, and valid fillRates", async () => {
+    const res = await caller("admin").adminAnalytics.tournamentFinancials();
+    expect(Array.isArray(res.tournaments)).toBe(true);
+    expect(Array.isArray(res.rollup.byStatus)).toBe(true);
+    for (const t of res.tournaments) {
+      if (t.fillRate !== null) {
+        expect(t.fillRate).toBeGreaterThanOrEqual(0);
+        expect(t.fillRate).toBeLessThanOrEqual(1);
+      }
     }
   });
 });
