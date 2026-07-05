@@ -15,6 +15,13 @@
       "when": 1782589952714,
       "tag": "0001_curated_contests",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1783281849650,
+      "tag": "0002_dazzling_forge",
+      "breakpoints": true
     }
   ]
 }

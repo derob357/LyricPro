@@ -3,6 +3,7 @@ import {
   bigint,
   bigserial,
   boolean,
+  date,
   doublePrecision,
   index,
   integer,
@@ -1454,4 +1455,59 @@ export const chatFriendsReadState = pgTable("chat_friends_read_state", {
     .references(() => users.id, { onDelete: "cascade" }),
   lastReadSeq: bigint("last_read_seq", { mode: "number" }).notNull().default(0),
   lastReadAt: timestamp("last_read_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+// ─── Vendor KPI Rollups (Phase 1 — written by rollup_daily_kpis()) ──────────
+// Read-only from the app's perspective; the nightly SQL function owns writes.
+export const kpiDailyMetrics = pgTable(
+  "kpi_daily_metrics",
+  {
+    date: date("date").notNull(),
+    metric: varchar("metric", { length: 64 }).notNull(),
+    dimension: varchar("dimension", { length: 32 }).default("all").notNull(),
+    dimensionValue: varchar("dimension_value", { length: 128 }).default("all").notNull(),
+    value: doublePrecision("value").default(0).notNull(),
+    userCount: integer("user_count").default(0).notNull(),
+    computedAt: timestamp("computed_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => ({
+    pk: primaryKey({ columns: [t.date, t.metric, t.dimension, t.dimensionValue] }),
+  }),
+);
+
+export const kpiDailySongStats = pgTable(
+  "kpi_daily_song_stats",
+  {
+    date: date("date").notNull(),
+    songId: integer("song_id").notNull(),
+    displays: integer("displays").default(0).notNull(),
+    roundsPlayed: integer("rounds_played").default(0).notNull(),
+    correctRounds: integer("correct_rounds").default(0).notNull(),
+    responseSecondsSum: doublePrecision("response_seconds_sum").default(0).notNull(),
+    responseCount: integer("response_count").default(0).notNull(),
+    userCount: integer("user_count").default(0).notNull(),
+    computedAt: timestamp("computed_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => ({ pk: primaryKey({ columns: [t.date, t.songId] }) }),
+);
+
+export const kpiRetentionCohorts = pgTable(
+  "kpi_retention_cohorts",
+  {
+    cohortDate: date("cohort_date").notNull(),
+    dayOffset: smallint("day_offset").notNull(),
+    cohortSize: integer("cohort_size").default(0).notNull(),
+    retainedCount: integer("retained_count").default(0).notNull(),
+    computedAt: timestamp("computed_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => ({ pk: primaryKey({ columns: [t.cohortDate, t.dayOffset] }) }),
+);
+
+export const rollupRuns = pgTable("rollup_runs", {
+  id: serial("id").primaryKey(),
+  runDate: date("run_date").notNull(),
+  status: varchar("status", { length: 16 }).notNull(), // running | success | error
+  startedAt: timestamp("started_at", { withTimezone: true }).defaultNow().notNull(),
+  finishedAt: timestamp("finished_at", { withTimezone: true }),
+  error: text("error"),
 });
