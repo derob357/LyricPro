@@ -380,3 +380,4 @@ Expected: yesterday's `run_date` with `status = 'success'` and a pg_cron run ent
 - [ ] gn_purchased is in GN units; addon/entry-fee/prizes are USD — definitions footnote must state units (Phase 2)
 - [ ] Revisit VENDOR_KPI_MIN_COHORT before Phase 2: current traffic is single-digit DAU, k=50 suppression would blank nearly all vendor cells
 - [ ] First-run orphan edge in rollup_kpis_reconcile: if the very first day errors, next run skips it (one-line fix noted in review) — fold into Phase 2 migration
+- [ ] active_subscriptions backfilled days reflect subscription state AT BACKFILL TIME, not historical state — Phase 2 definitions footnote must disclose this for the backfilled range (2026-04-05..2026-07-04)

@@ -52,7 +52,7 @@ CREATE TABLE IF NOT EXISTS kpi_retention_cohorts (
 CREATE TABLE IF NOT EXISTS rollup_runs (
   id          serial PRIMARY KEY,
   run_date    date NOT NULL,
-  status      varchar(16) NOT NULL, -- 'running' | 'success' | 'error'
+  status      varchar(16) NOT NULL, -- 'success' | 'error'
   started_at  timestamptz NOT NULL DEFAULT now(),
   finished_at timestamptz,
   error       text

@@ -152,7 +152,14 @@ BEGIN
 
   INSERT INTO kpi_daily_metrics (date, metric, value, user_count)
   SELECT target_day, 'entry_fee_revenue_usd',
-         COALESCE(sum("entryFeeAmount" * "totalEntriesCollected"), 0), count(*)
+         -- totalEntriesCollected is already total dollars collected (fee × participants,
+         -- computed at write time in db-monetization.ts) — do NOT multiply by the fee again.
+         COALESCE(sum("totalEntriesCollected"), 0),
+         COALESCE((SELECT count(DISTINCT p."userId")
+                   FROM entry_fee_participants p
+                   JOIN entry_fee_games g2 ON g2.id = p."entryFeeGameId"
+                   WHERE g2.status = 'completed'
+                     AND g2."completedAt" >= day_start AND g2."completedAt" < day_end), 0)
   FROM entry_fee_games
   WHERE status = 'completed' AND "completedAt" >= day_start AND "completedAt" < day_end;
 

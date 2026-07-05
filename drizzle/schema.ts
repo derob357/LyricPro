@@ -1506,7 +1506,7 @@ export const kpiRetentionCohorts = pgTable(
 export const rollupRuns = pgTable("rollup_runs", {
   id: serial("id").primaryKey(),
   runDate: date("run_date").notNull(),
-  status: varchar("status", { length: 16 }).notNull(), // running | success | error
+  status: varchar("status", { length: 16 }).notNull(), // success | error
   startedAt: timestamp("started_at", { withTimezone: true }).defaultNow().notNull(),
   finishedAt: timestamp("finished_at", { withTimezone: true }),
   error: text("error"),
