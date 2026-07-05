@@ -69,6 +69,9 @@ function isNestedRecord(
  * Kinds within a nested field are sorted alphabetically; field order follows
  * the first row's key order. Suppressed or null values emit an empty string.
  * All values pass through csvEscape.
+ * Classification of nested vs plain is row-order-independent: a field is nested
+ * if EVERY row's value is either undefined, {}, or Record<string,Cell>, AND
+ * at least one row has a non-empty Record<string,Cell>.
  *
  * empty range → empty artifact; consumers should treat header-less empty CSV as no data
  */
@@ -79,30 +82,71 @@ export function toCsv(rows: Record<string, unknown>[]): string {
   type ColKind = "plain" | "cell" | "nested";
   type ColDef = { key: string; kind: ColKind; kinds?: string[] };
 
-  // Classify each field using the first row as a representative sample
-  const cols: ColDef[] = Object.keys(firstRow).map((key) => {
-    const v = firstRow[key];
-    if (isCell(v)) return { key, kind: "cell" };
-    if (isNestedRecord(v)) return { key, kind: "nested" };
-    return { key, kind: "plain" };
-  });
-
-  // Pre-scan ALL rows to collect the union of kinds for nested fields
-  const kindSets: Record<string, Set<string>> = {};
-  for (const col of cols) {
-    if (col.kind === "nested") kindSets[col.key] = new Set();
+  // Helper: check if a value is an empty plain object (not a Cell, not nested record)
+  function isEmptyPlainObject(v: unknown): boolean {
+    return (
+      typeof v === "object" &&
+      v !== null &&
+      !Array.isArray(v) &&
+      !isCell(v) &&
+      Object.keys(v).length === 0
+    );
   }
+
+  // Pre-scan ALL rows to classify fields as nested vs plain and collect kinds.
+  // A field is nested if: (1) ALL rows' values are undefined, {}, or Record<string,Cell>,
+  // AND (2) at least one row has a non-empty Record<string,Cell>.
+  type FieldAnalysis = {
+    canBeNested: boolean; // all values are undefined, {}, or Record<string,Cell>
+    hasNestedRecord: boolean; // at least one non-empty Record<string,Cell>
+  };
+  const fieldAnalysis: Record<string, FieldAnalysis> = {};
+  const kindSets: Record<string, Set<string>> = {};
+
+  // Initialize analysis for all fields in the first row
+  for (const key of Object.keys(firstRow)) {
+    fieldAnalysis[key] = { canBeNested: true, hasNestedRecord: false };
+  }
+
+  // Scan all rows
   for (const row of rows) {
-    for (const key of Object.keys(kindSets)) {
+    for (const key of Object.keys(fieldAnalysis)) {
       const v = row[key];
-      if (isNestedRecord(v)) {
+
+      // Check what type of value this is
+      if (v === undefined || isEmptyPlainObject(v)) {
+        // undefined or {} — compatible with nested
+        continue;
+      } else if (isNestedRecord(v)) {
+        // non-empty Record<string,Cell> — this field can be nested
+        fieldAnalysis[key]!.hasNestedRecord = true;
+        if (!kindSets[key]) kindSets[key] = new Set();
         for (const k of Object.keys(v)) kindSets[key]!.add(k);
+      } else if (isCell(v)) {
+        // A cell — this field is a plain cell, not nested
+        fieldAnalysis[key]!.canBeNested = false;
+      } else {
+        // Some other type — field cannot be nested
+        fieldAnalysis[key]!.canBeNested = false;
       }
     }
   }
-  for (const col of cols) {
-    if (col.kind === "nested") col.kinds = Array.from(kindSets[col.key]!).sort();
-  }
+
+  // Classify each field based on the analysis
+  const cols: ColDef[] = Object.keys(firstRow).map((key) => {
+    const v = firstRow[key];
+    if (isCell(v)) return { key, kind: "cell" };
+
+    const analysis = fieldAnalysis[key]!;
+    if (analysis.canBeNested && analysis.hasNestedRecord) {
+      return {
+        key,
+        kind: "nested",
+        kinds: Array.from(kindSets[key] ?? new Set()).sort(),
+      };
+    }
+    return { key, kind: "plain" };
+  });
 
   // Build header: original field order, kinds sorted alphabetically within nested fields
   const header = cols
@@ -129,6 +173,10 @@ export function toCsv(rows: Record<string, unknown>[]): string {
             if (cell === undefined) return ["", ""];
             return [csvEscape(cell.value === null ? "" : String(cell.value)), csvEscape(String(cell.suppressed))];
           });
+        }
+        // Plain field: emit empty string for empty plain objects; otherwise convert to string
+        if (isEmptyPlainObject(v)) {
+          return [csvEscape("")];
         }
         return [csvEscape(String(v ?? ""))];
       })

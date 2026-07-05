@@ -97,4 +97,15 @@ describe("toCsv", () => {
     expect(lines[1]).toBe("2026-07-01,500,false,,true");
     expect(lines[2]).toBe("2026-07-02,200,false,,");
   });
+  it("handles empty breakdown object in the first row", () => {
+    const csv = toCsv([
+      { bucket: "2026-07-01", gnSpentByKind: {} },
+      { bucket: "2026-07-02", gnSpentByKind: { spend_hint: { value: 200, suppressed: false } } },
+    ]);
+    const lines = csv.split("\n");
+    expect(lines[0]).toBe("bucket,gnSpentByKind_spend_hint,gnSpentByKind_spend_hint_suppressed");
+    expect(lines[1]).toBe("2026-07-01,,");
+    expect(lines[2]).toBe("2026-07-02,200,false");
+    expect(csv).not.toContain("[object Object]");
+  });
 });
