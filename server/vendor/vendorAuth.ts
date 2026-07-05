@@ -1,6 +1,8 @@
 // API-key generation + authentication for the vendor REST API.
-// Failure modes are deliberately indistinguishable to callers (uniform null);
-// the true reason is only ever logged server-side by the caller.
+// Key-VALIDATION failures are deliberately indistinguishable to callers
+// (uniform null) — the true reason is only ever logged by the caller.
+// Infrastructure errors (DB down, query failure) PROPAGATE: the REST layer
+// converts them to a generic 500, so outages don't masquerade as bad keys.
 import crypto from "node:crypto";
 import { sql } from "drizzle-orm";
 import type { getDb } from "../db";
@@ -29,7 +31,7 @@ export interface VendorAuth {
 }
 
 const ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
-const KEY_RE = /^Bearer\s+(lp_live_[A-Za-z0-9]{40})$/;
+const KEY_RE = /^Bearer (lp_live_[A-Za-z0-9]{40})$/;
 
 export function hashKey(plaintext: string): string {
   return crypto.createHash("sha256").update(plaintext).digest("hex");
@@ -89,7 +91,11 @@ export async function authenticateVendorKey(
       ON CONFLICT (key_id, date) DO UPDATE
         SET request_count = vendor_api_usage.request_count + 1
     `),
-  ]);
+  ]).then((results) => {
+    for (const r of results) {
+      if (r.status === "rejected") console.error("[vendorAuth] bookkeeping error:", r.reason);
+    }
+  });
 
   return {
     keyId,

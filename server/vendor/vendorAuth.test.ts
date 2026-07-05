@@ -58,4 +58,10 @@ describe("authenticateVendorKey", () => {
     const db = makeFakeDb([[{ ...VENDOR_ROW, status: "suspended" }]]);
     expect(await authenticateVendorKey(db as never, "Bearer lp_live_" + "a".repeat(40))).toBeNull();
   });
+  it("propagates db errors (infra failure must not look like a bad key)", async () => {
+    const db = { execute: vi.fn().mockRejectedValue(new Error("db down")) };
+    await expect(
+      authenticateVendorKey(db as never, "Bearer lp_live_" + "a".repeat(40)),
+    ).rejects.toThrow("db down");
+  });
 });
