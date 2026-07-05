@@ -34,7 +34,14 @@ export function vendorBodyParseErrorHandler(
   res: Response,
   next: NextFunction,
 ): void {
-  if (req.path.startsWith("/api/vendor/") && err && typeof err === "object") {
+  const type = (err as { type?: string } | null)?.type;
+  const isBodyParse = err instanceof SyntaxError || (typeof type === "string" && type.startsWith("entity."));
+  if (req.path.startsWith("/api/vendor/") && isBodyParse) {
+    console.error("[vendor-api] body-parse:", type ?? (err as Error).message);
+    if (type === "entity.too.large") {
+      res.status(413).json({ error: "payload_too_large", correlationId: crypto.randomUUID() });
+      return;
+    }
     res.status(400).json({ error: "invalid_json", correlationId: crypto.randomUUID() });
     return;
   }
