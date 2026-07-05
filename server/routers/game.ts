@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { and, eq, gte, isNotNull, ne, sql } from "drizzle-orm";
+import { and, desc, eq, gte, isNotNull, ne, sql } from "drizzle-orm";
 import { TRPCError } from "@trpc/server";
 import { createHash } from "node:crypto";
 import { router, publicProcedure, protectedProcedure } from "../_core/trpc";
@@ -1477,5 +1477,20 @@ export const gameRouter = router({
         counts[row.genre][row.decade] = row.count;
       }
       return { counts };
+    }),
+
+  getGameHistory: protectedProcedure
+    .input(z.object({ limit: z.number().int().min(1).max(100).default(20) }))
+    .query(async ({ ctx, input }) => {
+      const db = await getDb();
+      if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "DB unavailable" });
+      const rows = await db.select({
+        playedAt: leaderboardEntries.createdAt, score: leaderboardEntries.score,
+        mode: leaderboardEntries.mode, genre: leaderboardEntries.genre, decade: leaderboardEntries.decade,
+      }).from(leaderboardEntries)
+        .where(eq(leaderboardEntries.userId, ctx.user.id))
+        .orderBy(desc(leaderboardEntries.createdAt))
+        .limit(input.limit);
+      return rows.map((r) => ({ playedAt: r.playedAt ? new Date(r.playedAt).toISOString() : "", score: r.score, mode: String(r.mode), genre: r.genre, decade: r.decade }));
     }),
 });
