@@ -161,6 +161,7 @@ BEGIN
   FROM prize_payouts
   WHERE status = 'completed' AND "createdAt" >= day_start AND "createdAt" < day_end;
 
+  -- NOTE: snapshot of LIVE subscription state — not reproducible for historical backfill; backfilled days reflect state at rollup time.
   -- active paid subscriptions snapshot, by tier
   INSERT INTO kpi_daily_metrics (date, metric, dimension, dimension_value, value, user_count)
   SELECT target_day, 'active_subscriptions', 'tier', tier::text, count(*), count(*)
@@ -217,7 +218,7 @@ BEGIN
 END;
 $fn$;
 
--- ── Reconcile: process every closed local day since last success ────────────
+-- ── Reconcile: heal every missing closed local day in the window ────────────
 CREATE OR REPLACE FUNCTION public.rollup_kpis_reconcile()
 RETURNS TABLE(processed date, run_status text)
 LANGUAGE plpgsql
@@ -225,36 +226,49 @@ AS $fn$
 DECLARE
   tz         constant text := 'America/New_York';
   closed_day date;
-  start_day  date;
+  floor_day  date;
   d          date;
 BEGIN
-  -- one runner at a time (Vercel reconciler + pg_cron could overlap)
-  IF NOT pg_try_advisory_lock(hashtext('kpi_rollup')) THEN
+  -- xact-scoped lock: auto-released on commit OR abort — no leak path
+  IF NOT pg_try_advisory_xact_lock(hashtext('kpi_rollup')) THEN
     processed := NULL; run_status := 'skipped: lock held'; RETURN NEXT; RETURN;
   END IF;
 
   closed_day := (now() AT TIME ZONE tz)::date - 1;
-  SELECT max(run_date) + 1 INTO start_day FROM rollup_runs WHERE status = 'success';
-  IF start_day IS NULL THEN start_day := closed_day; END IF;      -- first ever run: just yesterday
-  IF closed_day - start_day > 40 THEN start_day := closed_day - 40; END IF;  -- safety cap
 
-  d := start_day;
-  WHILE d <= closed_day LOOP
+  IF NOT EXISTS (SELECT 1 FROM rollup_runs WHERE status = 'success') THEN
+    -- First ever run: just the last closed day (history comes via backfill).
+    floor_day := closed_day;
+  ELSE
+    -- Heal ANY day missing a success row in the window — a day that failed
+    -- must not be orphaned just because a later day succeeded.
+    SELECT GREATEST(min(run_date), closed_day - 40) INTO floor_day
+    FROM rollup_runs WHERE status = 'success';
+  END IF;
+
+  FOR d IN
+    SELECT gs::date
+    FROM generate_series(floor_day, closed_day, interval '1 day') gs
+    WHERE NOT EXISTS (
+      SELECT 1 FROM rollup_runs r
+      WHERE r.run_date = gs::date AND r.status = 'success'
+    )
+    ORDER BY 1
+  LOOP
     BEGIN
-      INSERT INTO rollup_runs (run_date, status) VALUES (d, 'running');
       PERFORM public.rollup_daily_kpis(d);
-      UPDATE rollup_runs SET status = 'success', finished_at = now()
-        WHERE run_date = d AND status = 'running';
+      INSERT INTO rollup_runs (run_date, status, finished_at)
+      VALUES (d, 'success', now());
       processed := d; run_status := 'success'; RETURN NEXT;
     EXCEPTION WHEN OTHERS THEN
-      UPDATE rollup_runs SET status = 'error', finished_at = now(), error = SQLERRM
-        WHERE run_date = d AND status = 'running';
+      -- The subxact rolled back all of rollup_daily_kpis' writes; persist the
+      -- failure with a FRESH insert (updating a row written inside the failed
+      -- subxact would match nothing).
+      INSERT INTO rollup_runs (run_date, status, finished_at, error)
+      VALUES (d, 'error', now(), SQLERRM);
       processed := d; run_status := 'error: ' || SQLERRM; RETURN NEXT;
     END;
-    d := d + 1;
   END LOOP;
-
-  PERFORM pg_advisory_unlock(hashtext('kpi_rollup'));
 END;
 $fn$;
 
