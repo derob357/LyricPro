@@ -51,35 +51,84 @@ function isCell(v: unknown): v is { value: number | null; suppressed: boolean } 
   );
 }
 
+function isNestedRecord(
+  v: unknown,
+): v is Record<string, { value: number | null; suppressed: boolean }> {
+  if (typeof v !== "object" || v === null || Array.isArray(v)) return false;
+  const vals = Object.values(v as Record<string, unknown>);
+  return vals.length > 0 && vals.every(isCell);
+}
+
 /**
  * Convert an array of row objects to a CSV string.
  * Cell objects ({ value, suppressed }) are expanded into two columns:
  *   <key>  and  <key>_suppressed.
- * Suppressed or null values emit an empty string for the value column.
- * All values go through csvEscape.
+ * Nested Record<string, Cell> objects (e.g. gnSpentByKind) are flattened to
+ *   <key>_<kind>  and  <key>_<kind>_suppressed  for every kind found across
+ *   ALL rows (pre-scan). Rows missing a kind emit two empty columns.
+ * Kinds within a nested field are sorted alphabetically; field order follows
+ * the first row's key order. Suppressed or null values emit an empty string.
+ * All values pass through csvEscape.
+ *
+ * empty range → empty artifact; consumers should treat header-less empty CSV as no data
  */
 export function toCsv(rows: Record<string, unknown>[]): string {
   if (rows.length === 0) return "";
   const firstRow = rows[0]!;
 
-  // Determine columns from the first row
-  const columns: Array<{ key: string; cell: boolean }> = Object.keys(firstRow).map((key) => ({
-    key,
-    cell: isCell(firstRow[key]),
-  }));
+  type ColKind = "plain" | "cell" | "nested";
+  type ColDef = { key: string; kind: ColKind; kinds?: string[] };
 
-  const header = columns
-    .flatMap((col) => (col.cell ? [col.key, `${col.key}_suppressed`] : [col.key]))
+  // Classify each field using the first row as a representative sample
+  const cols: ColDef[] = Object.keys(firstRow).map((key) => {
+    const v = firstRow[key];
+    if (isCell(v)) return { key, kind: "cell" };
+    if (isNestedRecord(v)) return { key, kind: "nested" };
+    return { key, kind: "plain" };
+  });
+
+  // Pre-scan ALL rows to collect the union of kinds for nested fields
+  const kindSets: Record<string, Set<string>> = {};
+  for (const col of cols) {
+    if (col.kind === "nested") kindSets[col.key] = new Set();
+  }
+  for (const row of rows) {
+    for (const key of Object.keys(kindSets)) {
+      const v = row[key];
+      if (isNestedRecord(v)) {
+        for (const k of Object.keys(v)) kindSets[key]!.add(k);
+      }
+    }
+  }
+  for (const col of cols) {
+    if (col.kind === "nested") col.kinds = Array.from(kindSets[col.key]!).sort();
+  }
+
+  // Build header: original field order, kinds sorted alphabetically within nested fields
+  const header = cols
+    .flatMap((col) => {
+      if (col.kind === "cell") return [col.key, `${col.key}_suppressed`];
+      if (col.kind === "nested")
+        return col.kinds!.flatMap((k) => [`${col.key}_${k}`, `${col.key}_${k}_suppressed`]);
+      return [col.key];
+    })
     .join(",");
 
   const lines = rows.map((row) =>
-    columns
+    cols
       .flatMap((col) => {
         const v = row[col.key];
-        if (col.cell) {
+        if (col.kind === "cell") {
           const c = v as { value: number | null; suppressed: boolean };
-          const valStr = c.value === null ? "" : String(c.value);
-          return [csvEscape(valStr), csvEscape(String(c.suppressed))];
+          return [csvEscape(c.value === null ? "" : String(c.value)), csvEscape(String(c.suppressed))];
+        }
+        if (col.kind === "nested") {
+          const record = isNestedRecord(v) ? v : {};
+          return col.kinds!.flatMap((k) => {
+            const cell = record[k];
+            if (cell === undefined) return ["", ""];
+            return [csvEscape(cell.value === null ? "" : String(cell.value)), csvEscape(String(cell.suppressed))];
+          });
         }
         return [csvEscape(String(v ?? ""))];
       })
@@ -112,14 +161,17 @@ const FAMILY_METRICS: Record<string, string[]> = {
 
 const ALL_FAMILIES = ["growth", "engagement", "content", "monetization"] as const;
 
+const SCOPE_MAP = {
+  growth: "scopeGrowth",
+  engagement: "scopeEngagement",
+  content: "scopeContent",
+  monetization: "scopeMonetization",
+} as const satisfies Record<string, keyof VendorAuth["vendor"]>;
+
 function hasScope(auth: VendorAuth, family: string): boolean {
-  const scopeMap: Record<string, boolean> = {
-    growth: auth.vendor.scopeGrowth,
-    engagement: auth.vendor.scopeEngagement,
-    content: auth.vendor.scopeContent,
-    monetization: auth.vendor.scopeMonetization,
-  };
-  return scopeMap[family] === true;
+  const key = SCOPE_MAP[family as keyof typeof SCOPE_MAP];
+  if (key === undefined) return false;
+  return auth.vendor[key] === true;
 }
 
 // ---------------------------------------------------------------------------
@@ -154,6 +206,16 @@ const reportsBodySchema = z
     to: z.string().regex(DATE_RE),
     granularity: z.enum(["day", "week", "month"]).default("day"),
     reports: z.array(z.string()),
+  })
+  .refine((d) => d.from <= d.to, { message: "invalid_range" })
+  .refine((d) => spanMs(d.from, d.to) <= MAX_SPAN_MS, { message: "invalid_range" });
+
+// Validates only the date trio so handleMetrics / handleReports can return
+// invalid_range for date errors before checking other params.
+const dateOnlySchema = z
+  .object({
+    from: z.string().regex(DATE_RE),
+    to: z.string().regex(DATE_RE),
   })
   .refine((d) => d.from <= d.to, { message: "invalid_range" })
   .refine((d) => spanMs(d.from, d.to) <= MAX_SPAN_MS, { message: "invalid_range" });
@@ -243,8 +305,13 @@ export async function handleMetrics(
   if (!VALID_FAMILIES.has(family)) return err(404, "not_found");
   if (!hasScope(auth, family)) return err(403, "scope_not_granted");
 
+  // Validate dates first so date errors yield invalid_range; all other param
+  // failures (bad granularity/dimension/limit) yield the distinct invalid_params.
+  const dateParsed = dateOnlySchema.safeParse(query);
+  if (!dateParsed.success) return err(400, "invalid_range");
+
   const parsed = querySchema.safeParse(query);
-  if (!parsed.success) return err(400, "invalid_range");
+  if (!parsed.success) return err(400, "invalid_params");
 
   const { from, to, granularity, format, dimension, limit } = parsed.data;
   const range: Range = { from, to, granularity };
@@ -285,6 +352,10 @@ export async function handleReports(
   auth: VendorAuth,
   rawBody: unknown,
 ): Promise<ApiResult> {
+  // Date errors get their own code; body-shape failures keep invalid_request.
+  const dateParsed = dateOnlySchema.safeParse(rawBody);
+  if (!dateParsed.success) return err(400, "invalid_range");
+
   const parsed = reportsBodySchema.safeParse(rawBody);
   if (!parsed.success) return err(400, "invalid_request");
 

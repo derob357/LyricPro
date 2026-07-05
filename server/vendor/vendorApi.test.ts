@@ -38,6 +38,11 @@ describe("handleMetrics", () => {
     expect((await handleMetrics(makeFakeDb([]) as never, AUTH, "growth", { from: "07/01/2026", to: "2026-07-02" })).status).toBe(400);
     expect((await handleMetrics(makeFakeDb([]) as never, AUTH, "growth", { from: "2026-07-02", to: "2026-07-01" })).status).toBe(400);
   });
+  it("400 invalid_params for bad granularity (distinct from invalid_range)", async () => {
+    const r = await handleMetrics(makeFakeDb([]) as never, AUTH, "growth", { ...Q, granularity: "hourly" });
+    expect(r.status).toBe(400);
+    expect((r.body as { error: string }).error).toBe("invalid_params");
+  });
   it("format=csv attaches a csv artifact", async () => {
     const db = makeFakeDb([[{ date: "2026-07-01", metric: "dau", dimension: "all", dimension_value: "all", value: 25, user_count: 25 }]]);
     const r = await handleMetrics(db as never, AUTH, "growth", { ...Q, format: "csv" });
@@ -81,5 +86,15 @@ describe("toCsv", () => {
   it("suppressed cells emit empty value", () => {
     const csv = toCsv([{ dau: { value: null, suppressed: true } }]);
     expect(csv.split("\n")[1]).toBe(",true");
+  });
+  it("flattens nested Record<string, Cell> breakdowns", () => {
+    const csv = toCsv([
+      { bucket: "2026-07-01", gnSpentByKind: { spend_hint: { value: 500, suppressed: false }, spend_tournament: { value: null, suppressed: true } } },
+      { bucket: "2026-07-02", gnSpentByKind: { spend_hint: { value: 200, suppressed: false } } },
+    ]);
+    const lines = csv.split("\n");
+    expect(lines[0]).toBe("bucket,gnSpentByKind_spend_hint,gnSpentByKind_spend_hint_suppressed,gnSpentByKind_spend_tournament,gnSpentByKind_spend_tournament_suppressed");
+    expect(lines[1]).toBe("2026-07-01,500,false,,true");
+    expect(lines[2]).toBe("2026-07-02,200,false,,");
   });
 });
