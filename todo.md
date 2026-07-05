@@ -352,3 +352,31 @@ These need your hands / accounts to proceed. I can't do them from here.
 - [ ] **SE-D04 (Medium):** Ownership checks still needed on remaining game-room mutations — `server/routers/game.ts:383 setReady`, `:423 getNextSong`, `:888 submitAnswer`, `:1384 assignTeam`. Wave 1 Task 19B addressed `startGame`, `nextRound`, `createTeams`; these four remain. Pattern: validate caller identity (`ctx.user.id` for authed, `input.guestToken` for guests) against the room's player roster before mutating room state.
 - [ ] **SE-D01 (Medium):** `resolveStripeCustomer` uses `customers.search({ query: \`email:'\${email}'\` })` with only single-quote escaping. Prefer `customers.list({ email, limit: 1 })` for exact-match dedup — simpler and avoids any potential query-injection edge case. `server/stripe-integration.ts:19-22`.
 - [ ] **SE-D03 (Info):** CSP shipped as `reportOnly: true` without a `report-uri` / `report-to` directive — operators have no signal when violations occur during the bake-in period. Add a report endpoint OR set a calendar reminder to flip CSP to enforcing after 7 days of zero browser-console violations.
+
+## Vendor KPI Phase 1 follow-ups (2026-07-02)
+
+### Security & verification
+
+- [ ] Cron auth verified by inspection: api-src/cron/kpi-rollup-reconcile.ts rejects requests without `Bearer $CRON_SECRET` before DB access
+- [ ] PII check verified: kpi_daily_metrics contains only aggregated numeric columns (date, metric, dimension, dimension_value, value, user_count, computed_at)
+- [ ] Secrets check verified: git log -p e932847..HEAD | grep -icE 'postgres(ql)?://|sk_live|whsec|eyJ[A-Za-z0-9]{20}' returns 0
+
+### Next-morning async verification (run after first nightly pg_cron run)
+
+Use these SQL queries to verify the rollup ran unattended:
+
+```sql
+SELECT run_date, status FROM rollup_runs ORDER BY run_date DESC LIMIT 3;
+SELECT jobname, start_time, status FROM cron.job_run_details ORDER BY start_time DESC LIMIT 3;
+```
+
+Expected: yesterday's `run_date` with `status = 'success'` and a pg_cron run entry.
+
+### Backlog
+
+- [ ] Phase 2 plan: vendor tables + enum, API keys, REST endpoints, admin Vendors tab
+- [ ] Consider BRIN index on song_displays("shownAt") when table exceeds ~10M rows
+- [ ] Spec's timezone-boundary test (23:55 local event lands in correct day) not run — single-Supabase topology means no scratch DB for synthetic events; verify manually with SELECT rollup vs a known late-evening event once one occurs
+- [ ] gn_purchased is in GN units; addon/entry-fee/prizes are USD — definitions footnote must state units (Phase 2)
+- [ ] Revisit VENDOR_KPI_MIN_COHORT before Phase 2: current traffic is single-digit DAU, k=50 suppression would blank nearly all vendor cells
+- [ ] First-run orphan edge in rollup_kpis_reconcile: if the very first day errors, next run skips it (one-line fix noted in review) — fold into Phase 2 migration
