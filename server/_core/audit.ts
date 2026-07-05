@@ -22,9 +22,15 @@ export type AdminAction =
   | "curatedSet.create"
   | "curatedSet.update"
   | "curatedSet.delete"
-  | "curatedSet.launch";
+  | "curatedSet.launch"
+  | "vendor.create"
+  | "vendor.update"
+  | "vendor.linkMember"
+  | "vendor.unlinkMember"
+  | "vendor.issueKey"
+  | "vendor.revokeKey";
 
-export type AdminTargetType = "song" | "lyric_variant" | "system" | "export" | "curatedSet" | "gameRoom";
+export type AdminTargetType = "song" | "lyric_variant" | "system" | "export" | "curatedSet" | "gameRoom" | "vendor";
 
 interface RecordParams {
   ctx: TrpcContext;
