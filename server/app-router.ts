@@ -17,6 +17,7 @@ import { adminUsageRouter } from "./routers/adminUsage";
 import { adminSuggestionsRouter } from "./routers/adminSuggestions";
 import { adminGenresRouter } from "./routers/adminGenres";
 import { adminCuratedSetsRouter } from "./routers/adminCuratedSets";
+import { adminAnalyticsRouter } from "./routers/adminAnalytics";
 import { bannersRouter } from "./routers/banners";
 import { chatRouter } from "./routers/chat";
 import { favoritesRouter } from "./routers/favorites";
@@ -348,6 +349,7 @@ export const appRouter = router({
   adminSuggestions: adminSuggestionsRouter,
   adminGenres: adminGenresRouter,
   adminCuratedSets: adminCuratedSetsRouter,
+  adminAnalytics: adminAnalyticsRouter,
   banners: bannersRouter,
   chat: chatRouter,
   favorites: favoritesRouter,

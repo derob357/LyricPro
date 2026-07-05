@@ -17,6 +17,8 @@ export type AdminAction =
   | "export.usage_csv"
   | "export.usage_ddex"
   | "export.admin_actions_csv"
+  | "export.users_csv"
+  | "export.payouts_csv"
   | "curatedSet.create"
   | "curatedSet.update"
   | "curatedSet.delete"
