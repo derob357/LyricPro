@@ -1,7 +1,7 @@
 // k-anonymity suppression + granularity bucketing for vendor-visible KPIs.
 
 export function minCohort(): number {
-  const raw = Number(process.env.VENDOR_KPI_MIN_COHORT ?? "10");
+  const raw = Number(process.env.VENDOR_KPI_MIN_COHORT || "10");
   return Number.isInteger(raw) && raw >= 0 ? raw : 10;
 }
 
@@ -29,9 +29,9 @@ export function applyBreakdownSuppression<
   if (out.filter((c) => c.suppressed).length === 1) {
     const visible = out.filter((c) => !c.suppressed).sort((a, b) => a.userCount - b.userCount);
     const target = visible[0];
-    if (target && visible.length > 1) {
-      target.value = null;
-      target.suppressed = true;
+    if (target) {
+      const i = out.indexOf(target);
+      out[i] = { ...out[i]!, value: null, suppressed: true };
     }
   }
   return out;

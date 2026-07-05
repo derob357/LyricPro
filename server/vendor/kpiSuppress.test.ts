@@ -13,6 +13,10 @@ describe("minCohort", () => {
     process.env.VENDOR_KPI_MIN_COHORT = "-3";
     expect(minCohort()).toBe(10);
   });
+  it("falls back to 10 on empty string", () => {
+    process.env.VENDOR_KPI_MIN_COHORT = "";
+    expect(minCohort()).toBe(10);
+  });
 });
 
 describe("suppressCell", () => {
@@ -30,15 +34,20 @@ describe("suppressCell", () => {
 describe("applyBreakdownSuppression (complementary rule)", () => {
   const cell = (v: number, uc: number) => ({ value: v as number | null, userCount: uc, suppressed: false });
   it("suppresses each cell below k", () => {
-    const out = applyBreakdownSuppression([cell(100, 50), cell(5, 5)], 10);
+    const out = applyBreakdownSuppression([cell(100, 50), cell(5, 5), cell(3, 3)], 10);
     expect(out[0]!.suppressed).toBe(false);
     expect(out[1]!).toMatchObject({ value: null, suppressed: true });
+    expect(out[2]!).toMatchObject({ value: null, suppressed: true });
   });
   it("when exactly one cell is suppressed, also suppresses the next-smallest (anti-differencing)", () => {
     const out = applyBreakdownSuppression([cell(100, 50), cell(30, 20), cell(5, 5)], 10);
     expect(out.filter((c) => c.suppressed)).toHaveLength(2);
     expect(out[1]!).toMatchObject({ value: null, suppressed: true }); // next-smallest by userCount
     expect(out[0]!.suppressed).toBe(false);
+  });
+  it("2-cell: also suppresses the remaining visible cell (anti-differencing)", () => {
+    const out = applyBreakdownSuppression([cell(100, 50), cell(5, 5)], 10);
+    expect(out.every((c) => c.suppressed)).toBe(true);
   });
   it("no suppression → untouched", () => {
     const out = applyBreakdownSuppression([cell(100, 50), cell(30, 20)], 10);
