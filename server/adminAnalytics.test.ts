@@ -13,6 +13,9 @@ describe("adminAnalytics gate", () => {
   it("rejects non-admins from payoutPipeline", async () => {
     await expect(caller("user").adminAnalytics.payoutPipeline()).rejects.toThrow();
   });
+  it("rejects non-admins from retention", async () => {
+    await expect(caller("user").adminAnalytics.retention({})).rejects.toThrow();
+  });
 });
 
 liveDescribe("adminAnalytics.payoutPipeline", () => {
@@ -20,5 +23,18 @@ liveDescribe("adminAnalytics.payoutPipeline", () => {
     const res = await caller("admin").adminAnalytics.payoutPipeline();
     expect(Array.isArray(res.prizePayouts)).toBe(true);
     expect(Array.isArray(res.payoutRequests)).toBe(true);
+  });
+});
+
+liveDescribe("adminAnalytics.retention", () => {
+  it("returns both series with DayPoint shape", async () => {
+    const res = await caller("admin").adminAnalytics.retention({ days: 30 });
+    expect(Array.isArray(res.roundsSeries)).toBe(true);
+    expect(Array.isArray(res.gamesSeries)).toBe(true);
+    for (const p of [...res.roundsSeries, ...res.gamesSeries]) {
+      expect(p).toEqual(expect.objectContaining({ day: expect.any(String), dau: expect.any(Number), wau: expect.any(Number), mau: expect.any(Number) }));
+      expect(p.wau).toBeGreaterThanOrEqual(p.dau);
+      expect(p.mau).toBeGreaterThanOrEqual(p.wau);
+    }
   });
 });
