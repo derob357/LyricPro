@@ -1,6 +1,6 @@
 // server/routers/adminAnalytics.ts
 import { z } from "zod";
-import { count, eq, sql, sum } from "drizzle-orm";
+import { count, countDistinct, eq, sql, sum } from "drizzle-orm";
 import { adminProcedure, router } from "../_core/trpc";
 import { getDb } from "../db";
 import { TRPCError } from "@trpc/server";
@@ -128,7 +128,7 @@ export const adminAnalyticsRouter = router({
         optIns: sql<number>`coalesce(sum(case when ${guestSessions.marketingOptIn} then 1 else 0 end), 0)`,
       }).from(guestSessions);
       // Email-match conversion proxy: guest email that also exists on a user row.
-      const [{ converted }] = await db.select({ converted: count() })
+      const [{ converted }] = await db.select({ converted: countDistinct(guestSessions.id) })
         .from(guestSessions)
         .innerJoin(users, sql`lower(${users.email}) = lower(${guestSessions.email})`);
       const seriesRows = await db.execute(sql.raw(`
