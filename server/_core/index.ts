@@ -10,7 +10,7 @@ import { appRouter } from "../app-router";
 import { createContext } from "./context";
 import { serveStatic, setupVite } from "./vite";
 import { handleStripeWebhook } from "./stripeWebhook";
-import { registerVendorRoutes } from "../vendor/vendorRest";
+import { registerVendorRoutes, vendorBodyParseErrorHandler } from "../vendor/vendorRest";
 
 // Comma-separated list of allowed origins, e.g.
 // "https://lyricpro.ai,https://www.lyricpro.ai". Empty string = only
@@ -141,6 +141,7 @@ async function startServer() {
   app.use(express.urlencoded({ limit: "1mb", extended: true }));
   // Vendor REST API (key-authenticated, rate-limited)
   registerVendorRoutes(app);
+  app.use(vendorBodyParseErrorHandler);
   // tRPC API
   app.use(
     "/api/trpc",

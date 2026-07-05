@@ -3,7 +3,7 @@
 // vendorAuth.ts (unit-tested); this file only wires auth, rate limiting,
 // and response formatting.
 import crypto from "node:crypto";
-import type { Express, Request, Response } from "express";
+import type { Express, NextFunction, Request, Response } from "express";
 import { getDb } from "../db";
 import { rateLimit } from "../_core/rateLimit";
 import { authenticateVendorKey, type VendorAuth } from "./vendorAuth";
@@ -25,6 +25,22 @@ function send(res: Response, r: ApiResult, wantCsv: boolean): void {
   res.status(r.status).json(r.body);
 }
 
+// Body-parse errors (malformed JSON etc.) fire in express.json() BEFORE our
+// routes; normalize them to the vendor envelope — but ONLY for vendor paths,
+// so global behavior for other routes is unchanged.
+export function vendorBodyParseErrorHandler(
+  err: unknown,
+  req: Request,
+  res: Response,
+  next: NextFunction,
+): void {
+  if (req.path.startsWith("/api/vendor/") && err && typeof err === "object") {
+    res.status(400).json({ error: "invalid_json", correlationId: crypto.randomUUID() });
+    return;
+  }
+  next(err);
+}
+
 type Handler = (db: NonNullable<Awaited<ReturnType<typeof getDb>>>, auth: VendorAuth, req: Request) => Promise<ApiResult>;
 
 function route(handler: Handler) {
@@ -43,6 +59,7 @@ function route(handler: Handler) {
         return fail(res, 429, "rate_limited");
       }
       const result = await handler(db, auth, req);
+      // NOTE: POST /reports never produces a CSV artifact (handleReports sets no csv) — format=csv is a documented no-op there; metrics/meta honor it.
       send(res, result, req.query.format === "csv" || (req.body as { format?: string } | undefined)?.format === "csv");
     } catch (err) {
       console.error("[vendor-api] unhandled:", err);
@@ -54,6 +71,6 @@ function route(handler: Handler) {
 export function registerVendorRoutes(app: Express): void {
   app.get("/api/vendor/v1/meta", route((db, auth) => handleMeta(db, auth)));
   app.get("/api/vendor/v1/metrics/:family", route((db, auth, req) =>
-    handleMetrics(db, auth, req.params.family ?? "", req.query as Record<string, unknown>)));
+    handleMetrics(db, auth, req.params.family, req.query as Record<string, unknown>)));
   app.post("/api/vendor/v1/reports", route((db, auth, req) => handleReports(db, auth, req.body)));
 }
