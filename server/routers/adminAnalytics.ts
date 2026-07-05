@@ -4,7 +4,7 @@ import { count, eq, sql, sum } from "drizzle-orm";
 import { adminProcedure, router } from "../_core/trpc";
 import { getDb } from "../db";
 import { TRPCError } from "@trpc/server";
-import { prizePayouts, payoutRequests, roundResults, songs, songDisplays, leaderboardEntries } from "../../drizzle/schema";
+import { prizePayouts, payoutRequests, roundResults, songs, songDisplays, leaderboardEntries, goldenNoteBalances, goldenNoteTransactions } from "../../drizzle/schema";
 
 function requireDb(db: unknown): asserts db {
   if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "DB unavailable" });
@@ -87,4 +87,30 @@ export const adminAnalyticsRouter = router({
       const byOverall = [...mapped].sort((a, b) => a.overallRate - b.overallRate);
       return { hardest: byOverall.slice(0, input.limit), easiest: byOverall.slice(-input.limit).reverse() };
     }),
+
+  gnEconomy: adminProcedure.query(async () => {
+    const db = await getDb();
+    requireDb(db);
+    const [{ circulation }] = await db.select({ circulation: sum(goldenNoteBalances.balance) }).from(goldenNoteBalances);
+    const [{ credited, debited }] = await db.select({
+      credited: sql<number>`coalesce(sum(case when ${goldenNoteTransactions.amount} > 0 then ${goldenNoteTransactions.amount} else 0 end), 0)`,
+      debited: sql<number>`coalesce(sum(case when ${goldenNoteTransactions.amount} < 0 then -${goldenNoteTransactions.amount} else 0 end), 0)`,
+    }).from(goldenNoteTransactions);
+    const [{ purchasedCount, purchasedAmount }] = await db.select({
+      purchasedCount: count(),
+      purchasedAmount: sql<number>`coalesce(sum(${goldenNoteTransactions.amount}), 0)`,
+    }).from(goldenNoteTransactions).where(sql`${goldenNoteTransactions.stripePaymentIntentId} is not null`);
+    const reasons = await db.select({
+      reason: goldenNoteTransactions.reason,
+      credited: sql<number>`coalesce(sum(case when ${goldenNoteTransactions.amount} > 0 then ${goldenNoteTransactions.amount} else 0 end), 0)`,
+      debited: sql<number>`coalesce(sum(case when ${goldenNoteTransactions.amount} < 0 then -${goldenNoteTransactions.amount} else 0 end), 0)`,
+      count: count(),
+    }).from(goldenNoteTransactions).groupBy(goldenNoteTransactions.reason);
+    return {
+      circulation: Number(circulation ?? 0),
+      totalCredited: Number(credited), totalDebited: Number(debited),
+      purchasedCount: Number(purchasedCount), purchasedAmount: Number(purchasedAmount),
+      byReason: reasons.map((r) => ({ reason: r.reason ?? "(none)", credited: Number(r.credited), debited: Number(r.debited), net: Number(r.credited) - Number(r.debited), count: Number(r.count) })),
+    };
+  }),
 });

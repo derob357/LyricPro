@@ -19,6 +19,9 @@ describe("adminAnalytics gate", () => {
   it("rejects non-admins from songAccuracy", async () => {
     await expect(caller("user").adminAnalytics.songAccuracy({})).rejects.toThrow();
   });
+  it("rejects non-admins from gnEconomy", async () => {
+    await expect(caller("user").adminAnalytics.gnEconomy()).rejects.toThrow();
+  });
 });
 
 liveDescribe("adminAnalytics.payoutPipeline", () => {
@@ -39,6 +42,25 @@ liveDescribe("adminAnalytics.songAccuracy", () => {
       expect(s.rounds).toBeGreaterThanOrEqual(5);
     }
     if (res.hardest.length && res.easiest.length) expect(res.hardest[0].overallRate).toBeLessThanOrEqual(res.easiest[0].overallRate);
+  });
+});
+
+liveDescribe("adminAnalytics.gnEconomy", () => {
+  it("returns numeric fields and byReason array", async () => {
+    const res = await caller("admin").adminAnalytics.gnEconomy();
+    expect(typeof res.circulation).toBe("number");
+    expect(typeof res.totalCredited).toBe("number");
+    expect(typeof res.totalDebited).toBe("number");
+    expect(typeof res.purchasedCount).toBe("number");
+    expect(typeof res.purchasedAmount).toBe("number");
+    expect(Array.isArray(res.byReason)).toBe(true);
+    for (const r of res.byReason) {
+      expect(typeof r.reason).toBe("string");
+      expect(typeof r.credited).toBe("number");
+      expect(typeof r.debited).toBe("number");
+      expect(typeof r.net).toBe("number");
+      expect(typeof r.count).toBe("number");
+    }
   });
 });
 
