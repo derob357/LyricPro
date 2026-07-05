@@ -25,6 +25,9 @@ describe("adminAnalytics gate", () => {
   it("rejects non-admins from tournamentFinancials", async () => {
     await expect(caller("user").adminAnalytics.tournamentFinancials()).rejects.toThrow();
   });
+  it("rejects non-admins from guestFunnel", async () => {
+    await expect(caller("user").adminAnalytics.guestFunnel({})).rejects.toThrow();
+  });
 });
 
 liveDescribe("adminAnalytics.payoutPipeline", () => {
@@ -77,6 +80,22 @@ liveDescribe("adminAnalytics.tournamentFinancials", () => {
         expect(t.fillRate).toBeGreaterThanOrEqual(0);
         expect(t.fillRate).toBeLessThanOrEqual(1);
       }
+    }
+  });
+});
+
+liveDescribe("adminAnalytics.guestFunnel", () => {
+  it("returns numeric fields and newGuestsSeries array", async () => {
+    const res = await caller("admin").adminAnalytics.guestFunnel({ days: 30 });
+    expect(typeof res.totalGuests).toBe("number");
+    expect(typeof res.leads).toBe("number");
+    expect(typeof res.optIns).toBe("number");
+    expect(typeof res.converted).toBe("number");
+    expect(typeof res.conversionRate).toBe("number");
+    expect(Array.isArray(res.newGuestsSeries)).toBe(true);
+    for (const p of res.newGuestsSeries) {
+      expect(typeof p.day).toBe("string");
+      expect(typeof p.guests).toBe("number");
     }
   });
 });

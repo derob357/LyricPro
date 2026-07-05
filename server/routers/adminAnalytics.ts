@@ -4,7 +4,7 @@ import { count, eq, sql, sum } from "drizzle-orm";
 import { adminProcedure, router } from "../_core/trpc";
 import { getDb } from "../db";
 import { TRPCError } from "@trpc/server";
-import { prizePayouts, payoutRequests, roundResults, songs, songDisplays, leaderboardEntries, goldenNoteBalances, goldenNoteTransactions, tournaments, tournamentMembers, prizePools } from "../../drizzle/schema";
+import { prizePayouts, payoutRequests, roundResults, songs, songDisplays, leaderboardEntries, goldenNoteBalances, goldenNoteTransactions, tournaments, tournamentMembers, prizePools, guestSessions, users } from "../../drizzle/schema";
 
 function requireDb(db: unknown): asserts db {
   if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "DB unavailable" });
@@ -116,6 +116,33 @@ export const adminAnalyticsRouter = router({
       },
     };
   }),
+
+  guestFunnel: adminProcedure
+    .input(z.object({ days: z.number().int().min(1).max(365).default(90) }))
+    .query(async ({ input }) => {
+      const db = await getDb();
+      requireDb(db);
+      const [{ totalGuests, leads, optIns }] = await db.select({
+        totalGuests: count(),
+        leads: sql<number>`coalesce(sum(case when ${guestSessions.email} is not null then 1 else 0 end), 0)`,
+        optIns: sql<number>`coalesce(sum(case when ${guestSessions.marketingOptIn} then 1 else 0 end), 0)`,
+      }).from(guestSessions);
+      // Email-match conversion proxy: guest email that also exists on a user row.
+      const [{ converted }] = await db.select({ converted: count() })
+        .from(guestSessions)
+        .innerJoin(users, sql`lower(${users.email}) = lower(${guestSessions.email})`);
+      const seriesRows = await db.execute(sql.raw(`
+        SELECT date_trunc('day', "createdAt")::date::text AS day, count(*) AS guests
+        FROM guest_sessions WHERE "createdAt" >= now() - interval '${input.days} days'
+        GROUP BY 1 ORDER BY 1 ASC;`));
+      const arr = (seriesRows as any).rows ?? (Array.isArray(seriesRows) ? seriesRows : []);
+      const total = Number(totalGuests);
+      return {
+        totalGuests: total, leads: Number(leads), optIns: Number(optIns), converted: Number(converted),
+        conversionRate: total > 0 ? Number(converted) / total : 0,
+        newGuestsSeries: (arr as any[]).map((r) => ({ day: String(r.day), guests: Number(r.guests) })),
+      };
+    }),
 
   gnEconomy: adminProcedure.query(async () => {
     const db = await getDb();
