@@ -1532,7 +1532,9 @@ export const vendorMembers = pgTable("vendor_members", {
   vendorId: integer("vendor_id").notNull().references(() => vendors.id, { onDelete: "cascade" }),
   userId: integer("user_id").notNull().unique().references(() => users.id, { onDelete: "cascade" }),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
-});
+}, (t) => ({
+  vendorIdx: index("vendor_members_vendor_idx").on(t.vendorId),
+}));
 
 export const vendorApiKeys = pgTable("vendor_api_keys", {
   id: serial("id").primaryKey(),
@@ -1545,7 +1547,9 @@ export const vendorApiKeys = pgTable("vendor_api_keys", {
   expiresAt: timestamp("expires_at", { withTimezone: true }),
   revokedAt: timestamp("revoked_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
-});
+}, (t) => ({
+  vendorIdx: index("vendor_api_keys_vendor_idx").on(t.vendorId),
+}));
 
 export const vendorApiUsage = pgTable(
   "vendor_api_usage",
