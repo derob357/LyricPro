@@ -1,10 +1,10 @@
 // server/routers/adminAnalytics.ts
 import { z } from "zod";
-import { count, sql, sum } from "drizzle-orm";
+import { count, eq, sql, sum } from "drizzle-orm";
 import { adminProcedure, router } from "../_core/trpc";
 import { getDb } from "../db";
 import { TRPCError } from "@trpc/server";
-import { prizePayouts, payoutRequests, songDisplays, leaderboardEntries } from "../../drizzle/schema";
+import { prizePayouts, payoutRequests, roundResults, songs, songDisplays, leaderboardEntries } from "../../drizzle/schema";
 
 function requireDb(db: unknown): asserts db {
   if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "DB unavailable" });
@@ -59,5 +59,32 @@ export const adminAnalyticsRouter = router({
 
       const [roundsSeries, gamesSeries] = await Promise.all([build("song_displays"), build("leaderboard_entries")]);
       return { roundsSeries, gamesSeries };
+    }),
+
+  songAccuracy: adminProcedure
+    .input(z.object({ limit: z.number().int().min(1).max(100).default(20) }))
+    .query(async ({ input }) => {
+      const db = await getDb();
+      requireDb(db);
+      const rows = await db
+        .select({
+          songId: roundResults.songId,
+          title: songs.title,
+          artistName: songs.artistName,
+          rounds: count(),
+          lyricRate: sql<number>`avg(case when ${roundResults.lyricPoints} > 0 then 1.0 else 0 end)`,
+          artistRate: sql<number>`avg(case when ${roundResults.artistPoints} > 0 then 1.0 else 0 end)`,
+          yearRate: sql<number>`avg(case when ${roundResults.yearPoints} > 0 then 1.0 else 0 end)`,
+        })
+        .from(roundResults)
+        .innerJoin(songs, eq(songs.id, roundResults.songId))
+        .groupBy(roundResults.songId, songs.title, songs.artistName)
+        .having(sql`count(*) >= 5`);
+      const mapped = rows.map((r) => {
+        const lyricRate = Number(r.lyricRate), artistRate = Number(r.artistRate), yearRate = Number(r.yearRate);
+        return { songId: r.songId, title: r.title, artistName: r.artistName, rounds: Number(r.rounds), lyricRate, artistRate, yearRate, overallRate: (lyricRate + artistRate + yearRate) / 3 };
+      });
+      const byOverall = [...mapped].sort((a, b) => a.overallRate - b.overallRate);
+      return { hardest: byOverall.slice(0, input.limit), easiest: byOverall.slice(-input.limit).reverse() };
     }),
 });

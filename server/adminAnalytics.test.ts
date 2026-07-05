@@ -16,6 +16,9 @@ describe("adminAnalytics gate", () => {
   it("rejects non-admins from retention", async () => {
     await expect(caller("user").adminAnalytics.retention({})).rejects.toThrow();
   });
+  it("rejects non-admins from songAccuracy", async () => {
+    await expect(caller("user").adminAnalytics.songAccuracy({})).rejects.toThrow();
+  });
 });
 
 liveDescribe("adminAnalytics.payoutPipeline", () => {
@@ -23,6 +26,19 @@ liveDescribe("adminAnalytics.payoutPipeline", () => {
     const res = await caller("admin").adminAnalytics.payoutPipeline();
     expect(Array.isArray(res.prizePayouts)).toBe(true);
     expect(Array.isArray(res.payoutRequests)).toBe(true);
+  });
+});
+
+liveDescribe("adminAnalytics.songAccuracy", () => {
+  it("returns hardest/easiest with rate fields", async () => {
+    const res = await caller("admin").adminAnalytics.songAccuracy({ limit: 5 });
+    expect(Array.isArray(res.hardest)).toBe(true);
+    for (const s of [...res.hardest, ...res.easiest]) {
+      expect(s.overallRate).toBeGreaterThanOrEqual(0);
+      expect(s.overallRate).toBeLessThanOrEqual(1);
+      expect(s.rounds).toBeGreaterThanOrEqual(5);
+    }
+    if (res.hardest.length && res.easiest.length) expect(res.hardest[0].overallRate).toBeLessThanOrEqual(res.easiest[0].overallRate);
   });
 });
 
