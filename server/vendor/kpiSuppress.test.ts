@@ -17,6 +17,10 @@ describe("minCohort", () => {
     process.env.VENDOR_KPI_MIN_COHORT = "";
     expect(minCohort()).toBe(10);
   });
+  it("falls back to 10 on whitespace-only string", () => {
+    process.env.VENDOR_KPI_MIN_COHORT = "  ";
+    expect(minCohort()).toBe(10);
+  });
 });
 
 describe("suppressCell", () => {

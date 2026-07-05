@@ -1,7 +1,7 @@
 // k-anonymity suppression + granularity bucketing for vendor-visible KPIs.
 
 export function minCohort(): number {
-  const raw = Number(process.env.VENDOR_KPI_MIN_COHORT || "10");
+  const raw = Number((process.env.VENDOR_KPI_MIN_COHORT ?? "").trim() || "10");
   return Number.isInteger(raw) && raw >= 0 ? raw : 10;
 }
 

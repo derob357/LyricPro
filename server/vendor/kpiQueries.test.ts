@@ -1,6 +1,6 @@
 // server/vendor/kpiQueries.test.ts
 import { describe, expect, it, vi } from "vitest";
-import { getContent, getGrowth, getMonetization } from "./kpiQueries";
+import { getContent, getEngagement, getGrowth, getMonetization } from "./kpiQueries";
 
 function makeFakeDb(queue: unknown[][]) {
   let call = 0;
@@ -53,6 +53,26 @@ describe("getContent (song dimension)", () => {
     const rows = await getContent(db as never, { ...R, dimension: "genre", limit: 50, catalogFilter: { songIds: [1] } });
     expect(rows).toEqual([]);
     expect(db.execute).not.toHaveBeenCalled();
+  });
+});
+
+describe("getEngagement", () => {
+  it("computes avg session seconds from component metrics and retention rates", async () => {
+    const db = makeFakeDb([
+      [
+        m("2026-07-01", "sessions", 30, 25),
+        m("2026-07-01", "sessions_with_end", 20, 20),
+        m("2026-07-01", "session_seconds_sum", 2400, 20),
+        m("2026-07-01", "rounds", 90, 25),
+      ],
+      [{ cohort_date: "2026-06-30", day_offset: 1, cohort_size: 40, retained_count: 10 }],
+    ]);
+    const { series, retention } = await getEngagement(db as never, { ...R, to: "2026-07-01" });
+    expect(series[0]!.avgSessionSeconds).toEqual({ value: 120, suppressed: false }); // 2400/20
+    expect(series[0]!.sessions).toEqual({ value: 30, suppressed: false });
+    expect(series[0]!.roundsPerSession).toEqual({ value: 3, suppressed: false });
+    expect(retention[0]!.retainedRate).toEqual({ value: 0.25, suppressed: false });
+    expect(retention[0]!.cohortSize).toEqual({ value: 40, suppressed: false });
   });
 });
 

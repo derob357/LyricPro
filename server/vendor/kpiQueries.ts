@@ -133,7 +133,7 @@ function aggregateMetric(
     if (mode === "sum") {
       out.set(b, {
         value: values.reduce((a: number, v: number) => a + v, 0),
-        userCount: userCounts.reduce((a: number, v: number) => a + v, 0),
+        userCount: Math.max(...userCounts),
       });
     } else if (mode === "avg") {
       out.set(b, {
@@ -178,7 +178,7 @@ function aggregateByDimValue(
       if (mode === "sum") {
         resolved.set(dv, {
           value: values.reduce((a: number, v: number) => a + v, 0),
-          userCount: userCounts.reduce((a: number, v: number) => a + v, 0),
+          userCount: Math.max(...userCounts),
         });
       } else if (mode === "avg") {
         resolved.set(dv, {
@@ -317,32 +317,50 @@ export async function getEngagement(
   const { from, to, granularity: g } = r;
 
   // Series: one SQL call for all session/round metrics.
+  // NOTE: the rollup writes session_seconds_sum and sessions_with_end components
+  // (not avg_session_seconds). avgSessionSeconds is derived per-bucket as
+  // sum(session_seconds_sum) / sum(sessions_with_end).
   const rawRows = await fetchMetrics(
     db,
-    ["sessions", "avg_session_seconds", "rounds"],
+    ["sessions", "session_seconds_sum", "sessions_with_end", "rounds"],
     from,
     to,
   );
 
   const sessionsMap = aggregateMetric(rawRows, "sessions", g, "sum");
-  // avg_session_seconds is already a per-day mean; aggregate by averaging
-  // across days in the bucket — this is an approximation that avoids needing
-  // a separate session_seconds_sum metric in the rollup.
-  const avgSecMap = aggregateMetric(rawRows, "avg_session_seconds", g, "avg");
+  const secsSumMap = aggregateMetric(rawRows, "session_seconds_sum", g, "sum");
+  const withEndMap = aggregateMetric(rawRows, "sessions_with_end", g, "sum");
   const roundsMap = aggregateMetric(rawRows, "rounds", g, "sum");
 
-  const buckets = sortedBuckets(sessionsMap, avgSecMap, roundsMap);
+  const buckets = sortedBuckets(sessionsMap, secsSumMap, withEndMap, roundsMap);
 
   const series: EngagementRow[] = buckets.map((bucket) => {
     const sessions = cellAt(sessionsMap, bucket, k);
     const rounds = cellAt(roundsMap, bucket, k);
 
-    // roundsPerSession derived after bucketing.
+    // avgSessionSeconds: sum(session_seconds_sum) / sum(sessions_with_end).
+    // Privacy uses the sessions bucket userCount. When sessions_with_end = 0
+    // the duration is unknown — suppress rather than emit 0.
+    let avgSessionSeconds: Cell;
+    const sessEntry = sessionsMap.get(bucket);
+    const secsSumEntry = secsSumMap.get(bucket);
+    const withEndEntry = withEndMap.get(bucket);
+    const withEndTotal = withEndEntry?.value ?? 0;
+    if (sessions.suppressed || !sessEntry) {
+      avgSessionSeconds = { value: null, suppressed: true };
+    } else if (withEndTotal === 0) {
+      avgSessionSeconds = { value: null, suppressed: true };
+    } else {
+      const secsSum = secsSumEntry?.value ?? 0;
+      avgSessionSeconds = suppressCell(round2(secsSum / withEndTotal), sessEntry.userCount, k);
+    }
+
+    // roundsPerSession derived after bucketing. Sessions = 0 means undefined ratio.
     let roundsPerSession: Cell;
     const se = sessionsMap.get(bucket);
     const re = roundsMap.get(bucket);
     if (!se || !re || se.value === 0 || sessions.suppressed || rounds.suppressed) {
-      roundsPerSession = { value: null, suppressed: sessions.suppressed || rounds.suppressed };
+      roundsPerSession = { value: null, suppressed: true };
     } else {
       roundsPerSession = suppressCell(
         round2(re.value / se.value),
@@ -354,7 +372,7 @@ export async function getEngagement(
     return {
       bucket,
       sessions,
-      avgSessionSeconds: cellAt(avgSecMap, bucket, k),
+      avgSessionSeconds,
       rounds,
       roundsPerSession,
     };
@@ -488,13 +506,24 @@ export async function getContent(
   }));
   const suppressed = applyBreakdownSuppression(entries, k);
 
-  return suppressed.map((c) => ({
-    key: c.key,
-    displays: { value: c.value, suppressed: c.suppressed },
-    roundsPlayed: { value: c.suppressed ? null : 0, suppressed: c.suppressed },
-    correctRate: { value: c.suppressed ? null : 0, suppressed: c.suppressed },
-    avgResponseSeconds: { value: c.suppressed ? null : 0, suppressed: c.suppressed },
-  }));
+  return suppressed
+    .map((c) => ({
+      key: c.key,
+      displays: { value: c.value, suppressed: c.suppressed } as Cell,
+      // roundsPlayed / correctRate / avgResponseSeconds are not measured at
+      // genre/decade grain — emit null = not applicable (not suppressed).
+      roundsPlayed: { value: null, suppressed: false } as Cell,
+      correctRate: { value: null, suppressed: false } as Cell,
+      avgResponseSeconds: { value: null, suppressed: false } as Cell,
+    }))
+    .sort((a, b) => {
+      const av = a.displays.value;
+      const bv = b.displays.value;
+      if (av === null && bv === null) return 0;
+      if (av === null) return 1; // nulls last
+      if (bv === null) return -1;
+      return bv - av; // descending
+    });
 }
 
 export async function getMonetization(db: Db, r: Range): Promise<MonetizationRow[]> {

@@ -7,7 +7,7 @@ export const KPI_DEFINITIONS: Record<string, string> = {
   dau: "Unique users+guests with ≥1 game session started or lyric displayed that calendar day (America/New_York). Guests identified by session token.",
   wau: "Unique users+guests active in the trailing 7 calendar days ending that day (inclusive).",
   mau: "Unique users+guests active in the trailing 30 calendar days ending that day (inclusive).",
-  stickiness: "Average DAU over the range ÷ MAU on the range's last day.",
+  stickiness: "Average DAU within the bucket ÷ MAU on the bucket's last day.",
   new_users: "Registered accounts created that day.",
   new_guests: "Guest sessions created that day.",
   guest_conversions: "Registered accounts created that day whose email matches a guest session from the prior 30 days.",
@@ -34,7 +34,8 @@ export function definitionNotes(): string[] {
     "Identity: user id for registered accounts, session token for guests; multi-device users may count once per identity.",
     "Revenue basis: gross, before store/payment fees. GN metrics are virtual-currency units, not USD.",
     `Privacy: cells derived from fewer than ${minCohort()} users are suppressed (value=null, suppressed=true); complementary cells may also be suppressed to prevent differencing.`,
-    "Weekly/monthly granularity: additive metrics are summed; dau is averaged; wau/mau/active_subscriptions use the bucket's last available day.",
+    "Weekly/monthly granularity: additive metrics are summed; dau is averaged; wau/mau/active_subscriptions use the bucket's last available day. Bucket-level privacy suppression uses the largest single-day contributor count (conservative).",
+    "Content genre/decade rows carry displays only; other content metrics are song-level (null = not applicable).",
     "Data freshness: nightly rollup — figures are as of the last closed day.",
   ];
 }
