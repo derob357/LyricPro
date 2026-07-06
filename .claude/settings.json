@@ -48,10 +48,31 @@
       "Bash(git -C /Users/drob/Documents/myWork/CCS/LyricPro/lyricpro-ai-2.0 commit -m \"feat\\(remote-live\\): VideoTile + VideoGrid components\")",
       "Bash(git -C /Users/drob/Documents/myWork/CCS/LyricPro/lyricpro-ai-2.0 add client/src/contexts/GameContext.tsx client/src/pages/GameSetup.tsx)",
       "Bash(git -C /Users/drob/Documents/myWork/CCS/LyricPro/lyricpro-ai-2.0 commit -m 'feat\\(remote-live\\): wire '\\\\''Remote Live'\\\\'' mode into GameSetup \\(4th mode, fully enabled\\)')",
-      "Bash(awk -F= '/^LIVEKIT_URL=/ { *)"
+      "Bash(awk -F= '/^LIVEKIT_URL=/ { *)",
+      "Bash(cp /private/tmp/claude-501/-Users-drob-Documents-myWork-CCS-LyricPro-lyricpro-ai-2-0/fdd5d76c-61ea-4677-a99b-661afe057f4f/scratchpad/debug-vendor.mjs /Users/drob/Documents/myWork/CCS/LyricPro/lyricpro-ai-2.0/scripts/_debug_smoke_diag.mjs)",
+      "Bash(sed -i '' 's#dotenv.config\\({ path: .*$#dotenv.config\\(\\);#' /Users/drob/Documents/myWork/CCS/LyricPro/lyricpro-ai-2.0/scripts/_debug_smoke_diag.mjs)",
+      "Bash(node scripts/_debug_smoke_diag.mjs)",
+      "Bash(pnpm test:server server/vendor/)",
+      "Bash(nohup pnpm dev)",
+      "Bash(echo \"started pid $!\")",
+      "Bash(node scripts/smoke-vendor-api.mjs --base http://localhost:3000)",
+      "Bash(echo \"EXIT=$?\")",
+      "Bash(kill %1)",
+      "Bash(pkill -f \"tsx watch server/_core/index.ts\")",
+      "Bash(pnpm test:server server/vendor/vendorResolve.test.ts)",
+      "Bash(pnpm test:server server/routers/vendor.test.ts)",
+      "Bash(pnpm test:server server/routers/vendor.test.ts server/vendor/vendorApi.test.ts)",
+      "Bash(/Users/drob/.claude/plugins/cache/claude-plugins-official/superpowers/6.1.1/skills/subagent-driven-development/scripts/review-package 4108f48 HEAD)",
+      "Bash(/Users/drob/.claude/plugins/cache/claude-plugins-official/superpowers/6.1.1/skills/subagent-driven-development/scripts/review-package 870a4c8 HEAD)",
+      "Bash(cd /Users/drob/Documents/myWork/CCS/LyricPro/lyricpro-ai-2.0 *)",
+      "Read(//Users/drob/Documents/myWork/CCS/LyricPro/lyricpro-ai-2.0/client/src/pages/admin/**)",
+      "Bash(cat > *)",
+      "Bash(/Users/drob/.claude/plugins/cache/claude-plugins-official/superpowers/6.1.1/skills/subagent-driven-development/scripts/review-package e2af1d0 *)",
+      "Bash(git status *)"
     ],
     "additionalDirectories": [
-      "/private/tmp"
+      "/private/tmp",
+      "/Users/drob/Documents/myWork/CCS/LyricPro/lyricpro-ai-2.0/.superpowers/sdd"
     ]
   }
 }

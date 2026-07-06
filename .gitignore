@@ -163,3 +163,9 @@ docs/gap-analysis-game-economy-brief.pdf
 
 # Generated content reports (contain lyric text — never push)
 docs/reports/
+
+# Local-only artifacts (not synced; see 2026-07-06 cleanup)
+compliance/
+scripts/_pilot/
+postcss.config.js
+scripts/rs100-inserted-ids.json
