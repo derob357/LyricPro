@@ -94,4 +94,18 @@ describe("getMonetization", () => {
     expect(kinds.spend_extra_game).toEqual({ value: null, suppressed: true });
     expect(kinds.spend_hint!.suppressed).toBe(false);
   });
+
+  it("suppresses arpdau when a revenue component feeding it is itself suppressed (anti-differencing)", async () => {
+    const db = makeFakeDb([[
+      m("2026-07-01", "dau", 200, 20),
+      m("2026-07-01", "entry_fee_revenue_usd", 60, 12),
+      m("2026-07-01", "addon_revenue_usd", 8, 4), // uc 4 < k=10 default → suppressed
+    ]]);
+    const rows = await getMonetization(db as never, { ...R, to: "2026-07-01" });
+    // dau is visible; addon's own userCount (4) is below k, so arpdau must not
+    // leak it via arpdau*dau - entryFee. Only asserting on addon + arpdau since
+    // complementary suppression may also knock out entryFee.
+    expect(rows[0]!.addonRevenueUsd).toEqual({ value: null, suppressed: true });
+    expect(rows[0]!.arpdau).toEqual({ value: null, suppressed: true });
+  });
 });

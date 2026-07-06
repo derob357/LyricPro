@@ -589,12 +589,22 @@ export async function getMonetization(db: Db, r: Range): Promise<MonetizationRow
   return buckets.map((bucket) => {
     const dau = cellAt(dauMap, bucket, k);
 
-    // arpdau = (addon + entry_fee) / dau; suppressed if dau is suppressed or zero.
+    // arpdau = (addon + entry_fee) / dau; suppressed if dau is suppressed or zero,
+    // OR if either revenue component that feeds it is itself suppressed. Without
+    // this, arpdau * dau - visibleComponent would reconstruct a suppressed
+    // component (differencing attack) — see privacy spec.
     const addonEntry = addonMap.get(bucket);
     const entryFeeEntry = entryFeeMap.get(bucket);
     const dauEntry = dauMap.get(bucket);
     let arpdau: Cell;
-    if (!dauEntry || dau.suppressed || dau.value === 0 || dau.value === null) {
+    if (
+      !dauEntry ||
+      dau.suppressed ||
+      dau.value === 0 ||
+      dau.value === null ||
+      (addonEntry && addonEntry.userCount < k) ||
+      (entryFeeEntry && entryFeeEntry.userCount < k)
+    ) {
       arpdau = { value: null, suppressed: true };
     } else {
       const addonVal = addonEntry?.value ?? 0;

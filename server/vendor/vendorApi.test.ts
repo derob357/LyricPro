@@ -38,6 +38,11 @@ describe("handleMetrics", () => {
     expect((await handleMetrics(makeFakeDb([]) as never, AUTH, "growth", { from: "07/01/2026", to: "2026-07-02" })).status).toBe(400);
     expect((await handleMetrics(makeFakeDb([]) as never, AUTH, "growth", { from: "2026-07-02", to: "2026-07-01" })).status).toBe(400);
   });
+  it("400 invalid_range for a calendar-invalid date that still matches the shape regex", async () => {
+    const r = await handleMetrics(makeFakeDb([]) as never, AUTH, "growth", { from: "2026-13-45", to: "2026-07-02" });
+    expect(r.status).toBe(400);
+    expect((r.body as { error: string }).error).toBe("invalid_range");
+  });
   it("400 invalid_params for bad granularity (distinct from invalid_range)", async () => {
     const r = await handleMetrics(makeFakeDb([]) as never, AUTH, "growth", { ...Q, granularity: "hourly" });
     expect(r.status).toBe(400);

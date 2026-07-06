@@ -236,6 +236,16 @@ function spanMs(from: string, to: string): number {
   return Date.UTC(ty, tm - 1, td) - Date.UTC(fy, fm - 1, fd);
 }
 
+// DATE_RE only checks shape (\d{4}-\d{2}-\d{2}); it happily accepts calendar-
+// invalid strings like "2026-13-45". Those pass regex + spanMs arithmetic but
+// blow up as invalid dates once they hit Postgres. Round-trip through Date to
+// reject them here instead.
+function isValidCalendarDate(s: string): boolean {
+  const d = new Date(`${s}T00:00:00Z`);
+  if (Number.isNaN(d.getTime())) return false;
+  return d.toISOString().slice(0, 10) === s;
+}
+
 const querySchema = z
   .object({
     from: z.string().regex(DATE_RE),
@@ -245,6 +255,7 @@ const querySchema = z
     dimension: z.enum(["song", "genre", "decade"]).default("song"),
     limit: z.coerce.number().int().min(1).max(200).default(50),
   })
+  .refine((d) => isValidCalendarDate(d.from) && isValidCalendarDate(d.to), { message: "invalid_range" })
   .refine((d) => d.from <= d.to, { message: "invalid_range" })
   .refine((d) => spanMs(d.from, d.to) <= MAX_SPAN_MS, { message: "invalid_range" });
 
@@ -253,8 +264,9 @@ const reportsBodySchema = z
     from: z.string().regex(DATE_RE),
     to: z.string().regex(DATE_RE),
     granularity: z.enum(["day", "week", "month"]).default("day"),
-    reports: z.array(z.string()),
+    reports: z.array(z.string()).min(1).max(4),
   })
+  .refine((d) => isValidCalendarDate(d.from) && isValidCalendarDate(d.to), { message: "invalid_range" })
   .refine((d) => d.from <= d.to, { message: "invalid_range" })
   .refine((d) => spanMs(d.from, d.to) <= MAX_SPAN_MS, { message: "invalid_range" });
 
@@ -265,6 +277,7 @@ const dateOnlySchema = z
     from: z.string().regex(DATE_RE),
     to: z.string().regex(DATE_RE),
   })
+  .refine((d) => isValidCalendarDate(d.from) && isValidCalendarDate(d.to), { message: "invalid_range" })
   .refine((d) => d.from <= d.to, { message: "invalid_range" })
   .refine((d) => spanMs(d.from, d.to) <= MAX_SPAN_MS, { message: "invalid_range" });
 
@@ -407,7 +420,8 @@ export async function handleReports(
   const parsed = reportsBodySchema.safeParse(rawBody);
   if (!parsed.success) return err(400, "invalid_request");
 
-  const { reports, from, to, granularity } = parsed.data;
+  const { from, to, granularity } = parsed.data;
+  const reports = Array.from(new Set(parsed.data.reports));
   const range: Range = { from, to, granularity };
 
   // Per-family scope enforcement — unscoped requested family → 403, not silent omission
