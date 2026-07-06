@@ -6,6 +6,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
 import type { VendorRange } from "./lib";
+import GrowthTab from "./tabs/GrowthTab";
+import EngagementTab from "./tabs/EngagementTab";
 
 const FAMILY_LABELS: Record<string, string> = {
   growth: "Growth",
@@ -103,10 +105,10 @@ export default function VendorDashboard() {
             <TabsTrigger value="api">API Access</TabsTrigger>
           </TabsList>
           {scopes.includes("growth") && (
-            <TabsContent value="growth"><p className="text-muted-foreground p-6">Coming soon</p></TabsContent>
+            <TabsContent value="growth"><GrowthTab range={range} notes={notes} /></TabsContent>
           )}
           {scopes.includes("engagement") && (
-            <TabsContent value="engagement"><p className="text-muted-foreground p-6">Coming soon</p></TabsContent>
+            <TabsContent value="engagement"><EngagementTab range={range} notes={notes} /></TabsContent>
           )}
           {scopes.includes("content") && (
             <TabsContent value="content"><p className="text-muted-foreground p-6">Coming soon</p></TabsContent>
