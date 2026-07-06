@@ -3,7 +3,7 @@
 // All mutations are wrapped in a db.transaction so the write and the audit
 // row succeed or fail atomically (follows the adminUsage.ts pattern).
 import { z } from "zod";
-import { eq, asc, and, isNull } from "drizzle-orm";
+import { eq, asc, and, isNull, sql } from "drizzle-orm";
 import { TRPCError } from "@trpc/server";
 import { adminProcedure, router } from "../_core/trpc";
 import { getDb } from "../db";
@@ -180,7 +180,7 @@ export const adminVendorsRouter = router({
       const [found] = await db
         .select({ id: users.id, role: users.role })
         .from(users)
-        .where(eq(users.email, input.email));
+        .where(sql`lower(${users.email}) = ${input.email.toLowerCase()}`);
 
       const decision = memberLinkDecision(found ?? null);
       if (!decision.ok) {
@@ -194,6 +194,25 @@ export const adminVendorsRouter = router({
       }
 
       const userId = found!.id;
+
+      const [vendorExists] = await db
+        .select({ id: vendors.id })
+        .from(vendors)
+        .where(eq(vendors.id, input.vendorId));
+      if (!vendorExists) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Vendor not found" });
+      }
+
+      const [existingMembership] = await db
+        .select({ id: vendorMembers.id })
+        .from(vendorMembers)
+        .where(eq(vendorMembers.userId, userId));
+      if (existingMembership) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "User is already linked to a vendor" });
+      }
+
+      // Unique constraint on vendorMembers.userId remains as a backstop, but the
+      // checks above make it unreachable in normal (non-racing) flows.
       return db.transaction(async (tx) => {
         await tx
           .insert(vendorMembers)
@@ -227,20 +246,27 @@ export const adminVendorsRouter = router({
       const db = await getDb();
       if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR" });
 
-      const [found] = await db
-        .select({ id: users.id, role: users.role })
-        .from(users)
-        .where(eq(users.id, input.userId));
-
       await db.transaction(async (tx) => {
-        await tx
+        const deleted = await tx
           .delete(vendorMembers)
           .where(
             and(
               eq(vendorMembers.vendorId, input.vendorId),
               eq(vendorMembers.userId, input.userId),
             ),
-          );
+          )
+          .returning({ id: vendorMembers.id });
+
+        // Idempotent no-op: no membership row for this (vendorId, userId) pair —
+        // don't touch the user's role or record an audit row (mirrors revokeKey).
+        if (deleted.length === 0) {
+          return;
+        }
+
+        const [found] = await tx
+          .select({ id: users.id, role: users.role })
+          .from(users)
+          .where(eq(users.id, input.userId));
         if (found && found.role === "vendor") {
           await tx
             .update(users)
@@ -271,21 +297,32 @@ export const adminVendorsRouter = router({
       const db = await getDb();
       if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR" });
 
-      const existingKeys = await db
-        .select({ revokedAt: vendorApiKeys.revokedAt })
-        .from(vendorApiKeys)
-        .where(eq(vendorApiKeys.vendorId, input.vendorId));
-
-      if (activeKeyLimitReached(existingKeys)) {
-        throw new TRPCError({
-          code: "BAD_REQUEST",
-          message: "Vendor already has 2 active keys — revoke one first",
-        });
-      }
-
       const keyData = generateApiKey();
 
       return db.transaction(async (tx) => {
+        // Lock the vendor row first so concurrent issueKey calls for the same
+        // vendor serialize — this closes the count-then-insert race where two
+        // concurrent requests could both pass the 2-active-key check.
+        const lockedResult = await tx.execute(
+          sql`SELECT id FROM vendors WHERE id = ${input.vendorId} FOR UPDATE`,
+        );
+        const lockedRows = (lockedResult as any).rows ?? (Array.isArray(lockedResult) ? lockedResult : []);
+        if (lockedRows.length === 0) {
+          throw new TRPCError({ code: "NOT_FOUND", message: "Vendor not found" });
+        }
+
+        const existingKeys = await tx
+          .select({ revokedAt: vendorApiKeys.revokedAt })
+          .from(vendorApiKeys)
+          .where(eq(vendorApiKeys.vendorId, input.vendorId));
+
+        if (activeKeyLimitReached(existingKeys)) {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: "Vendor already has 2 active keys — revoke one first",
+          });
+        }
+
         const [key] = await tx
           .insert(vendorApiKeys)
           .values({
@@ -338,10 +375,18 @@ export const adminVendorsRouter = router({
       }
 
       await db.transaction(async (tx) => {
-        await tx
+        const updated = await tx
           .update(vendorApiKeys)
           .set({ revokedAt: new Date() })
-          .where(and(eq(vendorApiKeys.id, input.keyId), isNull(vendorApiKeys.revokedAt)));
+          .where(and(eq(vendorApiKeys.id, input.keyId), isNull(vendorApiKeys.revokedAt)))
+          .returning({ id: vendorApiKeys.id });
+
+        // Idempotent no-op: another request already revoked it between our
+        // read above and this update — skip the audit row.
+        if (updated.length === 0) {
+          return;
+        }
+
         await recordAdminAction({
           ctx,
           tx,
