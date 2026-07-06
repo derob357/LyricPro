@@ -85,11 +85,15 @@ async function fetchMetrics(
   from: string,
   to: string,
 ): Promise<MetricRow[]> {
+  const metricList = sql.join(
+    metrics.map((m) => sql`${m}`),
+    sql`, `,
+  );
   const rows = toRows(
     await db.execute(sql`
       SELECT date::text AS date, metric, dimension, dimension_value, value, user_count
       FROM kpi_daily_metrics
-      WHERE metric = ANY(${metrics}) AND date >= ${from}::date AND date <= ${to}::date
+      WHERE metric IN (${metricList}) AND date >= ${from}::date AND date <= ${to}::date
       ORDER BY date
     `),
   );
@@ -432,11 +436,27 @@ export async function getContent(
     // max of daily per-song user counts is an honest lower bound on reach.
     let catalogPredicate = sql``;
     if (songIds.length > 0 && artistsLower.length > 0) {
-      catalogPredicate = sql` AND (st.song_id = ANY(${songIds}) OR lower(s."artistName") = ANY(${artistsLower}))`;
+      const songIdList = sql.join(
+        songIds.map((id) => sql`${id}`),
+        sql`, `,
+      );
+      const artistList = sql.join(
+        artistsLower.map((a) => sql`${a}`),
+        sql`, `,
+      );
+      catalogPredicate = sql` AND (st.song_id IN (${songIdList}) OR lower(s."artistName") IN (${artistList}))`;
     } else if (songIds.length > 0) {
-      catalogPredicate = sql` AND st.song_id = ANY(${songIds})`;
+      const songIdList = sql.join(
+        songIds.map((id) => sql`${id}`),
+        sql`, `,
+      );
+      catalogPredicate = sql` AND st.song_id IN (${songIdList})`;
     } else if (artistsLower.length > 0) {
-      catalogPredicate = sql` AND lower(s."artistName") = ANY(${artistsLower})`;
+      const artistList = sql.join(
+        artistsLower.map((a) => sql`${a}`),
+        sql`, `,
+      );
+      catalogPredicate = sql` AND lower(s."artistName") IN (${artistList})`;
     }
 
     const rawSongRows = toRows(
