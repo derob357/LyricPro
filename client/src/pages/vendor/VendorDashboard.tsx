@@ -8,6 +8,8 @@ import { Input } from "@/components/ui/input";
 import type { VendorRange } from "./lib";
 import GrowthTab from "./tabs/GrowthTab";
 import EngagementTab from "./tabs/EngagementTab";
+import ContentTab from "./tabs/ContentTab";
+import MonetizationTab from "./tabs/MonetizationTab";
 
 const FAMILY_LABELS: Record<string, string> = {
   growth: "Growth",
@@ -111,10 +113,10 @@ export default function VendorDashboard() {
             <TabsContent value="engagement"><EngagementTab range={range} notes={notes} /></TabsContent>
           )}
           {scopes.includes("content") && (
-            <TabsContent value="content"><p className="text-muted-foreground p-6">Coming soon</p></TabsContent>
+            <TabsContent value="content"><ContentTab range={range} notes={notes} /></TabsContent>
           )}
           {scopes.includes("monetization") && (
-            <TabsContent value="monetization"><p className="text-muted-foreground p-6">Coming soon</p></TabsContent>
+            <TabsContent value="monetization"><MonetizationTab range={range} notes={notes} /></TabsContent>
           )}
           <TabsContent value="api"><p className="text-muted-foreground p-6">Coming soon</p></TabsContent>
         </Tabs>
