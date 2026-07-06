@@ -23,6 +23,13 @@ export function cellText(c: Cell | undefined, digits = 0): string {
   return c.value.toLocaleString(undefined, { maximumFractionDigits: digits });
 }
 
+export function cellPercent(c: Cell | undefined): string {
+  if (!c) return "—";
+  if (c.suppressed) return "•••";
+  if (c.value === null) return "—";
+  return `${(c.value * 100).toFixed(0)}%`;
+}
+
 export function chartVal(c: Cell | undefined): number | null {
   if (!c || c.suppressed || c.value === null) return null;
   return c.value;

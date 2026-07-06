@@ -1,7 +1,7 @@
 // client/src/pages/vendor/tabs/EngagementTab.tsx
 import { CartesianGrid, Legend, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { trpc } from "@/lib/trpc";
-import { ChartCard, ExportButton, QueryError, StatCard, cellText, chartVal, type VendorRange } from "../lib";
+import { ChartCard, ExportButton, QueryError, StatCard, cellText, cellPercent, chartVal, type VendorRange } from "../lib";
 
 export default function EngagementTab({ range, notes }: { range: VendorRange; notes: Record<string, string> }) {
   const q = trpc.vendor.engagement.useQuery(range);
@@ -64,7 +64,7 @@ export default function EngagementTab({ range, notes }: { range: VendorRange; no
                     <td className="py-2 pr-4">{r.cohortDate}</td>
                     <td className="py-2 pr-4">D{r.dayOffset}</td>
                     <td className="py-2 pr-4">{cellText(r.cohortSize)}</td>
-                    <td className="py-2">{cellText(r.retainedRate, 2)}</td>
+                    <td className="py-2">{cellPercent(r.retainedRate)}</td>
                   </tr>
                 ))}
               </tbody>

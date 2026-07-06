@@ -44,6 +44,15 @@ export default function VendorDashboard() {
     );
   }
 
+  if (me.error) {
+    return (
+      <div className="p-8 text-center">
+        <p className="text-red-600 font-semibold">Vendor access is not active for this account.</p>
+        <p className="text-sm text-muted-foreground mt-2">Contact the LyricPro team if you believe this is an error.</p>
+      </div>
+    );
+  }
+
   const range: VendorRange =
     preset === "custom"
       ? { from: customFrom, to: customTo, granularity }

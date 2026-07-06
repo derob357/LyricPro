@@ -3,7 +3,7 @@ import { useState } from "react";
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { trpc } from "@/lib/trpc";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { ChartCard, ExportButton, QueryError, cellText, chartVal, type VendorRange } from "../lib";
+import { ChartCard, ExportButton, QueryError, cellText, cellPercent, chartVal, type VendorRange } from "../lib";
 
 export default function ContentTab({ range, notes }: { range: VendorRange; notes: Record<string, string> }) {
   const [dimension, setDimension] = useState<"song" | "genre" | "decade">("song");
@@ -60,7 +60,7 @@ export default function ContentTab({ range, notes }: { range: VendorRange; notes
                   <td className="py-2 pr-4">{r.key}</td>
                   <td className="py-2 pr-4">{cellText(r.displays)}</td>
                   <td className="py-2 pr-4">{cellText(r.roundsPlayed)}</td>
-                  <td className="py-2 pr-4">{cellText(r.correctRate, 2)}</td>
+                  <td className="py-2 pr-4">{cellPercent(r.correctRate)}</td>
                   <td className="py-2">{cellText(r.avgResponseSeconds, 1)}</td>
                 </tr>
               ))}
