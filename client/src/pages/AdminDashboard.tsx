@@ -13,6 +13,7 @@ import SuggestionsTab from "./admin/tabs/SuggestionsTab";
 import CommentaryTab from "./admin/tabs/CommentaryTab";
 import GenresTab from "./admin/tabs/GenresTab";
 import BannersTab from "./admin/tabs/BannersTab";
+import VendorsTab from "./admin/tabs/VendorsTab";
 
 const formatCurrency = (amount: number) => {
   return new Intl.NumberFormat('en-US', {
@@ -35,7 +36,7 @@ function downloadCsv(text: string, filename: string) {
   URL.revokeObjectURL(url);
 }
 
-const VALID_TABS = ["overview", "users", "revenue", "payouts", "analytics", "songs", "genres", "log", "usage", "suggestions", "commentary", "banners"] as const;
+const VALID_TABS = ["overview", "users", "revenue", "payouts", "analytics", "songs", "genres", "log", "usage", "suggestions", "commentary", "banners", "vendors"] as const;
 type TabValue = typeof VALID_TABS[number];
 
 export function AdminDashboard() {
@@ -209,6 +210,7 @@ export function AdminDashboard() {
             <TabsTrigger value="suggestions">Suggestions</TabsTrigger>
             <TabsTrigger value="commentary">Commentary</TabsTrigger>
             <TabsTrigger value="banners">Banners</TabsTrigger>
+            <TabsTrigger value="vendors">Vendors</TabsTrigger>
           </TabsList>
 
           {/* Overview Tab */}
@@ -520,6 +522,9 @@ export function AdminDashboard() {
 
           {/* Banners Tab */}
           <TabsContent value="banners"><BannersTab /></TabsContent>
+
+          {/* Vendors Tab */}
+          <TabsContent value="vendors"><VendorsTab /></TabsContent>
         </Tabs>
       </div>
     </div>
