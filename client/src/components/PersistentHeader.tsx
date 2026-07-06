@@ -1,5 +1,5 @@
 import { Link, useLocation } from "wouter";
-import { MessageSquare, Music, Music2, ShoppingCart } from "lucide-react";
+import { BarChart3, MessageSquare, Music, Music2, ShoppingCart } from "lucide-react";
 import { trpc } from "@/lib/trpc";
 import AnimatedGnBalance from "@/components/AnimatedGnBalance";
 import { supabase } from "@/lib/supabase";
@@ -118,6 +118,14 @@ export function PersistentHeader() {
                     <DropdownMenuItem asChild>
                       <Link href="/dashboard">Dashboard</Link>
                     </DropdownMenuItem>
+                    {user.role === "vendor" && (
+                      <DropdownMenuItem asChild>
+                        <Link href="/vendor" className="flex items-center gap-2">
+                          <BarChart3 className="w-4 h-4" />
+                          Vendor Dashboard
+                        </Link>
+                      </DropdownMenuItem>
+                    )}
                     <DropdownMenuItem asChild>
                       <Link href="/profile">Profile</Link>
                     </DropdownMenuItem>

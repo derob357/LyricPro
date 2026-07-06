@@ -17,6 +17,7 @@ import Leaderboards from "./pages/Leaderboards";
 import ProfileCompletion from "./pages/ProfileCompletion";
 import { UserDashboard } from "./pages/UserDashboard";
 import { AdminDashboard } from "./pages/AdminDashboard";
+import VendorDashboard from "@/pages/vendor/VendorDashboard";
 import SongsList from "./pages/admin/SongsList";
 import SongEdit from "./pages/admin/SongEdit";
 import SongNew from "./pages/admin/SongNew";
@@ -70,6 +71,7 @@ function Router() {
       <Route path="/tournaments" component={TournamentsPage} />
       <Route path="/dashboard" component={UserDashboard} />
       <Route path="/admin" component={AdminDashboard} />
+      <Route path="/vendor" component={VendorDashboard} />
       <Route path="/admin/songs" component={SongsList} />
       <Route path="/admin/songs/new" component={SongNew} />
       <Route path="/admin/songs/:id" component={SongEdit} />
