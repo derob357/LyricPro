@@ -127,6 +127,7 @@ export default function VendorsTab() {
               onLinkMember={(email, onDone) => linkMemberMut.mutate({ vendorId: vendor.id, email }, { onSuccess: onDone })}
               onUnlinkMember={(userId) => unlinkMemberMut.mutate({ vendorId: vendor.id, userId })}
               onIssueKey={(label, onDone) => issueKeyMut.mutate({ vendorId: vendor.id, label }, { onSuccess: onDone })}
+              issueKeyPending={issueKeyMut.isPending}
               onRevokeKey={(keyId) => {
                 if (window.confirm("Revoke this key? This cannot be undone.")) {
                   revokeKeyMut.mutate({ keyId });
@@ -230,6 +231,7 @@ function VendorDetail({
   onLinkMember,
   onUnlinkMember,
   onIssueKey,
+  issueKeyPending,
   onRevokeKey,
   onCatalogFilterSave,
   onCatalogFilterClear,
@@ -238,6 +240,7 @@ function VendorDetail({
   onLinkMember: (email: string, onDone: () => void) => void;
   onUnlinkMember: (userId: number) => void;
   onIssueKey: (label: string, onDone: () => void) => void;
+  issueKeyPending: boolean;
   onRevokeKey: (keyId: number) => void;
   onCatalogFilterSave: (catalogFilter: { songIds?: number[]; artists?: string[] }) => void;
   onCatalogFilterClear: () => void;
@@ -257,6 +260,18 @@ function VendorDetail({
     }
     try {
       const parsed = JSON.parse(catalogText);
+      const keys = Object.keys(parsed ?? {});
+      const validShape =
+        parsed !== null &&
+        typeof parsed === "object" &&
+        !Array.isArray(parsed) &&
+        keys.every((k) => k === "songIds" || k === "artists") &&
+        (parsed.songIds === undefined || (Array.isArray(parsed.songIds) && parsed.songIds.every((n: unknown) => Number.isInteger(n)))) &&
+        (parsed.artists === undefined || (Array.isArray(parsed.artists) && parsed.artists.every((a: unknown) => typeof a === "string")));
+      if (!validShape) {
+        setCatalogError('Filter must be {"songIds":[numbers]} and/or {"artists":[strings]} — no other keys');
+        return;
+      }
       setCatalogError(null);
       onCatalogFilterSave(parsed);
     } catch (e) {
@@ -335,7 +350,7 @@ function VendorDetail({
           <Button
             size="sm"
             className="gap-1"
-            disabled={!keyLabel.trim()}
+            disabled={!keyLabel.trim() || issueKeyPending}
             onClick={() => onIssueKey(keyLabel.trim(), () => setKeyLabel(""))}
           >
             <KeyRound className="w-3.5 h-3.5" /> Issue key
