@@ -209,7 +209,7 @@ const FAMILY_METRICS: Record<string, string[]> = {
 
 const ALL_FAMILIES = ["growth", "engagement", "content", "monetization"] as const;
 
-const SCOPE_MAP = {
+export const SCOPE_MAP = {
   growth: "scopeGrowth",
   engagement: "scopeEngagement",
   content: "scopeContent",
@@ -240,7 +240,7 @@ function spanMs(from: string, to: string): number {
 // invalid strings like "2026-13-45". Those pass regex + spanMs arithmetic but
 // blow up as invalid dates once they hit Postgres. Round-trip through Date to
 // reject them here instead.
-function isValidCalendarDate(s: string): boolean {
+export function isValidCalendarDate(s: string): boolean {
   const d = new Date(`${s}T00:00:00Z`);
   if (Number.isNaN(d.getTime())) return false;
   return d.toISOString().slice(0, 10) === s;
