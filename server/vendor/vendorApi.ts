@@ -289,7 +289,7 @@ function err(status: number, code: string): ApiResult {
   return { status, body: { error: code, correlationId: crypto.randomUUID() } };
 }
 
-function buildDefinitions(
+export function buildDefinitions(
   families: readonly string[],
 ): { metrics: Record<string, string>; notes: string[] } {
   const metricKeys = families.flatMap((f) => FAMILY_METRICS[f] ?? []);

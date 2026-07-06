@@ -4,11 +4,11 @@
 // handler) so dashboard and API numbers cannot drift.
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
-import { sql } from "drizzle-orm";
+import { sql, eq, desc } from "drizzle-orm";
 import { router, vendorProcedure } from "../_core/trpc";
 import { getContent, getDateRange, getEngagement, getGrowth, getMonetization } from "../vendor/kpiQueries";
-import { KPI_DEFINITIONS, definitionNotes } from "../vendor/kpiDefinitions";
-import { handleMetrics, isValidCalendarDate, SCOPE_MAP } from "../vendor/vendorApi";
+import { handleMetrics, isValidCalendarDate, SCOPE_MAP, buildDefinitions } from "../vendor/vendorApi";
+import { vendorApiKeys } from "../../drizzle/schema";
 import type { ResolvedVendor } from "../vendor/vendorResolve";
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
@@ -71,7 +71,7 @@ export const vendorRouter = router({
     vendorName: ctx.vendor.name,
     scopes: grantedScopes(ctx.vendor),
     dateRange: await getDateRange(ctx.db),
-    definitions: { metrics: KPI_DEFINITIONS, notes: definitionNotes() },
+    definitions: buildDefinitions(grantedScopes(ctx.vendor)),
   })),
 
   growth: vendorProcedure.input(rangeInput).query(async ({ ctx, input }) => {
@@ -121,25 +121,31 @@ export const vendorRouter = router({
     }),
 
   apiAccess: vendorProcedure.query(async ({ ctx }) => {
-    const rows = (await ctx.db.execute(sql`
-      SELECT id, label, key_prefix, last4, created_at, last_used_at, revoked_at
-      FROM vendor_api_keys
-      WHERE vendor_id = ${ctx.vendor.id}
-      ORDER BY created_at DESC
-    `)) as unknown as Record<string, unknown>[];
-    const list = Array.isArray(rows) ? rows : Array.from(rows as Iterable<Record<string, unknown>>);
+    const rows = await ctx.db
+      .select({
+        id: vendorApiKeys.id,
+        label: vendorApiKeys.label,
+        keyPrefix: vendorApiKeys.keyPrefix,
+        last4: vendorApiKeys.last4,
+        createdAt: vendorApiKeys.createdAt,
+        lastUsedAt: vendorApiKeys.lastUsedAt,
+        revokedAt: vendorApiKeys.revokedAt,
+      })
+      .from(vendorApiKeys)
+      .where(eq(vendorApiKeys.vendorId, ctx.vendor.id))
+      .orderBy(desc(vendorApiKeys.createdAt));
     return {
       vendorName: ctx.vendor.name,
       scopes: grantedScopes(ctx.vendor),
       baseUrl: "/api/vendor/v1" as const,
-      keys: list.map((k) => ({
-        id: Number(k.id),
-        label: String(k.label),
-        keyPrefix: String(k.key_prefix),
-        last4: String(k.last4),
-        createdAt: String(k.created_at),
-        lastUsedAt: k.last_used_at ? String(k.last_used_at) : null,
-        revokedAt: k.revoked_at ? String(k.revoked_at) : null,
+      keys: rows.map((k) => ({
+        id: k.id,
+        label: k.label,
+        keyPrefix: k.keyPrefix,
+        last4: k.last4,
+        createdAt: k.createdAt.toISOString(),
+        lastUsedAt: k.lastUsedAt?.toISOString() ?? null,
+        revokedAt: k.revokedAt?.toISOString() ?? null,
       })),
     };
   }),
