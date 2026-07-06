@@ -10,6 +10,12 @@ import { trpc } from "@/lib/trpc";
 export type Cell = { value: number | null; suppressed: boolean };
 export type VendorRange = { from: string; to: string; granularity: "day" | "week" | "month" };
 
+export function QueryError({ message }: { message: string }) {
+  return <p className="text-sm text-red-600 p-6">{message}</p>;
+}
+
+// NOTE: presets compute days in UTC while rollup days are America/New_York — a preset boundary can be off by one local day for ~4-5h each evening ET. Accepted for coarse presets; custom range gives exact control.
+
 export function cellText(c: Cell | undefined, digits = 0): string {
   if (!c) return "—";
   if (c.suppressed) return "•••";

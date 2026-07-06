@@ -44,6 +44,13 @@ export default function VendorDashboard() {
       ? { from: customFrom, to: customTo, granularity }
       : { from: isoDaysAgo(Number(preset)), to: isoDaysAgo(1), granularity };
 
+  const rangeError =
+    preset === "custom" && customFrom > customTo
+      ? "Start date must be before end date"
+      : preset === "custom" && (new Date(customTo).getTime() - new Date(customFrom).getTime()) / 86_400_000 > 400
+        ? "Range cannot exceed 400 days"
+        : null;
+
   const scopes = me.data?.scopes ?? [];
   const notes = me.data?.definitions.metrics ?? {};
 
@@ -68,8 +75,8 @@ export default function VendorDashboard() {
           </Select>
           {preset === "custom" ? (
             <>
-              <Input type="date" className="w-40" value={customFrom} onChange={(e) => setCustomFrom(e.target.value)} />
-              <Input type="date" className="w-40" value={customTo} onChange={(e) => setCustomTo(e.target.value)} />
+              <Input type="date" className="w-40" max={isoDaysAgo(1)} value={customFrom} onChange={(e) => setCustomFrom(e.target.value)} />
+              <Input type="date" className="w-40" max={isoDaysAgo(1)} value={customTo} onChange={(e) => setCustomTo(e.target.value)} />
             </>
           ) : null}
           <Select value={granularity} onValueChange={(v) => setGranularity(v as VendorRange["granularity"])}>
@@ -83,7 +90,9 @@ export default function VendorDashboard() {
         </div>
       </div>
 
-      {me.isLoading ? (
+      {rangeError ? (
+        <p className="text-sm text-red-600">{rangeError}</p>
+      ) : me.isLoading ? (
         <p className="text-muted-foreground text-center py-12">Loading…</p>
       ) : (
         <Tabs defaultValue={scopes[0] ?? "api"} className="w-full">
