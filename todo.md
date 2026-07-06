@@ -384,4 +384,6 @@ Expected: yesterday's `run_date` with `status = 'success'` and a pg_cron run ent
 - [ ] Swap vendor API rate limiting to Upstash Redis (@upstash/ratelimit) before any untrusted/high-volume partner — in-process buckets reset per serverless instance (decision 2026-07-05: ship in-process first)
 - [ ] Raise VENDOR_KPI_MIN_COHORT from 10 toward 50 as traffic grows (disclosed in /v1/meta definitions)
 - [ ] Vendor member invite flow for emails without accounts (v1 links existing users only)
-- [ ] Phase 3: /vendor dashboard UI (vendorProcedure + tRPC vendorRouter over the same kpiQueries layer)
+- [x] Phase 3: /vendor dashboard UI (vendorProcedure + tRPC vendorRouter over the same kpiQueries layer)
+- [ ] Manual E2E: sign in as a vendor-linked account, verify /vendor tabs render real data, suppressed cells show •••, CSV downloads (needs a real Supabase session — owner action)
+- [ ] Vendor dashboard polish candidates: retention cohort chart (currently table), per-tab loading skeletons, dark-mode chart color audit, auto-redirect vendor-role users from / to /vendor after login (spec "vendors land here"; currently reached via header menu link)

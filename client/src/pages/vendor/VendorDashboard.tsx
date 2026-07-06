@@ -10,6 +10,7 @@ import GrowthTab from "./tabs/GrowthTab";
 import EngagementTab from "./tabs/EngagementTab";
 import ContentTab from "./tabs/ContentTab";
 import MonetizationTab from "./tabs/MonetizationTab";
+import ApiAccessTab from "./tabs/ApiAccessTab";
 
 const FAMILY_LABELS: Record<string, string> = {
   growth: "Growth",
@@ -118,7 +119,7 @@ export default function VendorDashboard() {
           {scopes.includes("monetization") && (
             <TabsContent value="monetization"><MonetizationTab range={range} notes={notes} /></TabsContent>
           )}
-          <TabsContent value="api"><p className="text-muted-foreground p-6">Coming soon</p></TabsContent>
+          <TabsContent value="api"><ApiAccessTab /></TabsContent>
         </Tabs>
       )}
       <p className="text-xs text-muted-foreground">
