@@ -1,17 +1,41 @@
 # RLS Deny-All Backstop — Design
 
 **Date:** 2026-07-07
-**Status:** Approved (brainstorm complete)
+**Status:** Approved, then CORRECTED 2026-07-07 after querying prod (see below)
 **Closes:** SOC 2 gap T-03 (CC6.1 / CC6.3 — DB-layer authorization backstop)
 
-## Purpose
+## ⚠️ Correction — prod state contradicts the gap assessment
 
-Enable Postgres Row Level Security on all ~50 `public` tables as a defense-in-depth
-backstop behind the RLS-bypassing service-role/pooler connection. Authorization stays
-app-code-enforced (via tRPC); RLS guarantees that a leaked anon/publishable key or a
-client bug cannot read or write tables directly. Deny-all-for-client-roles +
-service-role-only is a defensible CC6.1/CC6.3 least-privilege control — auditors do
-not mandate per-row policies (research finding #10).
+A live query of prod (`pg_tables.rowsecurity`, `pg_policies`, `pg_proc.prosecdef`) on
+2026-07-07 found reality is **not** what the gap assessment (read from a stale drizzle
+snapshot) claimed:
+
+1. **RLS is ALREADY enabled on all 57 `public` tables** — enabled out-of-band (Supabase
+   dashboard / lint "fix all"; no repo migration does it). The deny-all backstop the
+   original design set out to build **already exists**. T-03's DB control is effectively
+   in place; it was only mis-recorded.
+2. **This silently broke Realtime.** Four tables the `realtime.messages` channel-join
+   policies depend on — `users`, `room_players`, `tournament_members`, `tournaments` —
+   have RLS enabled with **zero policies** (deny-all for `authenticated`), and the helper
+   `current_chat_user_id()` / `is_chat_admin()` / `is_chat_banned()` are **not
+   SECURITY DEFINER** (`prosecdef=false`), so they read those tables as the caller. Result:
+   `current_chat_user_id()` returns NULL and every `game:{id}` / `chat:*` private-channel
+   join fails — multiplayer + chat realtime are broken in prod (owner confirmed
+   untested/broken since ~mid-June).
+
+**Revised scope (this is now a realtime-restoration + documentation task, not an
+enable-RLS task):** add the 4 missing narrow `authenticated` SELECT policies to restore
+channel authorization, harden the 3 helpers, verify (probe + owner smoke), then capture
+evidence + regenerate the drizzle snapshot so it reflects the already-enabled RLS + flip
+T-03 → met. **No `ENABLE ROW LEVEL SECURITY` statements needed** — already done.
+
+## Purpose (original intent — now largely already satisfied at the DB)
+
+Row Level Security on all `public` tables as a defense-in-depth backstop behind the
+RLS-bypassing service-role/pooler connection. Authorization stays app-code-enforced (via
+tRPC); RLS guarantees a leaked anon/publishable key or client bug cannot read/write tables
+directly. Deny-all-for-client-roles + service-role-only is a defensible CC6.1/CC6.3
+least-privilege control — auditors do not mandate per-row policies (research #10).
 
 ## Key facts (from codebase map)
 
@@ -44,20 +68,24 @@ These feed the `realtime.messages` channel-join policies (`game:{id}`, `chat:*`)
 gets a narrow `authenticated` SELECT policy using the `(select …)` initplan-cached form
 (research #5 — ~95% perf improvement over bare `auth.uid()`).
 
-| Table | New `authenticated` SELECT policy | Consumed by |
-|---|---|---|
-| `users` | own row: `"openId" = (select auth.uid())::text` | `current_chat_user_id()`, `is_chat_admin()` |
-| `room_players` | own memberships: `"userId" = (select public.current_chat_user_id())` | `game:{id}` join EXISTS (`0016`) |
-| `tournament_members` | own memberships: `"userId" = (select public.current_chat_user_id())` | `chat:tournament` join EXISTS (`0013`) |
-| `tournaments` | member-of: `EXISTS (SELECT 1 FROM tournament_members tm WHERE tm."tournamentId" = tournaments.id AND tm."userId" = (select public.current_chat_user_id()))` | `chat:tournament` join EXISTS |
-| `chat_bans` | **already has committed policies** (`0013`) — verify active, do NOT duplicate | `is_chat_banned()` |
+Column names are **confirmed from prod** (2026-07-07) and differ between tables — a real
+trap: `room_players` uses quoted camelCase, `tournament_members` uses snake_case.
 
-`chat_messages` / `chat_audit_log` also already carry policies from `0013`; the
-migration re-asserts `ENABLE` idempotently and leaves their policies untouched.
+| Table | New `authenticated` SELECT policy (verbatim `USING`) | Consumed by |
+|---|---|---|
+| `users` | `"openId" = (select auth.uid())::text` | `current_chat_user_id()`, `is_chat_admin()` |
+| `room_players` | `"userId" = (select public.current_chat_user_id())` | `game:{id}` join EXISTS (`0016`) |
+| `tournament_members` | `user_id = (select public.current_chat_user_id()) AND left_at IS NULL` | `chat:tournament` join EXISTS (`0013`) |
+| `tournaments` | `EXISTS (SELECT 1 FROM public.tournament_members tm WHERE tm.tournament_id = tournaments.id AND tm.user_id = (select public.current_chat_user_id()) AND tm.left_at IS NULL)` | `chat:tournament` join EXISTS |
+
+The `users` policy uses `auth.uid()` directly (NOT the helper) to avoid recursion — the
+helper reads `users`. The other three call `current_chat_user_id()`, which now resolves
+because `users` has its own-row policy.
+
+`chat_bans`, `chat_messages`, `chat_audit_log` **already carry policies** (confirmed live:
+`chat_bans_select_admin`, `chat_messages_select/insert/update`, etc.) — do NOT touch them.
 `anon` gets **no** policy on any table (guests do not authenticate to Realtime;
-`useRealtimeAuth` pushes an authenticated JWT only). Exact column names
-(`openId`, `userId`, `tournamentId`) to be confirmed against `drizzle/schema.ts` at
-plan time.
+`useRealtimeAuth` pushes an authenticated JWT only).
 
 **Helper hygiene:** pin `search_path = public, pg_temp` on `current_chat_user_id()`,
 `is_chat_admin()`, `is_chat_banned()` (cheap hardening; research #8 footgun class).
@@ -98,23 +126,34 @@ naturally idempotent). Structure:
 - **§3 Rollback block** — commented `ALTER TABLE … DISABLE ROW LEVEL SECURITY` for every
   table + `DROP POLICY` for the 4 new ones, ready to uncomment.
 
-## Staged Rollout
+## Staged Rollout (revised — RLS already enabled)
 
-Single-Supabase topology → this runs against **prod**; every stage is instantly
-reversible (one `DISABLE` statement per table, no locks).
+Single-Supabase topology → this runs against **prod**. RLS is already on, so there are no
+`ENABLE` statements; the only change is **additive policies** (grant narrow read where
+there is currently none), which cannot reduce security and are reversible with `DROP
+POLICY`.
 
-0. **Baseline probe** — run `scripts/probe-rls.mjs` before any change; record current
-   anon/authenticated access matrix.
-1. **Policies only** — apply §1. Inert until RLS enabled; verify app healthy.
-2. **RLS on the 7 policy-backed tables** (smallest blast radius). Probe: authenticated
-   reads own rows only; `game:{id}` + `chat:global` joins still authorize. **Owner runs
-   the 5-min two-browser multiplayer + chat smoke here.**
-3. **RLS on the remaining ~43 tables** in one batch. Probe: anon + authenticated get
-   zero rows / 42501 everywhere; `pnpm test:server` green; one KPI endpoint + one admin
-   tRPC call exercised live.
-4. **Evidence capture** — probe output + `pg_policies` / `pg_tables(rowsecurity)` dump →
-   `compliance/evidence/2026-07-07-rls/` (local-only). Flip gap assessment T-03 → **met**.
-   Regenerate drizzle snapshot so `isRLSEnabled` reflects reality.
+0. **Baseline probe** — run `scripts/probe-rls.mjs` before any change. Expected (confirms
+   diagnosis): a seeded authenticated client's `game:{room}` private-channel join **FAILS**
+   (channel authorization denied), and deny-all holds on non-realtime tables. This is the
+   "red" state.
+1. **Apply the migration** — 4 additive SELECT policies + 3 helper `search_path` pins.
+   Dry-run then apply via `scripts/apply-kpi-migration.mjs`.
+2. **Re-run probe** — now the `game:{room}` join **SUCCEEDS** (green), a foreign
+   `game:{otherRoom}` join still FAILS (own-row scoping works), and deny-all still holds
+   on all non-policy tables. `pnpm test:server` green (server bypass path unaffected).
+3. **Owner two-browser smoke** — live multiplayer round + realtime chat actually deliver
+   events. The one thing the probe can't fully prove (browser realtime event flow).
+4. **Evidence capture** — probe before/after output + `pg_policies` / `pg_tables
+   (rowsecurity)` dump → `compliance/evidence/2026-07-07-rls/` (local-only). Flip gap
+   assessment T-03 → **met** with a note that RLS was already enabled + realtime was
+   restored. Regenerate drizzle snapshot so `isRLSEnabled` reflects the true (enabled)
+   state.
+
+**Rollback:** `DROP POLICY` on the 4 new policies returns those tables to deny-all (the
+current broken-but-safe state) — realtime stays down but nothing is exposed. Since the
+policies only *add* narrow own-row read, there is no security-reducing state to roll back
+to.
 
 ## Verification — `scripts/probe-rls.mjs` (committed)
 
