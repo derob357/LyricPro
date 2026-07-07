@@ -360,6 +360,7 @@ These need your hands / accounts to proceed. I can't do them from here.
 - [x] T-03 RLS backstop — verified already enabled + realtime restored 2026-07-07
 - [ ] Investigate HOW RLS got enabled out-of-band (dashboard lint "fix all"?) and add a guard/checklist so future dashboard actions don't silently break realtime again
 - [ ] T-04 (SE-D04): add roomPlayers membership check to setReady/getNextSong/submitAnswer/assignTeam (app-layer, unrelated to RLS)
+- [ ] Drizzle snapshot `isRLSEnabled:false` is STALE for all 57 tables (root cause of the original T-03 misdiagnosis) — add `.enableRLS()` + `pgPolicy()` declarations to drizzle/schema.ts so the snapshot reflects the real (enabled) prod state; live pg_tables dump is the authoritative evidence until then (compliance/evidence/2026-07-07-rls/)
 
 ## Vendor KPI follow-ups (2026-07-02)
 
