@@ -41,6 +41,7 @@ function tryJoin(client, topic, timeoutMs = 8000) {
 }
 
 let authUserId, appUserId, roomId;
+let authed;
 try {
   // ---- seed ----
   const created = await admin.auth.admin.createUser({ email: EMAIL, password: PASSWORD, email_confirm: true });
@@ -74,7 +75,7 @@ try {
   }
 
   // ---- authenticated session ----
-  const authed = createClient(URL, ANON, { auth: { persistSession: false } });
+  authed = createClient(URL, ANON, { auth: { persistSession: false } });
   const { data: sess, error: sErr } = await authed.auth.signInWithPassword({ email: EMAIL, password: PASSWORD });
   if (sErr) throw sErr;
   await authed.realtime.setAuth(sess.session.access_token);
@@ -100,8 +101,11 @@ try {
   if (authUserId) await admin.auth.admin.deleteUser(authUserId).catch(() => {});
   // SCHEMA ADJUSTMENT: residual check filters on "name" (see above) instead
   // of "nickname".
-  const [{ n }] = await sql`SELECT count(*)::int AS n FROM users WHERE name = ${TAG}`;
-  check("teardown left 0 probe users", n === 0, `residual ${n}`);
+  const [{ n: uLeft }] = await sql`SELECT count(*)::int AS n FROM users WHERE name = ${TAG}`;
+  const rpLeft = roomId ? (await sql`SELECT count(*)::int AS n FROM room_players WHERE "roomId" = ${roomId}`)[0].n : 0;
+  const grLeft = roomId ? (await sql`SELECT count(*)::int AS n FROM game_rooms WHERE id = ${roomId}`)[0].n : 0;
+  check("teardown left 0 probe rows (users/room_players/game_rooms)", uLeft === 0 && rpLeft === 0 && grLeft === 0, `users ${uLeft}, room_players ${rpLeft}, game_rooms ${grLeft}`);
+  try { await authed?.realtime?.disconnect(); } catch {}
   await sql.end();
 }
 console.log(failures === 0 ? "PROBE PASS" : `PROBE FAIL (${failures})`);
