@@ -353,6 +353,14 @@ These need your hands / accounts to proceed. I can't do them from here.
 - [ ] **SE-D01 (Medium):** `resolveStripeCustomer` uses `customers.search({ query: \`email:'\${email}'\` })` with only single-quote escaping. Prefer `customers.list({ email, limit: 1 })` for exact-match dedup — simpler and avoids any potential query-injection edge case. `server/stripe-integration.ts:19-22`.
 - [ ] **SE-D03 (Info):** CSP shipped as `reportOnly: true` without a `report-uri` / `report-to` directive — operators have no signal when violations occur during the bake-in period. Add a report endpoint OR set a calendar reminder to flip CSP to enforcing after 7 days of zero browser-console violations.
 
+## SOC 2 program (compliance/ folder — local-only)
+
+- [x] Compliance platform decided: VANTA (see compliance/decisions/2026-07-06-compliance-platform.md) — purchase pending: email yc@vanta.com for startup discount, demand renewal cap <=10%
+- [ ] Owner: sign up for Vanta + connect GitHub/Vercel/Supabase/Stripe integrations
+- [x] T-03 RLS backstop — verified already enabled + realtime restored 2026-07-07
+- [ ] Investigate HOW RLS got enabled out-of-band (dashboard lint "fix all"?) and add a guard/checklist so future dashboard actions don't silently break realtime again
+- [ ] T-04 (SE-D04): add roomPlayers membership check to setReady/getNextSong/submitAnswer/assignTeam (app-layer, unrelated to RLS)
+
 ## Vendor KPI follow-ups (2026-07-02)
 
 ### Security & verification
