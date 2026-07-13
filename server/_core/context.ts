@@ -66,11 +66,12 @@ export async function createContext(
     user = await getOrCreateDevUser();
   }
 
-  const ip = (opts.req.headers["x-forwarded-for"] as string | undefined)
-    ?.split(",")[0]
-    ?.trim()
-    ?? opts.req.ip
-    ?? undefined;
+  // Client IP for audit logging. Use Express's req.ip: with `trust proxy = 1`
+  // (see index.ts) it resolves to the client address Vercel appended to
+  // X-Forwarded-For, NOT the attacker-controllable leftmost XFF value a client
+  // can set by sending its own X-Forwarded-For header. This matches the
+  // ctx.req.ip that rate limiting and consent stamps already key on.
+  const ip = opts.req.ip ?? undefined;
   const userAgent = opts.req.headers["user-agent"] as string | undefined;
   const requestId =
     (opts.req.headers["x-request-id"] as string | undefined) ??
