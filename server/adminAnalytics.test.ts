@@ -28,6 +28,9 @@ describe("adminAnalytics gate", () => {
   it("rejects non-admins from guestFunnel", async () => {
     await expect(caller("user").adminAnalytics.guestFunnel({})).rejects.toThrow();
   });
+  it("rejects non-admins from userActivity", async () => {
+    await expect(caller("user").adminAnalytics.userActivity({})).rejects.toThrow();
+  });
   it("rejects non-admins from exportUsers", async () => {
     await expect(caller("user").adminAnalytics.exportUsers()).rejects.toThrow();
   });

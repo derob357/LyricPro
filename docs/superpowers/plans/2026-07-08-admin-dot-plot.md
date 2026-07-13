@@ -197,9 +197,13 @@ export function shapeActivity(rows: ActivityEventRow[], opts: ActivityOpts, toda
   }
   const windowStart = windowDays[0]!;
 
+  // The SQL window is rolling (now() - interval), so it can include a partial
+  // day before windowStart; drop those so every day key is renderable.
+  const inWindow = rows.filter((r) => r.day >= windowStart);
+
   // Group events per actor.
   const byActor = new Map<string, { rounds: Set<string>; games: Set<string>; first: ActivityEventRow }>();
-  for (const r of rows) {
+  for (const r of inWindow) {
     let a = byActor.get(r.actor);
     if (!a) { a = { rounds: new Set(), games: new Set(), first: r }; byActor.set(r.actor, a); }
     (r.kind === "game" ? a.games : a.rounds).add(r.day);
@@ -246,7 +250,13 @@ export function shapeActivity(rows: ActivityEventRow[], opts: ActivityOpts, toda
   });
 
   const truncated = shaped.length > MAX_ACTIVITY_ROWS;
-  const out = shaped.slice(0, MAX_ACTIVITY_ROWS).map(({ _lastDay, _activeDays, ...r }) => r);
+  // Guest sessionTokens are live bearer credentials — truncate the actor key to
+  // an 8-char prefix at output time (grouping/filters/sorts above used the full
+  // key) so the full token never leaves the server; the client only needs a
+  // stable unique key.
+  const out = shaped.slice(0, MAX_ACTIVITY_ROWS).map(({ _lastDay, _activeDays, ...r }) =>
+    r.type === "guest" ? { ...r, actor: `g:${r.actor.slice(2, 10)}` } : r,
+  );
   return { windowDays, rows: out, truncated };
 }
 ```
@@ -254,7 +264,7 @@ export function shapeActivity(rows: ActivityEventRow[], opts: ActivityOpts, toda
 - [ ] **Step 4: Run to verify pass**
 
 Run: `pnpm test:server server/routers/adminAnalytics.test.ts`
-Expected: 8 passed.
+Expected: 10 passed (8 core + the window-seam and guest-key-truncation tests added by review).
 
 - [ ] **Step 5: Add the `userActivity` procedure**
 
@@ -304,7 +314,7 @@ Insert into `adminAnalyticsRouter` immediately after the `retention` procedure (
                g.nickname AS guest_nickname, g."createdAt"::text AS guest_created_at,
                g."marketingOptIn" AS marketing_opt_in, (g.email IS NOT NULL) AS has_email
         FROM all_days a
-        LEFT JOIN users u ON a.actor LIKE 'u:%' AND u.id = substring(a.actor from 3)::int
+        LEFT JOIN users u ON u.id = CASE WHEN a.actor LIKE 'u:%' THEN substring(a.actor from 3)::int END
         LEFT JOIN subscriptions s ON s."userId" = u.id
         LEFT JOIN guest_sessions g ON a.actor LIKE 'g:%' AND g."sessionToken" = substring(a.actor from 3)
         ORDER BY a.actor, a.day;
@@ -353,8 +363,8 @@ git commit -m "feat(admin): userActivity dot-plot procedure + shapeActivity (TDD
 // client/src/pages/admin/tabs/UserActivityTab.tsx
 // Dot plot: rows = individual users/guests, columns = days. Surfaces pacing,
 // streaks, one-and-done drop-off, and weekday/weekend patterns that aggregate
-// charts (DAU/MAU) hide. Open dot = played a round; filled = completed a game;
-// ring = first in-window activity day.
+// charts (DAU/MAU) hide. Faint dot = no activity; open dot = played a round;
+// filled = completed a game; ring = first in-window activity day.
 import { useState } from "react";
 import { trpc } from "@/lib/trpc";
 import { Card } from "@/components/ui/card";
@@ -464,6 +474,7 @@ export default function UserActivityTab() {
 
       <Card className="p-4">
         <div className="mb-3 flex flex-wrap items-center gap-4 text-xs text-muted-foreground">
+          <span className="flex items-center gap-1.5"><span className="h-1 w-1 rounded-full bg-muted-foreground/25" /> no activity</span>
           <span className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-full border-2 border-primary" /> played a round</span>
           <span className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-full bg-primary" /> completed a game</span>
           <span className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-full border-2 border-primary ring-2 ring-amber-500" /> first day in window</span>

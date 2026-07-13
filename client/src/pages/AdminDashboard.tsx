@@ -8,6 +8,7 @@ import { TrendingUp, Users, DollarSign, Trophy, ListMusic, Rocket, Music } from 
 import { Link, useSearch } from "wouter";
 import SongsTab from "./admin/tabs/SongsTab";
 import LogTab from "./admin/tabs/LogTab";
+import UserActivityTab from "./admin/tabs/UserActivityTab";
 import UsageTab from "./admin/tabs/UsageTab";
 import SuggestionsTab from "./admin/tabs/SuggestionsTab";
 import CommentaryTab from "./admin/tabs/CommentaryTab";
@@ -36,7 +37,7 @@ function downloadCsv(text: string, filename: string) {
   URL.revokeObjectURL(url);
 }
 
-const VALID_TABS = ["overview", "users", "revenue", "payouts", "analytics", "songs", "genres", "log", "usage", "suggestions", "commentary", "banners", "vendors"] as const;
+const VALID_TABS = ["overview", "users", "revenue", "payouts", "analytics", "activity", "songs", "genres", "log", "usage", "suggestions", "commentary", "banners", "vendors"] as const;
 type TabValue = typeof VALID_TABS[number];
 
 export function AdminDashboard() {
@@ -203,6 +204,7 @@ export function AdminDashboard() {
             <TabsTrigger value="revenue">Revenue</TabsTrigger>
             <TabsTrigger value="payouts">Payouts</TabsTrigger>
             <TabsTrigger value="analytics">Analytics</TabsTrigger>
+            <TabsTrigger value="activity">User Activity</TabsTrigger>
             <TabsTrigger value="songs">Songs</TabsTrigger>
             <TabsTrigger value="genres">Genres</TabsTrigger>
             <TabsTrigger value="log">Log</TabsTrigger>
@@ -501,6 +503,9 @@ export function AdminDashboard() {
             </Card>
 
           </TabsContent>
+
+          {/* User Activity Tab */}
+          <TabsContent value="activity"><UserActivityTab /></TabsContent>
 
           {/* Songs Tab */}
           <TabsContent value="songs"><SongsTab /></TabsContent>
