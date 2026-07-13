@@ -197,9 +197,13 @@ export function shapeActivity(rows: ActivityEventRow[], opts: ActivityOpts, toda
   }
   const windowStart = windowDays[0]!;
 
+  // The SQL window is rolling (now() - interval), so it can include a partial
+  // day before windowStart; drop those so every day key is renderable.
+  const inWindow = rows.filter((r) => r.day >= windowStart);
+
   // Group events per actor.
   const byActor = new Map<string, { rounds: Set<string>; games: Set<string>; first: ActivityEventRow }>();
-  for (const r of rows) {
+  for (const r of inWindow) {
     let a = byActor.get(r.actor);
     if (!a) { a = { rounds: new Set(), games: new Set(), first: r }; byActor.set(r.actor, a); }
     (r.kind === "game" ? a.games : a.rounds).add(r.day);
@@ -246,7 +250,13 @@ export function shapeActivity(rows: ActivityEventRow[], opts: ActivityOpts, toda
   });
 
   const truncated = shaped.length > MAX_ACTIVITY_ROWS;
-  const out = shaped.slice(0, MAX_ACTIVITY_ROWS).map(({ _lastDay, _activeDays, ...r }) => r);
+  // Guest sessionTokens are live bearer credentials — truncate the actor key to
+  // an 8-char prefix at output time (grouping/filters/sorts above used the full
+  // key) so the full token never leaves the server; the client only needs a
+  // stable unique key.
+  const out = shaped.slice(0, MAX_ACTIVITY_ROWS).map(({ _lastDay, _activeDays, ...r }) =>
+    r.type === "guest" ? { ...r, actor: `g:${r.actor.slice(2, 10)}` } : r,
+  );
   return { windowDays, rows: out, truncated };
 }
 ```
