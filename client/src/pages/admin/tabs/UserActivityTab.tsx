@@ -1,8 +1,8 @@
 // client/src/pages/admin/tabs/UserActivityTab.tsx
 // Dot plot: rows = individual users/guests, columns = days. Surfaces pacing,
 // streaks, one-and-done drop-off, and weekday/weekend patterns that aggregate
-// charts (DAU/MAU) hide. Open dot = played a round; filled = completed a game;
-// ring = first in-window activity day.
+// charts (DAU/MAU) hide. Faint dot = no activity; open dot = played a round;
+// filled = completed a game; ring = first in-window activity day.
 import { useState } from "react";
 import { trpc } from "@/lib/trpc";
 import { Card } from "@/components/ui/card";
@@ -112,6 +112,7 @@ export default function UserActivityTab() {
 
       <Card className="p-4">
         <div className="mb-3 flex flex-wrap items-center gap-4 text-xs text-muted-foreground">
+          <span className="flex items-center gap-1.5"><span className="h-1 w-1 rounded-full bg-muted-foreground/25" /> no activity</span>
           <span className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-full border-2 border-primary" /> played a round</span>
           <span className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-full bg-primary" /> completed a game</span>
           <span className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-full border-2 border-primary ring-2 ring-amber-500" /> first day in window</span>
