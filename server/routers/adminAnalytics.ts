@@ -204,7 +204,7 @@ export const adminAnalyticsRouter = router({
                g.nickname AS guest_nickname, g."createdAt"::text AS guest_created_at,
                g."marketingOptIn" AS marketing_opt_in, (g.email IS NOT NULL) AS has_email
         FROM all_days a
-        LEFT JOIN users u ON a.actor LIKE 'u:%' AND u.id = substring(a.actor from 3)::int
+        LEFT JOIN users u ON u.id = CASE WHEN a.actor LIKE 'u:%' THEN substring(a.actor from 3)::int END
         LEFT JOIN subscriptions s ON s."userId" = u.id
         LEFT JOIN guest_sessions g ON a.actor LIKE 'g:%' AND g."sessionToken" = substring(a.actor from 3)
         ORDER BY a.actor, a.day;
