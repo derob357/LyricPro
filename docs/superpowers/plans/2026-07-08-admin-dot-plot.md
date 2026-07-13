@@ -264,7 +264,7 @@ export function shapeActivity(rows: ActivityEventRow[], opts: ActivityOpts, toda
 - [ ] **Step 4: Run to verify pass**
 
 Run: `pnpm test:server server/routers/adminAnalytics.test.ts`
-Expected: 8 passed.
+Expected: 10 passed (8 core + the window-seam and guest-key-truncation tests added by review).
 
 - [ ] **Step 5: Add the `userActivity` procedure**
 
