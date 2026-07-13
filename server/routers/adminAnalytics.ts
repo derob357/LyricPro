@@ -13,6 +13,103 @@ function requireDb(db: unknown): asserts db {
 
 function csvEsc(v: unknown): string { const s = String(v ?? ""); return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s; }
 
+// ── User activity dot plot (per-user × per-day grid) ────────────────────────
+// Value events: a round answered (round_results) and a COMPLETED game
+// (game_sessions with endedAt). Deliberately NOT song_displays — a lyric
+// merely shown is not value. Day bucketing is plain UTC date_trunc, matching
+// this file's `retention` convention (the KPI rollups use America/New_York;
+// this tab stays consistent with its sibling analytics charts instead).
+
+export interface ActivityEventRow {
+  actor: string;                     // "u:<id>" | "g:<token>"
+  day: string;                       // "YYYY-MM-DD"
+  kind: "round" | "game";
+  user_name: string | null;
+  rank_tier: string | null;
+  premium_status: boolean | null;
+  favorite_genre: string | null;
+  games_played: number | null;
+  login_method: string | null;
+  signup_at: string | null;          // users."createdAt"
+  sub_tier: string | null;           // subscriptions.tier
+  guest_nickname: string | null;
+  guest_created_at: string | null;   // guest_sessions."createdAt"
+  marketing_opt_in: boolean | null;
+  has_email: boolean | null;
+}
+
+interface ActivityOpts {
+  days: number;
+  type: "all" | "registered" | "guest";
+  tier: "all" | "free" | "player" | "pro" | "elite";
+  newInWindowOnly: boolean;
+  sort: "first-seen" | "recent" | "active-days";
+}
+
+const MAX_ACTIVITY_ROWS = 500;
+
+export function shapeActivity(rows: ActivityEventRow[], opts: ActivityOpts, today: Date = new Date()) {
+  // Continuous columns: last `days` UTC days ending today.
+  const end = Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate());
+  const windowDays: string[] = [];
+  for (let i = opts.days - 1; i >= 0; i--) {
+    windowDays.push(new Date(end - i * 86400000).toISOString().slice(0, 10));
+  }
+  const windowStart = windowDays[0]!;
+
+  // Group events per actor.
+  const byActor = new Map<string, { rounds: Set<string>; games: Set<string>; first: ActivityEventRow }>();
+  for (const r of rows) {
+    let a = byActor.get(r.actor);
+    if (!a) { a = { rounds: new Set(), games: new Set(), first: r }; byActor.set(r.actor, a); }
+    (r.kind === "game" ? a.games : a.rounds).add(r.day);
+  }
+
+  let shaped = Array.from(byActor.entries()).map(([actor, a]) => {
+    const type = actor.startsWith("u:") ? ("registered" as const) : ("guest" as const);
+    const idPart = actor.slice(2);
+    const label = type === "registered"
+      ? (a.first.user_name || `user #${idPart}`)
+      : (a.first.guest_nickname || `guest ${idPart.slice(0, 4)}`);
+    const tier = type === "registered"
+      ? ((a.first.sub_tier as "free" | "player" | "pro" | "elite" | null) ?? "free")
+      : null;
+    const allDays = Array.from(new Set([...Array.from(a.rounds), ...Array.from(a.games)])).sort();
+    return {
+      actor, type, label, tier,
+      attrs: {
+        rankTier: a.first.rank_tier, premiumStatus: a.first.premium_status,
+        favoriteGenre: a.first.favorite_genre, gamesPlayed: a.first.games_played,
+        loginMethod: a.first.login_method, signupAt: a.first.signup_at,
+        marketingOptIn: a.first.marketing_opt_in, hasEmail: a.first.has_email,
+        createdAt: a.first.signup_at ?? a.first.guest_created_at,
+      },
+      roundDays: Array.from(a.rounds).sort(),
+      gameDays: Array.from(a.games).sort(),
+      firstActivityDay: allDays[0]!,
+      _lastDay: allDays[allDays.length - 1]!,
+      _activeDays: allDays.length,
+    };
+  });
+
+  if (opts.type !== "all") shaped = shaped.filter((r) => r.type === opts.type);
+  // Tier is a registered-user attribute; a specific tier filter excludes guests.
+  if (opts.tier !== "all") shaped = shaped.filter((r) => r.tier === opts.tier);
+  if (opts.newInWindowOnly) {
+    shaped = shaped.filter((r) => r.attrs.createdAt != null && r.attrs.createdAt.slice(0, 10) >= windowStart);
+  }
+
+  shaped.sort((x, y) => {
+    if (opts.sort === "recent") return y._lastDay.localeCompare(x._lastDay) || x.actor.localeCompare(y.actor);
+    if (opts.sort === "active-days") return y._activeDays - x._activeDays || x.actor.localeCompare(y.actor);
+    return x.firstActivityDay.localeCompare(y.firstActivityDay) || x.actor.localeCompare(y.actor);
+  });
+
+  const truncated = shaped.length > MAX_ACTIVITY_ROWS;
+  const out = shaped.slice(0, MAX_ACTIVITY_ROWS).map(({ _lastDay, _activeDays, ...r }) => r);
+  return { windowDays, rows: out, truncated };
+}
+
 export const adminAnalyticsRouter = router({
   payoutPipeline: adminProcedure.query(async () => {
     const db = await getDb();
@@ -62,6 +159,58 @@ export const adminAnalyticsRouter = router({
 
       const [roundsSeries, gamesSeries] = await Promise.all([build("song_displays"), build("leaderboard_entries")]);
       return { roundsSeries, gamesSeries };
+    }),
+
+  // Per-user × per-day activity grid ("dot plot") — see shapeActivity above.
+  userActivity: adminProcedure
+    .input(z.object({
+      days: z.number().int().min(1).max(365).default(30),
+      type: z.enum(["all", "registered", "guest"]).default("all"),
+      tier: z.enum(["all", "free", "player", "pro", "elite"]).default("all"),
+      newInWindowOnly: z.boolean().default(false),
+      sort: z.enum(["first-seen", "recent", "active-days"]).default("first-seen"),
+    }))
+    .query(async ({ input }) => {
+      const db = await getDb();
+      requireDb(db);
+      // Only zod-validated input.days reaches sql.raw (this file's convention);
+      // type/tier/sort/newInWindowOnly are applied in JS by shapeActivity.
+      const result = await db.execute(sql.raw(`
+        WITH round_days AS (
+          SELECT DISTINCT coalesce('u:'||"activePlayerId"::text, 'g:'||"activeGuestToken") AS actor,
+                 date_trunc('day', "createdAt")::date AS day
+          FROM round_results
+          WHERE "createdAt" >= now() - interval '${input.days} days'
+            AND ("activePlayerId" IS NOT NULL OR "activeGuestToken" IS NOT NULL)
+        ),
+        game_days AS (
+          SELECT DISTINCT coalesce('u:'||"userId"::text, 'g:'||"guestToken") AS actor,
+                 date_trunc('day', "startedAt")::date AS day
+          FROM game_sessions
+          WHERE "startedAt" >= now() - interval '${input.days} days'
+            AND "endedAt" IS NOT NULL
+            AND ("userId" IS NOT NULL OR "guestToken" IS NOT NULL)
+        ),
+        all_days AS (
+          SELECT actor, day, 'round' AS kind FROM round_days
+          UNION ALL
+          SELECT actor, day, 'game' AS kind FROM game_days
+        )
+        SELECT a.actor, a.day::text AS day, a.kind,
+               u.name AS user_name, u."rankTier" AS rank_tier, u."premiumStatus" AS premium_status,
+               u."favoriteGenre" AS favorite_genre, u."gamesPlayed" AS games_played,
+               u."loginMethod" AS login_method, u."createdAt"::text AS signup_at,
+               s.tier::text AS sub_tier,
+               g.nickname AS guest_nickname, g."createdAt"::text AS guest_created_at,
+               g."marketingOptIn" AS marketing_opt_in, (g.email IS NOT NULL) AS has_email
+        FROM all_days a
+        LEFT JOIN users u ON a.actor LIKE 'u:%' AND u.id = substring(a.actor from 3)::int
+        LEFT JOIN subscriptions s ON s."userId" = u.id
+        LEFT JOIN guest_sessions g ON a.actor LIKE 'g:%' AND g."sessionToken" = substring(a.actor from 3)
+        ORDER BY a.actor, a.day;
+      `));
+      const raw = (result as any).rows ?? (Array.isArray(result) ? result : []);
+      return shapeActivity(raw as ActivityEventRow[], input);
     }),
 
   songAccuracy: adminProcedure
