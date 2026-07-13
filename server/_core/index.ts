@@ -51,30 +51,41 @@ async function startServer() {
 
   // ── Security headers ─────────────────────────────────────────────────────
   // Helmet sets 15+ hardening headers (X-Frame-Options, HSTS, X-Content-Type
-  // -Options, Referrer-Policy, etc.). CSP is disabled in dev because Vite's
-  // HMR injects inline scripts; it's enabled with an explicit allowlist in
-  // prod (reportOnly: true for the first deploy; switch to enforcing after
-  // verifying no violations in browser console / report endpoint).
+  // -Options, Referrer-Policy, etc.).
+  //
+  // AUTHORITATIVE CSP LIVES IN vercel.json. On Vercel the browser document
+  // (the static SPA shell) is served by the edge, so its Content-Security-
+  // Policy must be set there — this Express app only handles /api/*, where a
+  // CSP is inert (CSP governs document/worker contexts, not JSON/XHR bodies).
+  // The report-only policy below is defense-in-depth for any deploy where this
+  // server serves HTML directly (local / self-hosted); keep its allowlist in
+  // sync with vercel.json. Disabled in dev (Vite HMR injects inline scripts).
   const isProd = process.env.NODE_ENV === "production";
 
-  // Supabase callback host derived from the project URL. Only used in CSP
-  // allowlist; falls back to a safe placeholder so CSP isn't accidentally empty.
+  // Supabase host derived from the project URL (used for both https REST/auth
+  // and the wss realtime socket — an https source never covers wss).
   const supabaseHost = (process.env.VITE_SUPABASE_PROJECT_URL ?? "")
     .replace(/^https?:\/\//, "")
     .replace(/\/$/, "");
+  const supabaseSrcs = supabaseHost
+    ? [`https://${supabaseHost}`, `wss://${supabaseHost}`]
+    : [];
 
   const cspDirectives = isProd
     ? {
         useDefaults: true,
         directives: {
+          "script-src": ["'self'", "https://js.stripe.com"],
+          "style-src": ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
+          "font-src": ["'self'", "https://fonts.gstatic.com"],
+          "img-src": ["'self'", "data:", "blob:", "https:"],
           "connect-src": [
             "'self'",
-            ...(supabaseHost ? [`https://${supabaseHost}`] : []),
+            ...supabaseSrcs,
+            "https://*.livekit.cloud",
+            "wss://*.livekit.cloud",
             "https://api.stripe.com",
-          ],
-          "script-src": [
-            "'self'",
-            "https://js.stripe.com",
+            "https://api.pwnedpasswords.com",
           ],
           "frame-src": [
             "'self'",
@@ -82,11 +93,8 @@ async function startServer() {
             "https://hooks.stripe.com",
             "https://checkout.stripe.com",
           ],
-          "img-src": [
-            "'self'",
-            "data:",
-            "https://*.stripe.com",
-          ],
+          "media-src": ["'self'", "data:", "blob:", "mediastream:"],
+          "worker-src": ["'self'", "blob:"],
         },
         reportOnly: true,
       }
