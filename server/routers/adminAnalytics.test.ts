@@ -93,6 +93,25 @@ describe("shapeActivity", () => {
     expect(shapeActivity(rows, { ...OPTS, sort: "active-days" }, TODAY).rows.map((r) => r.actor)).toEqual(["u:3", "u:1", "u:2"]);
   });
 
+  it("excludes event days before the window start (rolling-SQL seam)", () => {
+    const out = shapeActivity([
+      ev({ actor: "u:1", day: "2026-07-01" }),                    // only out-of-window → no row at all
+      ev({ actor: "u:2", day: "2026-07-01" }),                    // out-of-window portion dropped…
+      ev({ actor: "u:2", day: "2026-07-04" }),                    // …in-window portion kept
+    ], OPTS, TODAY);
+    expect(out.rows.map((r) => r.actor)).toEqual(["u:2"]);
+    const r = out.rows[0]!;
+    expect(r.roundDays).toEqual(["2026-07-04"]);
+    expect(r.firstActivityDay).toBe("2026-07-04");
+  });
+
+  it("truncates guest actor keys so full session tokens never leave the server", () => {
+    const token = "aB3dE5fG7hJ9kL1mN2pQ4rS6tU8vW0xY";
+    const out = shapeActivity([ev({ actor: `g:${token}` })], OPTS, TODAY);
+    expect(out.rows[0]!.actor).toBe(`g:${token.slice(0, 8)}`);
+    expect(JSON.stringify(out)).not.toContain(token);
+  });
+
   it("caps rows at 500 and sets truncated", () => {
     const rows: ActivityEventRow[] = [];
     for (let i = 0; i < 501; i++) rows.push(ev({ actor: `u:${i}`, day: "2026-07-05" }));
