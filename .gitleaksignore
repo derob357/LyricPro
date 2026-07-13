@@ -1,0 +1,5 @@
+# False positives: fabricated example tokens used as redaction-test fixtures
+# in the SOC 2 evidence-collector plan document (not real credentials).
+# Fingerprint format: <commit>:<file>:<rule>:<line>
+5e980572e83384aeee5e3609c1e3d6d44f53131f:docs/superpowers/plans/2026-07-07-soc2-evidence-collector.md:stripe-access-token:83
+5e980572e83384aeee5e3609c1e3d6d44f53131f:docs/superpowers/plans/2026-07-07-soc2-evidence-collector.md:github-pat:85
