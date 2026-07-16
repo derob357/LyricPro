@@ -170,3 +170,6 @@ compliance/
 scripts/_pilot/
 postcss.config.js
 scripts/rs100-inserted-ids.json
+
+# one-time purge backup (durable copy lives in archive.* DB tables)
+exports/test-user-purge-*/
